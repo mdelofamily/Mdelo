@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0d1117">
+<title>Sprite Cutter</title>
+<style>
+:root{
+  --bg:#0d1117;--panel:#161b22;--panel2:#1c2230;--border:#30363d;
+  --accent:#f0a500;--green:#4ade80;--red:#f85149;--blue:#58a6ff;
+  --text:#e6edf3;--muted:#8b949e;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;user-select:none;}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);font-family:monospace;color:var(--text);}
+body{display:flex;flex-direction:column;}
+
+#topbar{
+  height:50px;background:var(--panel);border-bottom:2px solid var(--accent);
+  display:flex;align-items:center;gap:6px;padding:0 10px;flex-shrink:0;overflow-x:auto;
+}
+#topbar::-webkit-scrollbar{display:none;}
+.ttl{font-size:11px;font-weight:bold;color:var(--accent);letter-spacing:1px;white-space:nowrap;text-shadow:0 0 10px rgba(240,165,0,.5);}
+.sep{width:1px;height:28px;background:var(--border);flex-shrink:0;margin:0 2px;}
+.tbtn{
+  height:36px;min-width:44px;padding:0 10px;background:var(--bg);border:2px solid var(--border);
+  color:var(--text);font-size:16px;display:flex;align-items:center;justify-content:center;
+  gap:4px;white-space:nowrap;cursor:pointer;flex-shrink:0;border-radius:4px;
+}
+.tbtn.on{border-color:var(--green);color:var(--green);background:#0a2010;}
+.tbtn.blu{border-color:var(--blue);color:var(--blue);}
+.tbtn.acc{border-color:var(--accent);color:var(--accent);}
+.tbtn span{font-size:12px;}
+
+/* MAIN */
+#main{flex:1;display:flex;overflow:hidden;}
+
+/* CANVAS AREA */
+#cw{flex:1;overflow:hidden;position:relative;background:#060a0e;touch-action:none;}
+#sheetCanvas{position:absolute;top:0;left:0;image-rendering:pixelated;image-rendering:crisp-edges;}
+
+/* SIDE PANEL */
+#side{
+  width:90px;background:var(--panel);border-left:2px solid var(--border);
+  display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;
+}
+.stitle{font-size:9px;color:var(--muted);letter-spacing:1px;padding:8px 10px 4px;text-transform:uppercase;}
+
+/* SELECTED SPRITES LIST */
+#selList{flex:1;overflow-y:auto;padding:6px;}
+#selList::-webkit-scrollbar{width:4px;}
+#selList::-webkit-scrollbar-thumb{background:var(--border);}
+.sitem{
+  display:flex;align-items:center;gap:4px;padding:3px 5px;
+  border:1px solid var(--border);border-radius:3px;margin-bottom:3px;
+  background:var(--panel2);cursor:pointer;
+}
+.sitem.act{border-color:var(--green);background:#0a1e0a;}
+.sitem canvas{image-rendering:pixelated;border-radius:2px;flex-shrink:0;width:24px!important;height:24px!important;}
+.sitem .sname{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;line-height:1.2;}
+.sitem.act .sname{color:var(--green);}
+.sitem .sdel{font-size:12px;color:var(--red);background:none;border:none;cursor:pointer;padding:0 2px;flex-shrink:0;}
+
+#sideBottom{padding:8px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;}
+.scount{font-size:13px;color:var(--muted);text-align:center;}
+.scount b{color:var(--accent);}
+
+/* STATUS BAR */
+#statusbar{
+  height:32px;background:var(--panel);border-top:1px solid var(--border);
+  display:flex;align-items:center;padding:0 12px;gap:16px;flex-shrink:0;font-size:13px;color:var(--muted);
+}
+#statusbar b{color:var(--accent);}
+
+/* NAME MODAL */
+#modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:200;align-items:center;justify-content:center;}
+#modal.show{display:flex;}
+#mbox{background:var(--panel);border:2px solid var(--accent);border-radius:10px;padding:20px;display:flex;flex-direction:column;gap:12px;width:280px;align-items:center;}
+#mbox p{font-size:14px;color:var(--text);align-self:flex-start;}
+#mpreview{image-rendering:pixelated;border-radius:4px;border:1px solid var(--border);max-width:120px;max-height:120px;}
+#tname{background:var(--bg);border:2px solid var(--border);color:var(--text);font-family:monospace;font-size:16px;padding:8px 10px;border-radius:4px;width:100%;}
+#tname:focus{outline:none;border-color:var(--accent);}
+.mrow{display:flex;gap:8px;width:100%;}
+.mbtn{flex:1;height:40px;background:var(--bg);border:2px solid var(--border);color:var(--text);font-size:15px;cursor:pointer;border-radius:4px;font-family:monospace;}
+.mbtn.ok{border-color:var(--green);color:var(--green);}
+.mbtn.no{border-color:var(--red);color:var(--red);}
+
+/* UPLOAD SCREEN */
+#uploadScreen{
+  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:20px;background:var(--bg);z-index:50;
+}
+#uploadScreen h2{font-size:14px;color:var(--accent);text-align:center;letter-spacing:1px;}
+#uploadScreen p{font-size:13px;color:var(--muted);text-align:center;line-height:1.6;padding:0 20px;}
+.upbtn{
+  height:56px;padding:0 28px;background:var(--panel);border:2px solid var(--accent);
+  color:var(--accent);font-size:16px;cursor:pointer;border-radius:6px;font-family:monospace;
+  display:flex;align-items:center;gap:10px;
+}
+
+/* TOAST */
+#toast{
+  position:fixed;bottom:40px;left:50%;transform:translateX(-50%);
+  background:rgba(22,27,34,.95);border:1px solid var(--accent);color:var(--accent);
+  font-size:14px;padding:8px 20px;border-radius:20px;pointer-events:none;
+  opacity:0;transition:opacity .3s;z-index:400;white-space:nowrap;
+}
+#toast.show{opacity:1;}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <button class="tbtn" onclick="document.getElementById('imgf').click()">📂</button>
+  <input type="file" id="imgf" accept="image/*" style="display:none" onchange="loadSheet(event)">
+  <div class="sep"></div>
+  <button class="tbtn" onclick="cutterUndo()" title="Undo">↩</button>
+  <div class="sep"></div>
+  <button class="tbtn on" id="modePan" onclick="setCutterMode('pan')" title="გადაადგილება (1 თითი)">✋</button>
+  <button class="tbtn" id="modeSel" onclick="setCutterMode('sel')" title="მონიშვნა (1 თითი)">⬚</button>
+  <div class="sep"></div>
+  <button class="tbtn acc" onclick="exportPack()">📦 <span id="expCount">0</span></button>
+  <button class="tbtn" style="border-color:#a78bfa;color:#a78bfa;" onclick="exportAutoTile()" title="AutoTile Pack (name_0..name_15)">🔲</button>
+  <button class="tbtn" style="border-color:#4ade80;color:#4ade80;" onclick="exportDualGrid()" title="Dual Grid Export — 4×4 sheet ან name_0..name_15">⬡ <span>Dual</span></button>
+  <div class="sep"></div>
+  <button class="tbtn" id="modeCoords" onclick="toggleCoords()" title="Coords mode — კოორდინატები base64-ის ნაცვლად">📐 <span>Coords</span></button>
+  <input id="sheetUrlInp" type="text" placeholder="PNG URL (sprites.png)" style="display:none;background:var(--bg);border:1px solid var(--accent);color:var(--text);font-size:11px;padding:3px 8px;border-radius:4px;width:180px;font-family:monospace;" title="Spritesheet PNG-ის URL — JSON-ში ჩაიწერება spritesheet ველად">
+</div>
+
+<div id="main">
+  <div id="cw">
+    <canvas id="sheetCanvas"></canvas>
+    <div id="uploadScreen">
+      <h2>✂ SPRITE SHEET CUTTER</h2>
+      <p>სპრაიტშიტი ჩატვირთე და ფილებად დაჭერი.<br>მხარდაჭერილია: PNG, GIF, SVG, JPG</p>
+      <button class="upbtn" onclick="document.getElementById('imgf').click()">📂 სპრაიტშიტის ატვირთვა</button>
+    </div>
+  </div>
+  <div id="side">
+    <div class="stitle">✓ ფილები</div>
+    <div id="atInfo" style="display:none;padding:6px 8px;font-size:11px;border-bottom:1px solid var(--border);color:#a78bfa;line-height:1.6;"></div>
+    <div id="selList"></div>
+    <div id="sideBottom">
+      <div class="scount">სულ: <b id="selCount">0</b></div>
+      <button class="tbtn" style="width:100%;justify-content:center;font-size:18px;" onclick="clearAll()" title="გასუფთავება">🗑</button>
+    </div>
+  </div>
+</div>
+
+<div id="statusbar">
+  <span>X:<b id="sx">-</b> Y:<b id="sy">-</b></span>
+  <span>ზომა: <b id="ssheet">-</b></span>
+  <span>cell: <b id="scell">-</b></span>
+</div>
+
+<div id="modal">
+  <div id="mbox">
+    <p>ტაილის სახელი:</p>
+    <canvas id="mpreview"></canvas>
+    <input id="tname" type="text" maxlength="20" placeholder="მაგ: grass_0 ... grass_15">
+    <div class="mrow">
+      <button class="mbtn no" onclick="closeModal()">გაუქმება</button>
+      <button class="mbtn ok" onclick="confirmTile()">დამატება ✓</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+let sheetImg=null, sheetW=0, sheetH=0;
+let zoom=2, viewX=0, viewY=0;
+
+// ── RAF SCHEDULER ──
+let _rafId=null;
+function scheduleRender(){if(!_rafId)_rafId=requestAnimationFrame(()=>{_rafId=null;renderSheet();});}
+
+// ── SELECTION SET for O(1) lookup in render ──
+const selSet=new Set(); // stores s.id values
+let selected=[]; // [{id, name, x,y,w,h, canvas}]
+let cutterHistory=[]; // for undo
+let pending=null;
+let pendingBox=null;  // naming modal state
+const gridSize=33;
+// drag selection state
+let dragSel=null; // {startCol,startRow, endCol,endRow}
+let cutterMode='pan'; // 'pan' or 'sel'
+function setCutterMode(m){
+  cutterMode=m;
+  document.getElementById("modePan").classList.toggle("on",m==="pan");
+  document.getElementById("modeSel").classList.toggle("on",m==="sel");
+}
+
+const canvas=document.getElementById("sheetCanvas");
+const cw=document.getElementById("cw");
+const ctx=canvas.getContext("2d");
+
+function loadSheet(e){
+  const f=e.target.files[0];if(!f)return;
+  const rd=new FileReader();
+  rd.onload=ev=>{
+    const img=new Image();
+    img.onload=()=>{
+      sheetImg=img;sheetW=img.width;sheetH=img.height;
+      document.getElementById("uploadScreen").style.display="none";
+      document.getElementById("ssheet").textContent=sheetW+"×"+sheetH;
+      fitZoom();
+      scheduleRender();
+      toast("✓ "+sheetW+"×"+sheetH+" px");
+    };
+    img.src=ev.target.result;
+  };
+  rd.readAsDataURL(f);e.target.value="";
+}
+
+function fitZoom(){
+  const W=cw.clientWidth,H=cw.clientHeight;
+  const zx=W/sheetW, zy=H/sheetH;
+  zoom=Math.max(1,Math.min(4,Math.floor(Math.min(zx,zy)*4)/4));
+  viewX=Math.max(0,(W-sheetW*zoom)/2);
+  viewY=Math.max(0,(H-sheetH*zoom)/2);
+}
+
+// ── RENDER ──
+function renderSheet(){
+  if(!sheetImg)return;
+  const W=cw.clientWidth,H=cw.clientHeight;
+  if(canvas.width!==W||canvas.height!==H){
+    canvas.width=W;canvas.height=H;
+    canvas.style.width=W+"px";canvas.style.height=H+"px";
+  }
+  ctx.imageSmoothingEnabled=false;
+  ctx.clearRect(0,0,W,H);
+
+  // image + grid move together
+  ctx.save();ctx.translate(viewX,viewY);ctx.scale(zoom,zoom);
+  ctx.drawImage(sheetImg,0,0);
+
+  // grid overlay on image
+  ctx.strokeStyle="rgba(255,255,255,0.4)";ctx.lineWidth=0.5;
+    ctx.beginPath();
+    for(let x=0;x<=sheetW;x+=gridSize){ctx.moveTo(x,0);ctx.lineTo(x,sheetH);}
+    for(let y=0;y<=sheetH;y+=gridSize){ctx.moveTo(0,y);ctx.lineTo(sheetW,y);}
+    ctx.stroke();
+    // selection highlights
+    selected.forEach(s=>{
+      ctx.fillStyle="rgba(74,222,128,0.3)";ctx.fillRect(s.x,s.y,s.w,s.h);
+      ctx.strokeStyle="#4ade80";ctx.lineWidth=1;ctx.strokeRect(s.x+.5,s.y+.5,s.w-1,s.h-1);
+    });
+    // cell coords label if big enough
+    if(gridSize*zoom>=36){
+      ctx.fillStyle="rgba(255,255,255,0.5)";ctx.font=(8/zoom)+"px monospace";
+      for(let y=0;y<sheetH;y+=gridSize) for(let x=0;x<sheetW;x+=gridSize){
+        const idx=(y/gridSize)*(sheetW/gridSize)+(x/gridSize);
+        ctx.fillText(idx, x+1, y+8/zoom);
+      }
+    }
+    // ── DUAL GRID OVERLAY: when sheet is exactly 4×4 cells ──
+    // shows bitmask index + corner dots per cell (TL=1,TR=2,BL=4,BR=8)
+    const _dCols=Math.floor(sheetW/gridSize), _dRows=Math.floor(sheetH/gridSize);
+    if(_dCols===4&&_dRows===4){
+            const dotR=Math.max(2.5,gridSize*0.09);
+      const fSize=Math.max(5,gridSize*0.18);
+      for(let r=0;r<4;r++){
+        for(let c=0;c<4;c++){
+          const mask=r*4+c;
+          const ox=c*gridSize, oy=r*gridSize;
+          // mask label
+          ctx.fillStyle="rgba(74,222,128,0.9)";
+          ctx.font="bold "+fSize+"px monospace";
+          ctx.fillText("⬡"+mask, ox+2, oy+fSize+1);
+          // corner dots: filled=green, empty=dim white
+          [[ox+dotR*1.8, oy+dotR*1.8, mask&1],
+           [ox+gridSize-dotR*1.8, oy+dotR*1.8, mask&2],
+           [ox+dotR*1.8, oy+gridSize-dotR*1.8, mask&4],
+           [ox+gridSize-dotR*1.8, oy+gridSize-dotR*1.8, mask&8]
+          ].forEach(([cx,cy,filled])=>{
+            ctx.fillStyle=filled?"rgba(74,222,128,0.95)":"rgba(255,255,255,0.25)";
+            ctx.beginPath();ctx.arc(cx,cy,dotR,0,Math.PI*2);ctx.fill();
+          });
+        }
+      }
+  }
+
+  // drag selection preview (in image coords, inside transform)
+  if(dragSel){
+        const c1=Math.min(dragSel.startCol,dragSel.endCol);
+    const r1=Math.min(dragSel.startRow,dragSel.endRow);
+    const c2=Math.max(dragSel.startCol,dragSel.endCol);
+    const r2=Math.max(dragSel.startRow,dragSel.endRow);
+    const dx=c1*gridSize, dy=r1*gridSize;
+    const dw=(c2-c1+1)*gridSize, dh=(r2-r1+1)*gridSize;
+    ctx.fillStyle="rgba(240,165,0,0.25)";
+    ctx.fillRect(dx,dy,dw,dh);
+    ctx.strokeStyle="#f0a500";ctx.lineWidth=2/zoom;
+    ctx.setLineDash([4/zoom,3/zoom]);
+    ctx.strokeRect(dx,dy,dw,dh);
+    ctx.setLineDash([]);
+    // size label
+    const cols=c2-c1+1, rows=r2-r1+1;
+    ctx.fillStyle="#f0a500";
+    ctx.font="bold "+(11/zoom)+"px monospace";
+    ctx.fillText(cols+"×"+rows+" უჯრა", dx+2/zoom, dy-3/zoom);
+  }
+
+  ctx.restore();
+}
+
+
+// ── TOUCH / MOUSE ──
+let pinchD0=null,pinchZ0=null,pinchMX=null,pinchMY=null,pinchVX=null,pinchVY=null;
+let panT=null;
+
+function screenToSheet(px,py){return{x:(px-viewX)/zoom,y:(py-viewY)/zoom};}
+function tp(t){const r=canvas.getBoundingClientRect();return{x:t.clientX-r.left,y:t.clientY-r.top};}
+function d2(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
+
+canvas.addEventListener("touchstart",e=>{
+  e.preventDefault();
+  if(e.touches.length===1){
+    const p=tp(e.touches[0]);
+        const ix=(p.x-viewX)/zoom, iy=(p.y-viewY)/zoom;
+    const col=Math.floor(ix/gridSize), row=Math.floor(iy/gridSize);
+    // in pan mode — no drag select
+    const ds=(cutterMode==="sel")?{startCol:col,startRow:row,endCol:col,endRow:row}:null;
+    panT={sx:p.x,sy:p.y,vx:viewX,vy:viewY,moved:false,dragSel:ds};
+  } else if(e.touches.length===2){
+    panT=null;
+    const a=tp(e.touches[0]),b=tp(e.touches[1]);
+    pinchD0=d2(a,b);pinchZ0=zoom;
+    pinchMX=(a.x+b.x)/2;pinchMY=(a.y+b.y)/2;pinchVX=viewX;pinchVY=viewY;
+  }
+},{passive:false});
+
+canvas.addEventListener("touchmove",e=>{
+  e.preventDefault();
+  if(e.touches.length===1&&panT){
+    const p=tp(e.touches[0]);
+    const dx=p.x-panT.sx, dy=p.y-panT.sy;
+    if(Math.hypot(dx,dy)>6) panT.moved=true;
+    if(panT.dragSel&&cutterMode==="sel"){
+            const ix=(p.x-viewX)/zoom, iy=(p.y-viewY)/zoom;
+      panT.dragSel.endCol=Math.max(0,Math.floor(ix/gridSize));
+      panT.dragSel.endRow=Math.max(0,Math.floor(iy/gridSize));
+      dragSel=panT.dragSel;
+      scheduleRender();
+    } else if(panT.moved){
+      viewX=panT.vx+dx; viewY=panT.vy+dy;
+      clampView(); scheduleRender();
+    }
+  } else if(e.touches.length===2&&pinchD0){
+    const a=tp(e.touches[0]),b=tp(e.touches[1]);
+    const newZ=Math.max(.5,Math.min(8,Math.round(pinchZ0*(d2(a,b)/pinchD0)*4)/4));
+    const mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+    viewX=pinchVX+(mx-pinchMX);viewY=pinchVY+(my-pinchMY);
+    zoom=newZ;clampView();scheduleRender();
+  }
+},{passive:false});
+
+canvas.addEventListener("touchend",e=>{
+  e.preventDefault();
+  if(e.touches.length===0&&panT){
+    if(panT.dragSel&&dragSel){
+      const ds=dragSel;
+      const c1=Math.min(ds.startCol,ds.endCol);
+      const r1=Math.min(ds.startRow,ds.endRow);
+      const c2=Math.max(ds.startCol,ds.endCol);
+      const r2=Math.max(ds.startRow,ds.endRow);
+      if(c1===c2&&r1===r2){
+        handleTap(panT.sx,panT.sy);
+      } else {
+        handleDragSelect(c1,r1,c2,r2);
+      }
+      dragSel=null;
+    } else if(!panT.moved){
+      handleTap(panT.sx,panT.sy);
+    }
+    panT=null;
+  }
+  if(e.touches.length<2)pinchD0=null;
+},{passive:false});
+
+// mouse: left=drag-select, middle/right=pan
+let mousePan=null, mouseDownPos=null;
+canvas.addEventListener("mousedown",e=>{
+  if(!sheetImg)return;
+  if(e.button===1||e.button===2||cutterMode==="pan"){
+    mousePan={sx:e.offsetX,sy:e.offsetY,vx:viewX,vy:viewY};
+    return;
+  }
+  if(e.button===0){
+        const ix=(e.offsetX-viewX)/zoom, iy=(e.offsetY-viewY)/zoom;
+    const col=Math.floor(ix/gridSize), row=Math.floor(iy/gridSize);
+    mouseDownPos={sx:e.offsetX,sy:e.offsetY,col,row};
+    dragSel={startCol:col,startRow:row,endCol:col,endRow:row};
+    scheduleRender();
+  }
+});
+canvas.addEventListener("mousemove",e=>{
+  if(!sheetImg)return;
+  const{x,y}=screenToSheet(e.offsetX,e.offsetY);
+  document.getElementById("sx").textContent=~~x;
+  document.getElementById("sy").textContent=~~y;
+  document.getElementById("scell").textContent=Math.floor(x/gridSize)+"×"+Math.floor(y/gridSize);
+  if(mousePan){
+    viewX=mousePan.vx+(e.offsetX-mousePan.sx);
+    viewY=mousePan.vy+(e.offsetY-mousePan.sy);
+    clampView();scheduleRender();
+  }
+  if(mouseDownPos&&dragSel){
+        const ix=(e.offsetX-viewX)/zoom, iy=(e.offsetY-viewY)/zoom;
+    dragSel.endCol=Math.floor(ix/gridSize);
+    dragSel.endRow=Math.floor(iy/gridSize);
+    scheduleRender();
+  }
+});
+window.addEventListener("mouseup",e=>{
+  if(mousePan){mousePan=null;return;}
+  if(mouseDownPos&&dragSel){
+    const c1=Math.min(dragSel.startCol,dragSel.endCol);
+    const r1=Math.min(dragSel.startRow,dragSel.endRow);
+    const c2=Math.max(dragSel.startCol,dragSel.endCol);
+    const r2=Math.max(dragSel.startRow,dragSel.endRow);
+    // single cell = tap (old behaviour), multi-cell = object
+    if(c1===c2&&r1===r2){
+      handleTap(mouseDownPos.sx,mouseDownPos.sy);
+    } else {
+      handleDragSelect(c1,r1,c2,r2);
+    }
+    dragSel=null;mouseDownPos=null;
+    scheduleRender();
+    return;
+  }
+  if(mouseDownPos&&!dragSel){
+    handleTap(mouseDownPos.sx,mouseDownPos.sy);
+  }
+  mouseDownPos=null;dragSel=null;
+});
+
+function handleTap(px,py){
+  if(!sheetImg)return;
+  const ix=(px-viewX)/zoom, iy=(py-viewY)/zoom;
+  const cellCol=Math.floor(ix/gridSize), cellRow=Math.floor(iy/gridSize);
+    if(cellCol<0||cellRow<0)return;
+    const cx=cellCol*gridSize, cy=cellRow*gridSize;
+    const imgX=cx, imgY=cy;
+    if(imgX<0||imgY<0||imgX>=sheetW||imgY>=sheetH)return;
+    const tw=Math.min(gridSize,sheetW-imgX);
+    const th=Math.min(gridSize,sheetH-imgY);
+    if(tw<=0||th<=0)return;
+    // toggle: if already selected remove it
+    const key=cellCol+","+cellRow;
+    const existIdx=selected.findIndex(s=>s._key===key);
+    if(existIdx>=0){
+      cutterPushHistory();
+      selected.splice(existIdx,1);
+      syncSelSet();scheduleRender();updateSidePanel();
+      return;
+    }
+    // open naming modal
+    openModal(imgX,imgY,tw,th,undefined,cx,cy,key);
+}
+
+function handleDragSelect(c1,r1,c2,r2){
+  if(!sheetImg)return;
+  const gx=c1*gridSize, gy=r1*gridSize;
+  const gw=(c2-c1+1)*gridSize, gh=(r2-r1+1)*gridSize;
+  const imgX=gx, imgY=gy;
+  if(imgX<0||imgY<0||imgX>=sheetW||imgY>=sheetH)return;
+  const iw=Math.min(gw,sheetW-imgX);
+  const ih=Math.min(gh,sheetH-imgY);
+  if(iw<=0||ih<=0)return;
+  const key=c1+","+r1+":"+(c2-c1+1)+"x"+(r2-r1+1);
+  if(selected.find(s=>s._key===key))return;
+  // open modal
+  pendingDrag={imgX,imgY,iw,ih,gx,gy,gw,gh,key,trim:1,
+    cols:c2-c1+1,rows:r2-r1+1};
+  const prev=cropImg(imgX,imgY,iw,ih,1);
+  const mp=document.getElementById("mpreview");
+  // scale preview to fit modal
+  const maxS=120;
+  const sc=Math.min(maxS/iw,maxS/ih,4);
+  mp.width=Math.round(iw*sc); mp.height=Math.round(ih*sc);
+  mp.style.width=mp.width+"px"; mp.style.height=mp.height+"px";
+  mp.getContext("2d").drawImage(prev,0,0,mp.width,mp.height);
+  document.getElementById("tname").value="";
+  // show size hint
+  const szEl=document.getElementById("mbox").querySelector("p");
+  szEl.innerHTML="სახელი: <b style='color:var(--accent)'>"
+    +pendingDrag.cols+"×"+pendingDrag.rows
+    +" უჯრა</b> ("+(pendingDrag.iw)+"×"+(pendingDrag.ih)+"px)";
+  document.getElementById("modal").classList.add("show");
+  setTimeout(()=>document.getElementById("tname").focus(),100);
+}
+
+let pendingDrag=null;
+
+function cropImg(x,y,w,h,trim){
+  const t=trim||0;
+  const off=document.createElement("canvas");
+  off.width=Math.max(1,w-t*2); off.height=Math.max(1,h-t*2);
+  const octx=off.getContext("2d"); octx.imageSmoothingEnabled=false;
+  octx.drawImage(sheetImg,-(x+t),-(y+t));
+  return off;
+}
+
+function clampView(){
+  if(!sheetImg)return;
+  const W=cw.clientWidth,H=cw.clientHeight;
+  const mw=sheetW*zoom,mh=sheetH*zoom;
+  // generous margin — always keep at least 60px of sheet visible
+  const margin=60;
+  viewX=Math.max(margin-mw, Math.min(W-margin, viewX));
+  viewY=Math.max(margin-mh, Math.min(H-margin, viewY));
+}
+
+// ── MODAL ──
+function cropToCanvas(x,y,w,h,targetSize=64){
+  const off=document.createElement("canvas");off.width=w;off.height=h;
+  const octx=off.getContext("2d");octx.imageSmoothingEnabled=false;
+  octx.drawImage(sheetImg,-x,-y);
+  // preview
+  const sc=document.createElement("canvas");
+  sc.width=targetSize;sc.height=Math.round(targetSize*h/w)||targetSize;
+  const sctx=sc.getContext("2d");sctx.imageSmoothingEnabled=false;
+  sctx.drawImage(off,0,0,sc.width,sc.height);
+  return{full:off,preview:sc};
+}
+
+// crop with optional 1px trim (removes seam between tiles)
+
+
+let _lastName="", _lastIdx=0;
+
+function openModal(x,y,w,h,id,gx,gy,key){
+  pendingBox={
+    x,y,w,h,
+    id:id||("tile_"+Date.now()),
+    gx:gx!==undefined?gx:x,
+    gy:gy!==undefined?gy:y,
+    _key:key||"k_"+x+"_"+y
+  };
+  const{full,preview}=cropToCanvas(x,y,w,h,80);
+  const mp=document.getElementById("mpreview");
+  mp.width=preview.width;mp.height=preview.height;
+  mp.style.width=preview.width+"px";mp.style.height=preview.height+"px";
+  mp.getContext("2d").drawImage(preview,0,0);
+  document.getElementById("tname").value=_lastName?_lastName+"_"+_lastIdx:"";
+  document.getElementById("modal").classList.add("show");
+  setTimeout(()=>document.getElementById("tname").focus(),150);
+}
+function closeModal(){document.getElementById("modal").classList.remove("show");pendingBox=null;pendingDrag=null;dragSel=null;scheduleRender();}
+document.getElementById("tname").addEventListener("keydown",e=>{if(e.key==="Enter")confirmTile();});
+
+function cutterUndo(){
+  if(!cutterHistory.length){toast("↩ გამოყენება შეუძლებელია");return;}
+  selected=cutterHistory.pop();
+  syncSelSet();scheduleRender();updateSidePanel();toast("↩");
+}
+function cutterPushHistory(){ cutterHistory.push(selected.map(s=>({...s})));if(cutterHistory.length>30)cutterHistory.shift(); }
+function syncSelSet(){selSet.clear();selected.forEach(s=>selSet.add(s.id));}
+
+function confirmTile(){
+  cutterPushHistory();
+  let name=document.getElementById("tname").value.trim()||("tile_"+(selected.length+1));
+  // ავტო-ინდექსი: მოვაშოروţ ბოლო _N სუფიქსი და დავიმახსოვროთ base სახელი
+  const _m=name.match(/^(.+?)_(\d+)$/);
+  if(_m){_lastName=_m[1];_lastIdx=parseInt(_m[2])+1;}
+  else{_lastName=name;_lastIdx=1;}
+  let fn=name,i=2;while(selected.find(s=>s.name===fn))fn=name+" "+i++;
+
+  if(pendingDrag){
+    // multi-cell object
+    const pd=pendingDrag; pendingDrag=null;
+    const full=cropImg(pd.imgX,pd.imgY,pd.iw,pd.ih,pd.trim);
+    selected.push({
+      id:"obj_"+fn.replace(/\s+/g,"_"), name:fn, canvas:full,
+      x:pd.imgX, y:pd.imgY, w:pd.iw, h:pd.ih,
+      gx:pd.gx, gy:pd.gy, gw:pd.gw, gh:pd.gh,
+      cols:pd.cols, rows:pd.rows,
+      isObject:true, _key:pd.key
+    });
+  } else if(pendingBox){
+    const trim=1; // always trim
+    const full=trim>0
+      ?cropImg(pendingBox.x,pendingBox.y,pendingBox.w,pendingBox.h,trim)
+      :cropToCanvas(pendingBox.x,pendingBox.y,pendingBox.w,pendingBox.h,pendingBox.w).full;
+    selected.push({
+      id:pendingBox.id, name:fn, canvas:full,
+      x:pendingBox.x, y:pendingBox.y,
+      w:pendingBox.w, h:pendingBox.h,
+      gx:pendingBox.gx, gy:pendingBox.gy,
+      _key:pendingBox._key
+    });
+    pendingBox=null;
+  } else return;
+
+  // reset modal label
+  document.getElementById("mbox").querySelector("p").textContent="სახელი:";
+  syncSelSet();closeModal();scheduleRender();updateSidePanel();
+  toast("✓ "+fn);
+}
+
+// ── SIDE PANEL ──
+function updateSidePanel(){
+  const list=document.getElementById("selList");
+  list.innerHTML="";
+  selected.forEach((s,i)=>{
+    const item=document.createElement("div");item.className="sitem";
+    const cv=document.createElement("canvas");
+    cv.width=24;cv.height=24;
+    cv.style.width="24px";cv.style.height="24px";
+    cv.style.imageRendering="pixelated";
+    cv.getContext("2d").drawImage(s.canvas,0,0,24,24);
+    const nm=document.createElement("div");nm.className="sname";
+    const fullName=(s.isObject?"⊞ ":"")+s.name+(s.isObject?" "+s.cols+"×"+s.rows:"");
+    // show only the part after last "_" (e.g. "თივა_13" → "13")
+    const uIdx=s.name.lastIndexOf("_");
+    const dispName=uIdx>=0
+      ?s.name.slice(uIdx+1)+(s.isObject?" "+s.cols+"×"+s.rows:"")
+      :(fullName.length>9?(fullName.slice(0,3)+".."+fullName.slice(-2)):fullName);
+    nm.textContent=dispName;
+    nm.title=fullName;
+    if(s.isObject){
+      const szd=document.createElement("div");
+      szd.style.cssText="font-size:10px;color:var(--accent);line-height:1;";
+      szd.textContent=s.cols+"×"+s.rows;
+      nm.after(szd);
+    }
+    const dl=document.createElement("button");dl.className="sdel";dl.textContent="✕";
+    dl.onclick=e=>{e.stopPropagation();selected.splice(i,1);syncSelSet();scheduleRender();updateSidePanel();};
+    item.appendChild(cv);item.appendChild(nm);item.appendChild(dl);
+    list.appendChild(item);
+  });
+  document.getElementById("selCount").textContent=selected.length;
+  document.getElementById("expCount").textContent=selected.length;
+  updateAtInfo();
+}
+
+// ── EXPORT ──
+async function downloadJson(json, filename){
+  await saveFileAs(json, filename);
+}
+let useCoords=false;
+function toggleCoords(){
+  useCoords=!useCoords;
+  document.getElementById("modeCoords").classList.toggle("on",useCoords);
+  const inp=document.getElementById("sheetUrlInp");
+  inp.style.display=useCoords?"":"none";
+  if(useCoords){inp.focus();}
+  toast(useCoords?"📐 Coords — URL შეიყვანე":"🖼 Base64 mode");
+}
+function getSheetUrl(){
+  if(!useCoords) return "";
+  const v=document.getElementById("sheetUrlInp").value.trim();
+  if(v) try{localStorage.setItem("sc_sheetUrl",v);}catch(e){}
+  return v;
+}
+// restore last URL on load
+(function(){
+  try{
+    const saved=localStorage.getItem("sc_sheetUrl");
+    if(saved){document.getElementById("sheetUrlInp").value=saved;}
+  }catch(e){}
+})();
+const _TRIM=1;
+function _coordCrop(s){return {x:s.x+_TRIM,y:s.y+_TRIM,w:s.w-_TRIM*2,h:s.h-_TRIM*2};}
+function spriteRef(s){const u=getSheetUrl();return u?_coordCrop(s):{src:s.canvas.toDataURL("image/png")};}
+function spriteVal(s){const u=getSheetUrl();return u?_coordCrop(s):s.canvas.toDataURL("image/png");}
+async function exportPack(){
+  if(!selected.length){toast("ჯერ ფილები შეარჩიე");return;}
+  const fname=(prompt("ფაილის სახელი:","sprite-pack")||"").trim();
+  if(!fname)return;
+  const cat=(prompt("კატეგორია (ცარიელი=ყველა):\nსამეურნეო / კონსტრუქციები / მცენარეები / მარკერები","")||"").trim();
+  const sheetUrl=getSheetUrl();
+  if(useCoords&&!sheetUrl){toast("⚠ Coords mode: URL შეიყვანე");return;}
+  const tiles=selected.map(s=>({
+    id:(s.isObject?"obj_":"custom_")+s.name.replace(/\s+/g,"_"),
+    lb:s.name,
+    ...spriteRef(s),
+    ...(cat?{category:cat}:{}),
+    ...(s.isObject?{isObject:true,cols:s.cols,rows:s.rows}:{})
+  }));
+  const json=JSON.stringify({...(sheetUrl?{spritesheet:sheetUrl}:{}),tiles},null,2);
+  await downloadJson(json,fname+".json");
+  toast("📦 "+tiles.length+" ფილა ექსპორტირდა");
+}
+
+// ── AUTO-TILE PACK EXPORT ──
+// detects groups: "grass_0".."grass_15" or "grass_N","grass_NE" etc.
+async function exportAutoTile(){
+  if(!selected.length){toast("ჯერ ფილები შეარჩიე");return;}
+
+  // group by base name — strip trailing _0.._15 or _N/_NE/_S etc.
+  const groups={};
+  const dirMap={
+    'N':1,'E':2,'S':4,'W':8,
+    'NE':3,'NS':5,'NW':9,'ES':6,'EW':10,'SW':12,
+    'NES':7,'NEW':11,'NSW':13,'ESW':14,'NESW':15,'':0
+  };
+  selected.forEach(s=>{
+    const m=s.name.match(/^(.+?)_([0-9]{1,2})$/);
+    if(m){
+      const base=m[1], idx=parseInt(m[2]);
+      if(!groups[base]) groups[base]={type:'index', sprites:Array(16).fill(null), name:base};
+      if(idx>=0&&idx<=15) groups[base].sprites[idx]=spriteVal(s);
+      return;
+    }
+    const m2=s.name.match(/^(.+?)_([NESW]+)$/);
+    if(m2){
+      const base=m2[1], dirs=m2[2];
+      if(dirMap[dirs]!==undefined){
+        if(!groups[base]) groups[base]={type:'dir', sprites:Array(16).fill(null), name:base};
+        groups[base].sprites[dirMap[dirs]]=spriteVal(s);
+        return;
+      }
+    }
+    // ungrouped — treat as standalone tile
+    if(!groups['__standalone__']) groups['__standalone__']={type:'standalone', tiles:[]};
+    groups['__standalone__'].tiles.push({
+      id:"custom_"+s.name.replace(/\s+/g,"_"), lb:s.name,
+      ...spriteRef(s)
+    });
+  });
+
+  const autoTiles=[];
+  const tiles=[];
+  Object.entries(groups).forEach(([base,g])=>{
+    if(g.type==='standalone'){
+      tiles.push(...g.tiles);
+    } else {
+      autoTiles.push({id:base, lb:base, autoTile:true, sprites:g.sprites});
+    }
+  });
+
+  if(!autoTiles.length && !tiles.length){
+    toast("⚠ ვერ ვიპოვე ჯგუფი — გამოიყენე grass_0..grass_15 სახელები");
+    return;
+  }
+
+  const summary=autoTiles.map(t=>{
+    const filled=t.sprites.filter(Boolean).length;
+    return t.id+" ("+filled+"/16)"+(t.baseTileId?" ↓"+t.baseTileId:"");
+  }).join(", ");
+
+  const fname=(prompt("ფაილის სახელი:","autotile-pack")||"").trim();
+  if(!fname)return;
+  const compatRaw=(prompt("თავსებადი ფილები (ID-ები მძიმით, ან ცარიელი):","")||"").trim();
+  const compatibleWith=compatRaw?compatRaw.split(",").map(s=>s.trim()).filter(Boolean):[];
+
+  const sheetUrl=getSheetUrl();
+  if(useCoords&&!sheetUrl){toast("⚠ Coords mode: URL შეიყვანე");return;}
+  const json=JSON.stringify({...(sheetUrl?{spritesheet:sheetUrl}:{}),autoTiles:autoTiles.map(t=>({...t,...(compatibleWith.length?{compatibleWith}:{})})), tiles},null,2);
+  await downloadJson(json,fname+".json");
+  toast("🔲 AutoTile: "+summary);
+}
+
+// ── DUAL GRID EXPORT ──
+// Two methods:
+//   A) selected tiles named  name_0 .. name_15  → export as dualTiles (full 16 required)
+//   B) 4×4 grid sheet auto-slice              → cell(col,row) → sprites[row*4+col = mask]
+// Output: {dualTiles:[{id,lb,dualTile:true,sprites:[src0..src15]}]}
+// compatible with map-editor loadSpritePack and renderDualGrid (TL=1,TR=2,BL=4,BR=8)
+async function exportDualGrid(){
+  if(!sheetImg){toast("ჯერ სპრაიტშიტი ჩატვირთე");return;}
+
+  // ── Method A: name-based (name_0..name_15) from selected ──
+  if(selected.length){
+    const groups={};
+    selected.forEach(s=>{
+      const m=s.name.match(/^(.+?)_([0-9]{1,2})$/);
+      if(m){
+        const base=m[1],idx=parseInt(m[2]);
+        if(idx>=0&&idx<=15){
+          if(!groups[base])groups[base]=Array(16).fill(null);
+          groups[base][idx]=spriteVal(s);
+        }
+      }
+    });
+    const complete=Object.entries(groups).filter(([,v])=>v.filter(Boolean).length===16);
+    if(complete.length){
+      const dualTiles=complete.map(([base,sprites])=>({
+        id:base.replace(/\s+/g,"_"),lb:base,dualTile:true,sprites
+      }));
+      const fname=(prompt("ფაილის სახელი:","dual-pack")||"").trim();
+      if(!fname)return;
+      const compatRaw=(prompt("თავსებადი ფილები (ID-ები მძიმით, ან ცარიელი):","")||"").trim();
+      const compatibleWith=compatRaw?compatRaw.split(",").map(s=>s.trim()).filter(Boolean):[];
+      const sheetUrl=getSheetUrl();
+      if(useCoords&&!sheetUrl){toast("⚠ Coords mode: URL შეიყვანე");return;}
+      const dualTilesOut=dualTiles.map(t=>({...t,...(compatibleWith.length?{compatibleWith}:{})}));
+      await saveFileAs(JSON.stringify({...(sheetUrl?{spritesheet:sheetUrl}:{}),dualTiles:dualTilesOut},null,2),fname+".json");
+      toast("⬡ Dual: "+dualTiles.map(t=>t.lb).join(", ")+" — ექსპორტირდა!");
+      return;
+    }
+    // partial groups warning
+    const partial=Object.entries(groups).filter(([,v])=>v.filter(Boolean).length<16);
+    if(partial.length){
+      const msg=partial.map(([k,v])=>k+" ("+v.filter(Boolean).length+"/16)").join(", ");
+      toast("⚠ არასრული: "+msg);
+      return;
+    }
+  }
+
+  // ── Method B: 4×4 auto-slice ──
+    const sheetCols=Math.floor(sheetW/gridSize);
+  const sheetRows=Math.floor(sheetH/gridSize);
+  if(sheetCols!==4||sheetRows!==4){
+    toast("⚠ 4×4 გრიდი საჭიროა — ახლა: "+sheetCols+"×"+sheetRows+". Grid size შეცვალე.");
+    return;
+  }
+
+  const tname=prompt("Dual Tile სახელი:","terrain");
+  if(!tname)return;
+
+  const sheetUrl=getSheetUrl();
+  if(useCoords&&!sheetUrl){toast("⚠ Coords mode: URL შეიყვანე");return;}
+  const sprites=Array(16).fill(null);
+  for(let mask=0;mask<16;mask++){
+    const col=mask%4, row=~~(mask/4);
+    if(sheetUrl){
+      sprites[mask]={x:col*gridSize, y:row*gridSize, w:gridSize, h:gridSize};
+    } else {
+      const off=document.createElement("canvas");
+      off.width=gridSize;off.height=gridSize;
+      const octx=off.getContext("2d");octx.imageSmoothingEnabled=false;
+      octx.drawImage(sheetImg,-(col*gridSize),-(row*gridSize));
+      sprites[mask]=off.toDataURL("image/png");
+    }
+  }
+
+  const id=tname.replace(/\s+/g,"_");
+  await saveFileAs(
+    JSON.stringify({...(sheetUrl?{spritesheet:sheetUrl}:{}),dualTiles:[{id,lb:tname,dualTile:true,sprites}]},null,2),
+    "dual-"+id+".json"
+  );
+  toast("⬡ "+tname+" — 16 sprite ექსპორტირდა!");
+}
+
+// update side panel with auto-tile group info
+function updateAtInfo(){
+  const atGroups={}, dualGroups={};
+  selected.forEach(s=>{
+    const m=s.name.match(/^(.+?)_([0-9]{1,2})$/);
+    if(m){
+      const base=m[1],idx=parseInt(m[2]);
+      if(idx>=0&&idx<=15){
+        atGroups[base]=(atGroups[base]||0)+1;
+      }
+      return;
+    }
+    const dirMap={'N':1,'E':2,'S':4,'W':8,'NE':3,'NS':5,'NW':9,'ES':6,'EW':10,'SW':12,'NES':7,'NEW':11,'NSW':13,'ESW':14,'NESW':15,'':0};
+    const m2=s.name.match(/^(.+?)_([NESW]+)$/);
+    if(m2&&dirMap[m2[2]]!==undefined) atGroups[m2[1]]=(atGroups[m2[1]]||0)+1;
+  });
+
+  // dual groups = atGroups with 16 sprites (complete)
+  Object.entries(atGroups).forEach(([k,v])=>{
+    if(v===16){dualGroups[k]=v;delete atGroups[k];}
+  });
+
+  const el=document.getElementById("atInfo");
+  const atKeys=Object.keys(atGroups);
+  const dualKeys=Object.keys(dualGroups);
+
+  if(!atKeys.length&&!dualKeys.length){
+    // also check if current sheet is 4×4 dual grid
+        if(sheetImg&&Math.floor(sheetW/gridSize)===4&&Math.floor(sheetH/gridSize)===4){
+      el.style.display="";
+      el.innerHTML="⬡ <b style='color:#4ade80'>4×4 Dual Grid</b> — grid size: <b style='color:var(--accent)'>"+gridSize+"px</b><br><span style='color:var(--muted);font-size:10px'>⬡ Dual ღილაკით ექსპორტი</span>";
+    } else {
+      el.style.display="none";
+    }
+    return;
+  }
+  el.style.display="";
+  let html="";
+  if(dualKeys.length) html+=dualKeys.map(k=>"⬡ <b style='color:#4ade80'>"+k+"</b> 16/16 ✓").join("<br>")+"<br>";
+  if(atKeys.length)   html+=atKeys.map(k=>"🔲 <b style='color:#c4b5fd'>"+k+"</b> "+atGroups[k]+"/16").join("<br>");
+  el.innerHTML=html;
+}
+
+// ── CLEAR ──
+function clearAll(){
+  if(!selected.length)return;
+  if(!confirm("ყველა შერჩეული ტაილი გაიწმინდოს?"))return;
+  selected=[];syncSelSet();scheduleRender();updateSidePanel();
+}
+
+// ── ZOOM ──
+window.addEventListener("wheel",e=>{
+  if(!sheetImg)return;e.preventDefault();
+  const delta=e.deltaY<0?0.25:-0.25;
+  zoom=Math.max(.5,Math.min(8,Math.round((zoom+delta)*4)/4));
+  clampView();scheduleRender();
+},{passive:false});
+
+// ── TOAST ──
+let toastT=null;
+function toast(msg){
+  const el=document.getElementById("toast");el.textContent=msg;el.classList.add("show");
+  if(toastT)clearTimeout(toastT);toastT=setTimeout(()=>el.classList.remove("show"),2000);
+}
+
+window.addEventListener("resize",()=>{if(sheetImg){fitZoom();scheduleRender();}});
+// ── FOLDER PICKER — pick once, reuse for all exports ──
+let _exportDir=null;
+
+async function getExportDir(){
+  if(_exportDir) return _exportDir;
+  if(window.showDirectoryPicker){
+    try{
+      _exportDir=await window.showDirectoryPicker({mode:'readwrite'});
+      toast("📁 "+_exportDir.name);
+      return _exportDir;
+    }catch(e){
+      if(e.name==='AbortError') return null;
+    }
+  }
+  return null; // fallback to direct download
+}
+
+async function saveFileAs(content,defaultName){
+  const dir=await getExportDir();
+  if(dir){
+    try{
+      const fh=await dir.getFileHandle(defaultName,{create:true});
+      const wr=await fh.createWritable();
+      await wr.write(content);
+      await wr.close();
+      toast("💾 "+defaultName);
+    }catch(e){
+      console.error(e);
+      toast("⚠ შენახვა ვერ მოხერხდა: "+e.message);
+    }
+    return; // dir-ის შემთხვევაში — ყოველთვის აქ ჩერდება, download არ ხდება
+  }
+  // fallback — direct download (მხოლოდ თუ folder არ არის მითითებული)
+  const mimeType=defaultName.endsWith('.json')?'application/json':'image/png';
+  const a=document.createElement('a');
+  if(typeof content==='string') a.href='data:'+mimeType+','+encodeURIComponent(content);
+  else a.href=URL.createObjectURL(content);
+  a.download=defaultName;a.click();
+  toast("💾 "+defaultName);
+}
+document.addEventListener("keydown",e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key==="z"){e.preventDefault();cutterUndo();}
+});
+</script>
+</body>
+</html>
