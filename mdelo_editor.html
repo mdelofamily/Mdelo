@@ -2035,7 +2035,9 @@ const _localSheetCache=new Map();
 function exportPNG(){
   const usedIds=new Set(map.flat().filter(Boolean));
   const coordTiles=[...customTiles,...autoTiles,...dualTiles].filter(t=>t.sheetUrl&&usedIds.has(t.id));
-  const neededUrls=[...new Set(coordTiles.map(t=>t.sheetUrl))];
+  // also include sheetUrls needed by placed objects
+  const objTiles=objects.map(o=>tileMap.get(o.id)).filter(t=>t&&t.sheetUrl);
+  const neededUrls=[...new Set([...coordTiles,...objTiles].map(t=>t.sheetUrl))];
 
   // check which URLs still need a local file
   const missing=neededUrls.filter(u=>!_localSheetCache.has(u));
