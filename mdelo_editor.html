@@ -2035,7 +2035,6 @@ const _localSheetCache=new Map();
 function exportPNG(){
   const usedIds=new Set(map.flat().filter(Boolean));
   const coordTiles=[...customTiles,...autoTiles,...dualTiles].filter(t=>t.sheetUrl&&usedIds.has(t.id));
-  // also include sheetUrls needed by placed objects
   const objTiles=objects.map(o=>tileMap.get(o.id)).filter(t=>t&&t.sheetUrl);
   const neededUrls=[...new Set([...coordTiles,...objTiles].map(t=>t.sheetUrl))];
 
@@ -2392,7 +2391,8 @@ function exportConfig(){
   toast("📋 config.json გადმოიწერა");
 }
 
-function doExportHTML(){
+async function doExportHTML(){
+  try{
   // read legend labels from _legendLabels (tab data)
   const legendData=Object.entries(_legendLabels)
     .filter(([id,text])=>text&&text.trim())
@@ -2401,6 +2401,36 @@ function doExportHTML(){
 
   // build embedded config for HTML (no separate config.json needed)
   const mapData=getMapData();
+  // embed object sprites as base64 (fetch bypasses taint)
+  const _objUrls=[...new Set(mapData.objects
+    .map(o=>{const d=tileMap.get(o.id);return d?.sheetUrl||null;})
+    .filter(Boolean))];
+  const _sheets=new Map();
+  await Promise.all(_objUrls.map(url=>
+    fetch(url).then(r=>r.blob()).then(blob=>{
+      const bu=URL.createObjectURL(blob);
+      return new Promise(res=>{
+        const img=new Image();
+        img.onload=()=>{_sheets.set(url,img);URL.revokeObjectURL(bu);res();};
+        img.onerror=()=>{URL.revokeObjectURL(bu);res();};
+        img.src=bu;
+      });
+    }).catch(()=>{})
+  ));
+  const _objsWithSrc=mapData.objects.map(o=>{
+    const d=tileMap.get(o.id);
+    if(d?.sheetUrl&&_sheets.has(d.sheetUrl)){
+      try{
+        const sh=_sheets.get(d.sheetUrl);
+        const cw=(o.cols||1)*TS,ch=(o.rows||1)*TS;
+        const cv=document.createElement("canvas");
+        cv.width=cw;cv.height=ch;
+        cv.getContext("2d").drawImage(sh,d.sx,d.sy,d.sw,d.sh,0,0,cw,ch);
+        return {...o,src:cv.toDataURL("image/png")};
+      }catch(e){}
+    }
+    return o;
+  });
   const embeddedCfg=JSON.stringify({
     title:currentProjectName||"RPG Map",
     description:mapDesc,
@@ -2408,7 +2438,7 @@ function doExportHTML(){
     cols:COLS, rows:ROWS,
     map:mapData.map,
     overlayMap:mapData.overlayMap,
-    objects:mapData.objects,
+    objects:_objsWithSrc,
     custom:mapData.custom,
     autoTiles:mapData.autoTiles,
     dualTiles:mapData.dualTiles
@@ -2460,9 +2490,9 @@ function doExportHTML(){
   _fctx.drawImage(offscreen,0,0);
   objects.forEach(obj=>{
     const def=tileMap.get(obj.id);
-    if(def&&def.sheetUrl){
-      const sh=cleanSheets.get(def.sheetUrl);
-      if(sh) _fctx.drawImage(sh,def.sx,def.sy,def.sw,def.sh,
+    if(def&&def.sheetUrl&&_sheets.has(def.sheetUrl)){
+      const sh=_sheets.get(def.sheetUrl);
+      _fctx.drawImage(sh,def.sx,def.sy,def.sw,def.sh,
         obj.x*TS,obj.y*TS,obj.cols*TS,obj.rows*TS);
     } else if(obj.img){
       _fctx.drawImage(obj.img,obj.x*TS,obj.y*TS,obj.cols*TS,obj.rows*TS);
@@ -2765,16 +2795,30 @@ ${useCanvasRenderer ? `
     renderLayer(cfg.map);
     if(omap) renderLayer(omap);
     // Pass: objects on canvas
+    // pre-load all object src images
+    const _oImgs=new Map();
     (cfg.objects||[]).forEach(obj=>{
-      const def=tileMap.get(obj.id);
-      if(!def)return;
-      if(def.sheetUrl){
-        const sh=sheets.get(def.sheetUrl);
-        if(sh) ctx.drawImage(sh,def.sx,def.sy,def.sw,def.sh,
-          obj.x*TS,obj.y*TS,(obj.cols||1)*TS,(obj.rows||1)*TS);
-      } else if(def.img){
-        ctx.drawImage(def.img,obj.x*TS,obj.y*TS,(obj.cols||1)*TS,(obj.rows||1)*TS);
+      if(obj.src&&!_oImgs.has(obj.src)){
+        const im=new Image(); im.src=obj.src; _oImgs.set(obj.src,im);
       }
+    });
+    // wait for all to load then draw
+    Promise.all([..._oImgs.values()].map(im=>
+      im.complete?Promise.resolve():new Promise(r=>{im.onload=r;im.onerror=r;})
+    )).then(()=>{
+      (cfg.objects||[]).forEach(obj=>{
+        const w=(obj.cols||1)*TS, h=(obj.rows||1)*TS;
+        if(obj.src&&_oImgs.has(obj.src)){
+          ctx.drawImage(_oImgs.get(obj.src),obj.x*TS,obj.y*TS,w,h);
+        } else {
+          const def=tileMap.get(obj.id);
+          if(!def)return;
+          if(def.sheetUrl){
+            const sh=sheets.get(def.sheetUrl);
+            if(sh) ctx.drawImage(sh,def.sx,def.sy,def.sw,def.sh,obj.x*TS,obj.y*TS,w,h);
+          }
+        }
+      });
     });
   }
   function connects(nid,id,compat){return nid===id||compat.includes(nid);}
@@ -3184,6 +3228,7 @@ window.addEventListener('hashchange',()=>{applySpotHash();applyAreaHash();});
 
   downloadFile(html,fname+".html","text/html");
   toast("🌐 "+fname+".html — მზადაა!");
+  }catch(e){console.error("HTML export error:",e);toast("❌ export: "+e.message);}
 }
 
 let toastT=null;
