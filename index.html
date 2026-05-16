@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0d1117">
+<title>RPG Map Editor</title>
+<style>
+:root{
+  --bg:#0d1117;--panel:#161b22;--panel2:#1c2230;--border:#30363d;
+  --accent:#f0a500;--green:#4ade80;--red:#f85149;--blue:#58a6ff;
+  --text:#e6edf3;--muted:#8b949e;
+  --green-dim:#0a2010;--green-dark:#0a1e0a;--blue-dim:#0a1020;--accent-dim:#1a1200;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;user-select:none;}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);font-family:monospace;}
+body{display:flex;flex-direction:column;}
+
+/* TOP BAR */
+#topbar{
+  height:50px;background:var(--panel);border-bottom:2px solid var(--accent);
+  display:flex;align-items:center;gap:5px;padding:0 8px;flex-shrink:0;
+  overflow-x:auto;overflow-y:hidden;
+}
+.ttl{font-size:11px;font-weight:bold;color:var(--accent);letter-spacing:1px;white-space:nowrap;text-shadow:0 0 10px rgba(240,165,0,.5);}
+.sep{width:1px;height:28px;background:var(--border);flex-shrink:0;margin:0 2px;}
+.tbtn{
+  height:36px;min-width:42px;padding:0 9px;background:var(--bg);border:2px solid var(--border);
+  color:var(--text);font-size:17px;display:flex;align-items:center;justify-content:center;
+  gap:3px;white-space:nowrap;cursor:pointer;flex-shrink:0;border-radius:4px;
+}
+.tbtn.on,.tpill.on{border-color:var(--green);color:var(--green);background:var(--green-dim);}
+.tbtn.blu{border-color:var(--blue);color:var(--blue);background:var(--blue-dim);}
+.tbtn.warn,.mbtn.warn,.mbtn.no,.pbtn.del{border-color:var(--red);color:var(--red);}
+.mbtn.ok,.pbtn.open{border-color:var(--green);color:var(--green);}
+
+/* CANVAS */
+#cw{flex:1;overflow:hidden;position:relative;background:#060a0e;touch-action:none;}
+#bgCanvas,#mc{position:absolute;top:0;left:0;}
+#bgCanvas{pointer-events:none;}
+#mc{image-rendering:pixelated;image-rendering:crisp-edges;}
+#hud{
+  position:absolute;top:8px;right:8px;background:rgba(13,17,23,.85);
+  border:1px solid var(--border);color:var(--muted);font-size:13px;
+  padding:4px 8px;border-radius:4px;pointer-events:none;z-index:10;line-height:1.7;
+}
+#hud b{color:var(--accent);}
+
+/* BG BAR */
+#bgbar{
+  display:none;background:var(--panel2);border-bottom:1px solid var(--blue);
+  padding:6px 12px;gap:10px;align-items:center;flex-shrink:0;overflow-x:auto;
+}
+#bgbar.show{display:flex;}
+#bgbar label{font-size:13px;color:var(--blue);white-space:nowrap;flex-shrink:0;}
+#bgOp{width:110px;flex-shrink:0;accent-color:var(--blue);}
+.bxbtn{
+  height:30px;padding:0 10px;background:transparent;border:1px solid var(--border);
+  color:var(--muted);font-size:13px;cursor:pointer;border-radius:4px;white-space:nowrap;
+  font-family:monospace;flex-shrink:0;
+}
+
+/* BOTTOM PANEL */
+#bp{background:var(--panel);border-top:2px solid var(--border);flex-shrink:0;}
+#ph{
+  height:34px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 12px;cursor:pointer;border-bottom:1px solid var(--border);position:relative;
+}
+.hbar{width:38px;height:4px;background:var(--border);border-radius:2px;position:absolute;left:50%;transform:translateX(-50%);}
+.stshow{display:flex;align-items:center;gap:7px;font-size:14px;color:var(--green);}
+#ptbtn{font-size:18px;color:var(--muted);background:none;border:none;cursor:pointer;}
+#tabs{display:flex;border-bottom:1px solid var(--border);}
+.tab{flex:1;height:34px;background:transparent;border:none;color:var(--muted);font-size:14px;cursor:pointer;font-family:monospace;border-bottom:2px solid transparent;}
+.tab.on{color:var(--accent);border-bottom-color:var(--accent);}
+
+/* TILE PALETTE */
+#tr{display:flex;overflow-x:auto;overflow-y:hidden;padding:8px 8px 10px;gap:8px;min-height:90px;}
+.tchip{
+  display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;
+  flex-shrink:0;padding:6px;border:2px solid transparent;border-radius:6px;background:var(--panel2);position:relative;
+}
+.tchip.sel,.bchip.sel{border-color:var(--green);background:var(--green-dark);}
+.tchip canvas{image-rendering:pixelated;border-radius:2px;width:40px;height:40px;}
+.tchip .lb{font-size:10px;color:var(--muted);text-align:center;max-width:46px;line-height:1.1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+.tchip.sel .lb,.bchip.sel .blb{color:var(--green);}
+.xbtn{
+  display:none;position:absolute;top:2px;right:2px;width:16px;height:16px;
+  background:var(--red);color:white;font-size:9px;border-radius:50%;
+  align-items:center;justify-content:center;cursor:pointer;border:none;font-family:monospace;
+}
+.tchip:hover .xbtn,.tchip:active .xbtn,
+.bchip:hover .xbtn,.bchip:active .xbtn{display:flex;}
+.upchip{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  width:56px;min-height:78px;border:2px dashed var(--border);border-radius:6px;
+  color:var(--muted);font-size:22px;cursor:pointer;background:var(--panel2);flex-shrink:0;
+}
+.upchip:active{border-color:var(--accent);color:var(--accent);}
+.upchip span{font-size:11px;color:var(--muted);}
+
+/* TOOLS */
+#tolrow{display:flex;padding:0 8px 7px;gap:6px;}
+.tpill{
+  flex:1;height:40px;background:var(--panel2);border:2px solid var(--border);
+  color:var(--muted);font-size:13px;display:flex;align-items:center;justify-content:center;
+  gap:4px;cursor:pointer;border-radius:6px;
+}
+#brow{display:flex;padding:0 8px 10px;gap:6px;}
+.bdot{
+  flex:1;height:36px;background:var(--panel2);border:2px solid var(--border);
+  color:var(--muted);font-size:14px;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;border-radius:6px;
+}
+.bdot.on,.szBtn.on{border-color:var(--accent);color:var(--accent);background:var(--accent-dim);}
+.mkbtn.on{border-color:var(--accent);background:var(--accent-dim);}
+
+/* MODALS */
+#modal,#objPropsModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);align-items:center;justify-content:center;}
+#modal{z-index:200;}
+#objPropsModal{z-index:250;}
+#modal.show,#objPropsModal.show{display:flex;}
+#mbox{background:var(--panel);border:2px solid var(--accent);border-radius:10px;padding:20px;display:flex;flex-direction:column;gap:12px;width:270px;}
+#mbox p{font-size:14px;color:var(--text);}
+#mprev{image-rendering:pixelated;border-radius:4px;border:1px solid var(--border);align-self:center;}
+#tname{background:var(--bg);border:2px solid var(--border);color:var(--text);font-family:monospace;font-size:16px;padding:7px 10px;border-radius:4px;width:100%;}
+#tname:focus{outline:none;border-color:var(--accent);}
+.mrow{display:flex;gap:8px;}
+.mbtn{flex:1;height:38px;background:var(--bg);border:2px solid var(--border);color:var(--text);font-size:15px;cursor:pointer;border-radius:4px;font-family:monospace;}
+#objPropsBox,#areaPropsBox{background:var(--panel);border:2px solid var(--blue);border-radius:10px;padding:16px;width:min(92vw,340px);display:flex;flex-direction:column;gap:10px;}
+#areaPropsModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:250;align-items:center;justify-content:center;}
+#objPropsBox h3{font-size:13px;color:var(--blue);letter-spacing:1px;}
+.marker-row{display:flex;gap:6px;align-items:center;}
+.marker-row span{font-size:12px;color:var(--muted);flex-shrink:0;}
+.mkbtn{width:36px;height:36px;border-radius:6px;border:2px solid var(--border);background:var(--bg);color:var(--text);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:bold;}
+#objTooltipInp{width:100%;min-height:70px;resize:vertical;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:12px;padding:7px 9px;border-radius:6px;font-family:sans-serif;line-height:1.6;}
+#objTooltipInp:focus{outline:none;border-color:var(--blue);}
+
+/* LEGEND OVERLAY */
+#legendTabOverlay{display:none;position:fixed;inset:0;z-index:150;background:var(--panel);flex-direction:column;}
+#legendTabOverlay.show{display:flex;}
+#legendTabOverlay .leg-topbar{
+  height:44px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 12px;border-bottom:2px solid var(--accent);flex-shrink:0;
+}
+#legendTabOverlay .leg-topbar span{font-size:13px;color:var(--accent);font-weight:bold;letter-spacing:1px;}
+#legendTabOverlay .leg-topbar button{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;}
+#legScrollBody{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:6px;}
+
+/* BUILDINGS */
+#tabBuildings{display:none;padding:8px;flex-direction:column;}
+#buildGrid{display:flex;overflow-x:auto;overflow-y:hidden;padding:6px 8px 8px;gap:6px;}
+.bchip{
+  display:flex;flex-direction:column;align-items:center;
+  border:2px solid transparent;border-radius:6px;
+  background:var(--panel2);cursor:pointer;position:relative;
+  padding:0;overflow:hidden;flex-shrink:0;
+}
+.bchip canvas{image-rendering:pixelated;display:block;}
+.bchip .blb{
+  position:absolute;bottom:0;left:0;right:0;
+  font-size:9px;color:#fff;text-align:center;
+  background:rgba(0,0,0,0.65);padding:1px 2px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.4;
+}
+
+/* TOAST */
+#toast{
+  position:fixed;bottom:30%;left:50%;transform:translateX(-50%);
+  background:rgba(22,27,34,.95);border:1px solid var(--accent);color:var(--accent);
+  font-size:14px;padding:8px 20px;border-radius:20px;pointer-events:none;
+  opacity:0;transition:opacity .3s;z-index:400;white-space:nowrap;
+}
+#toast.show{opacity:1;}
+
+/* LAYER POPUP */
+#layerPopup{
+  position:fixed;z-index:500;
+  background:rgba(22,27,34,.97);border:1px solid var(--border);
+  border-radius:10px;padding:6px;display:none;flex-direction:column;gap:4px;
+  box-shadow:0 4px 20px rgba(0,0,0,.6);min-width:140px;
+}
+#layerPopup button{
+  height:34px;border-radius:6px;border:1px solid var(--border);
+  background:transparent;color:var(--text);font-size:12px;cursor:pointer;padding:0 10px;text-align:left;
+}
+#layerPopup button.active{border-color:var(--accent);background:rgba(74,222,128,.12);color:var(--accent);}
+
+/* PROJECT OVERLAY */
+#projOverlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:300;align-items:flex-start;justify-content:center;padding-top:50px;}
+#projOverlay.show{display:flex;}
+#projBox{background:var(--panel);border:2px solid var(--accent);border-radius:10px;width:min(94vw,420px);max-height:80vh;display:flex;flex-direction:column;overflow:hidden;}
+#projHeader{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+#projHeader h2{font-size:14px;color:var(--accent);letter-spacing:1px;}
+#projClose{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;}
+#projNew{padding:10px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;flex-shrink:0;}
+#projNameInput{flex:1;background:var(--bg);border:2px solid var(--border);color:var(--text);font-family:monospace;font-size:15px;padding:6px 10px;border-radius:4px;}
+#projNameInput:focus{outline:none;border-color:var(--accent);}
+#projSaveBtn{height:36px;padding:0 14px;background:var(--bg);border:2px solid var(--green);color:var(--green);font-size:14px;cursor:pointer;border-radius:4px;font-family:monospace;white-space:nowrap;}
+#projList{flex:1;overflow-y:auto;padding:8px;}
+.pitem{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:var(--panel2);}
+.pthumb{image-rendering:pixelated;border-radius:3px;border:1px solid var(--border);flex-shrink:0;}
+.pinfo{flex:1;overflow:hidden;}
+.pname{font-size:14px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pdate,.psize{font-size:11px;color:var(--muted);}
+.pdate{margin-top:2px;}
+.pbtn{height:30px;padding:0 10px;background:transparent;border:1px solid var(--border);color:var(--muted);font-size:13px;cursor:pointer;border-radius:4px;font-family:monospace;flex-shrink:0;}
+#projEmpty{text-align:center;padding:30px;color:var(--muted);font-size:14px;line-height:2;}
+
+/* SCROLLBARS */
+#topbar::-webkit-scrollbar,#bgbar::-webkit-scrollbar,
+#tr::-webkit-scrollbar,#buildGrid::-webkit-scrollbar{display:none;}
+#legScrollBody::-webkit-scrollbar,#projList::-webkit-scrollbar{width:4px;}
+#legScrollBody::-webkit-scrollbar-thumb,#projList::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+
+/* AREA CURSOR */
+#areaCursor{display:none;position:absolute;pointer-events:none;z-index:20;border:2px dashed var(--blue);background:rgba(88,166,255,0.08);}
+
+/* SPOT POPUP */
+#spotPopup{
+  display:none;position:fixed;z-index:350;
+  background:rgba(22,27,34,0.97);border:1px solid var(--accent);border-radius:10px;
+  padding:11px 13px;width:260px;flex-direction:column;gap:7px;
+}
+#spotPopup.show{display:flex;}
+#spotPopup .spClose{position:absolute;top:7px;right:9px;background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer;line-height:1;}
+#spotPopup .spCoords{font-size:13px;color:var(--text);font-weight:600;padding-right:16px;}
+#spotPopup .spZoomRow{display:flex;gap:4px;}
+.szBtn{flex:1;height:28px;background:var(--bg);border:1px solid var(--border);color:var(--muted);font-size:12px;border-radius:5px;cursor:pointer;font-family:monospace;}
+#spotPopup .spUrlRow{display:flex;flex-direction:column;gap:3px;}
+#spotPopup .spUrlLbl{font-size:10px;color:var(--muted);letter-spacing:0.5px;}
+#spotPopup .spUrlInp{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:11px;padding:5px 7px;border-radius:5px;font-family:monospace;}
+#spotPopup .spUrlInp:focus{outline:none;border-color:var(--accent);}
+#spotPopup .spCopy{height:32px;background:var(--bg);border:2px solid var(--green);color:var(--green);font-size:12px;border-radius:5px;cursor:pointer;font-family:monospace;}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════ TOP BAR ═══ -->
+<div id="topbar">
+  <div class="ttl" style="display:flex;align-items:center;gap:5px;padding:2px 0;">
+    <img src="data:image/webp;base64,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" style="height:30px;width:30px;object-fit:contain;flex-shrink:0;">
+    <span style="display:flex;flex-direction:column;line-height:1.15;font-size:8px;letter-spacing:0.5px;font-weight:bold;color:var(--accent);text-shadow:0 0 8px rgba(240,165,0,.5);"><span>Mdelo</span><span>editor</span></span>
+  </div>
+  <div class="sep"></div>
+  <button class="tbtn" onclick="undo()">↩</button>
+  <div class="sep"></div>
+  <button class="tbtn blu" id="bgToggleBtn" onclick="toggleBgPanel()">🛰 ფონი</button>
+  <input type="file" id="bgf" accept="image/*" style="display:none" onchange="loadBg(event)">
+  <button class="tbtn" style="border-color:#a78bfa;color:#a78bfa;" onclick="document.getElementById('spf').click()" title="sprite pack / autotile">📦 პაკი</button>
+  <input type="file" id="spf" accept=".json" multiple style="display:none" onchange="loadSpritePack(event)">
+  <div class="sep"></div>
+  <button class="tbtn" onclick="openProjects()" style="border-color:#a78bfa;color:#a78bfa;">📁 პროექტი</button>
+  <button class="tbtn" onclick="saveMap()">💾</button>
+  <button class="tbtn" onclick="document.getElementById('lf').click()">📂</button>
+  <button class="tbtn" onclick="exportPNG()">🖼</button>
+  <button class="tbtn" style="border-color:#4ade80;color:#4ade80;" onclick="doExportHTML()">🌐</button>
+  <input type="file" id="lf" accept=".json" style="display:none" onchange="loadMap(event)">
+  <button class="tbtn warn" onclick="clearMap()">🗑</button>
+</div>
+
+<!-- ═══════════════════════════════════════════ BG BAR ════ -->
+<div id="bgbar">
+  <label>🛰 ფონი</label>
+  <input type="range" id="bgOp" min="0" max="100" value="50" oninput="setBgOp(this.value)">
+  <b id="bgOpV" style="font-size:13px;color:var(--blue);min-width:34px;">50%</b>
+  <button class="bxbtn" onclick="fitToBg()">⊡ fit</button>
+  <button class="bxbtn" id="bgvbtn" onclick="toggleBgVis()">👁 on</button>
+  <button class="bxbtn" onclick="document.getElementById('bgf').click()">📂 შეცვლა</button>
+  <button class="bxbtn" style="border-color:var(--red);color:var(--red);" onclick="removeBg()">✕ წაშლა</button>
+</div>
+
+<!-- ═══════════════════════════════════════════ CANVAS ═══ -->
+<div id="cw">
+  <canvas id="bgCanvas"></canvas>
+  <canvas id="mc"></canvas>
+  <div id="areaCursor"></div>
+  <div id="hud">X:<b id="hx">-</b> Y:<b id="hy">-</b></div>
+</div>
+
+<!-- ════════════════════════════════════════ BOTTOM PANEL ═ -->
+<div id="bp">
+  <div id="ph" onclick="togglePanel()">
+    <div class="hbar"></div>
+    <div class="stshow">
+      <canvas id="sp" width="24" height="24" style="image-rendering:pixelated;border-radius:2px;"></canvas>
+      <span id="sl">ფილა</span>
+    </div>
+    <button id="ptbtn">▲</button>
+  </div>
+  <div id="pb">
+    <div id="tabs">
+      <button class="tab on" id="tab-tiles" onclick="switchTab('tiles',this)">🪟</button>
+      <button class="tab" id="tab-build"  onclick="switchTab('build',this)">🏗</button>
+      <button class="tab" id="tab-tools"  onclick="switchTab('tools',this)">🛠</button>
+      <button class="tab" id="tab-legend" onclick="switchTab('legend',this)">☰</button>
+    </div>
+    <div id="tabTiles" style="display:flex"><div id="tr"></div></div>
+    <div id="tabBuildings" style="display:none">
+      <input type="file" id="bpf" accept=".json" style="display:none" onchange="loadSpritePack(event)">
+      <div id="buildGrid"></div>
+    </div>
+    <div id="tabTools" style="display:none">
+      <div id="tolrow" style="padding-top:8px;">
+        <button class="tpill on" id="tl-draw"  onclick="setTool('draw')">✏ ხატვა</button>
+        <button class="tpill"    id="tl-fill"  onclick="setTool('fill')">🪣 Fill</button>
+        <button class="tpill"    id="tl-erase" onclick="setTool('erase')">⌫ წაშლა</button>
+        <button class="tpill"    id="tl-pick"  onclick="setTool('pick')">💉 Pick</button>
+        <button class="tpill"    id="tl-area"  onclick="onAreaBtn()">🔗 არეალი</button>
+      </div>
+      <div id="brow">
+        <div class="bdot on" onclick="setBrush(1,this)">1×</div>
+        <div class="bdot"    onclick="setBrush(2,this)">2×</div>
+        <div class="bdot"    onclick="setBrush(3,this)">3×</div>
+        <div class="bdot"    onclick="setBrush(5,this)">5×</div>
+        <div class="bdot"    onclick="setBrush(7,this)">7×</div>
+      </div>
+    </div>
+    <div id="tabLegend" style="display:none;"></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════ MODALS ══ -->
+
+<!-- Tile name modal -->
+<div id="modal">
+  <div id="mbox">
+    <p>სახელი:</p>
+    <canvas id="mprev" width="64" height="64"></canvas>
+    <input id="tname" type="text" maxlength="16" placeholder="მაგ: სოფელი">
+    <div class="mrow">
+      <button class="mbtn no" onclick="closeModal()">გაუქმება</button>
+      <button class="mbtn ok" onclick="confirmAdd()">დამატება ✓</button>
+    </div>
+  </div>
+</div>
+
+<!-- Project overlay -->
+<div id="projOverlay">
+  <div id="projBox">
+    <div id="projHeader">
+      <h2>📁 პროექტები</h2>
+      <button id="projClose" onclick="closeProjects()">✕</button>
+    </div>
+    <div id="projNew">
+      <input id="projNameInput" type="text" placeholder="პროექტის სახელი..." maxlength="30">
+      <button id="projSaveBtn" onclick="saveProject()">💾 შენახვა</button>
+    </div>
+    <div id="projList"></div>
+  </div>
+</div>
+
+<!-- Legend overlay -->
+<div id="legendTabOverlay">
+  <div class="leg-topbar">
+    <span>≡ ლეგენდა</span>
+    <button onclick="closeLegendTab()">✕</button>
+  </div>
+  <div id="legScrollBody">
+    <textarea id="legTabDesc"
+      placeholder="კომენტარი, ამოცანა, ქვესტის აღწერა..."
+      style="width:100%;min-height:60px;resize:vertical;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:13px;padding:7px 9px;border-radius:6px;font-family:sans-serif;line-height:1.5;flex-shrink:0;"></textarea>
+
+    <div style="border-top:1px solid var(--border);padding:8px 0 4px;display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
+      <span style="font-size:13px;color:var(--text);font-weight:600;">☰ მენიუს სტრუქტურა</span>
+      <button onclick="addMenuSection()" style="background:var(--accent);border:none;color:#000;font-size:12px;padding:4px 12px;border-radius:5px;cursor:pointer;font-weight:600;">+ სექცია</button>
+    </div>
+    <div id="menuBuilder" style="display:flex;flex-direction:column;gap:8px;"></div>
+
+    <div style="display:flex;gap:8px;border-top:1px solid var(--border);padding-top:10px;margin-top:4px;">
+      <button onclick="exportConfig()" style="flex:1;height:38px;background:var(--bg);border:2px solid #a78bfa;color:#a78bfa;font-size:13px;cursor:pointer;border-radius:4px;font-family:monospace;">📋 config.json</button>
+      <button onclick="doExportHTML()" style="flex:1;height:38px;background:var(--bg);border:2px solid var(--green);color:var(--green);font-size:13px;cursor:pointer;border-radius:4px;font-family:monospace;">🌐 map.html</button>
+    </div>
+  </div>
+</div>
+
+<!-- Area properties modal -->
+<div id="areaPropsModal">
+  <div id="areaPropsBox">
+    <h3>🔗 არეალის Properties</h3>
+    <input id="areaLabelInp" placeholder="სახელი (გამოჩნდება რუკაზე)" oninput="_updateAreaLinkRow()"
+      style="background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:13px;padding:6px 9px;border-radius:6px;width:100%;">
+    <textarea id="areaTooltipInp" placeholder="tooltip ტექსტი... [[ლინკი|https://...]]"
+      style="width:100%;min-height:70px;resize:vertical;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:12px;padding:7px 9px;border-radius:6px;font-family:sans-serif;line-height:1.6;"></textarea>
+    <div style="display:flex;gap:6px;align-items:center;">
+      <button onclick="insertAreaLink()" style="background:var(--bg);border:1px solid var(--blue);color:var(--blue);font-size:11px;padding:3px 10px;border-radius:10px;cursor:pointer;">+ ლინკი</button>
+    </div>
+    <div id="areaMergeInfo" style="display:none;font-size:11px;color:var(--accent);padding:4px 0;">✦ tap სხვა არეალზე გასაერთიანებლად</div>
+    <div id="areaLinkRow" style="display:none;flex-direction:column;gap:4px;">
+      <div style="font-size:10px;color:var(--muted);">📋 Viewer ლინკი:</div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <input id="areaLinkOut" readonly
+          style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--muted);font-size:10px;padding:4px 8px;border-radius:5px;font-family:monospace;">
+        <button onclick="copyAreaViewerLink()" style="height:28px;padding:0 10px;background:var(--bg);border:1px solid var(--green);color:var(--green);font-size:12px;border-radius:5px;cursor:pointer;font-family:monospace;">📋</button>
+      </div>
+    </div>
+    <div class="mrow" style="gap:6px;">
+      <button class="mbtn warn" onclick="deleteArea()" style="flex:0.6;border-color:var(--red);color:var(--red);">🗑 წაშლა</button>
+      <button class="mbtn" onclick="startMergeMode()" style="border-color:var(--accent);color:var(--accent);">+ გაერთ.</button>
+      <button class="mbtn no" onclick="closeAreaProps()">გაუქმება</button>
+      <button class="mbtn ok" onclick="saveAreaProps()">✓ შენახვა</button>
+    </div>
+  </div>
+</div>
+
+<!-- Object properties modal -->
+<div id="objPropsModal">
+  <div id="objPropsBox">
+    <h3>✎ ობიექტის Properties</h3>
+    <input id="objTitleInp" placeholder="სათაური (popup-ში გამოჩნდება)"
+      style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:13px;padding:6px 9px;border-radius:6px;">
+    <div class="marker-row">
+      <span>მარკერი:</span>
+      <button class="mkbtn on" id="mk-none" onclick="setObjMarker('')">—</button>
+      <button class="mkbtn"    id="mk-exc"  onclick="setObjMarker('!')">!</button>
+      <button class="mkbtn"    id="mk-q"    onclick="setObjMarker('?')">?</button>
+      <button class="mkbtn"    id="mk-chat" onclick="setObjMarker('💬')">💬</button>
+    </div>
+    <textarea id="objTooltipInp" placeholder="ტექსტი... ინტერაქციისას გამოჩნდება"></textarea>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+      <button onclick="insertObjLink()" style="background:var(--bg);border:1px solid var(--blue);color:var(--blue);font-size:11px;padding:3px 10px;border-radius:10px;cursor:pointer;">+ ლინკი</button>
+    </div>
+    <div class="mrow" style="gap:6px;">
+      <button class="mbtn warn" onclick="deleteObjFromProps()" style="flex:0.6;border-color:var(--red);color:var(--red);">🗑 წაშლა</button>
+      <button class="mbtn no" onclick="closeObjProps()">გაუქმება</button>
+      <button class="mbtn ok" onclick="saveObjProps()">✓ შენახვა</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════ GLOBAL WIDGETS ═ -->
+
+<!-- Toast notification -->
+<div id="toast"></div>
+
+<!-- Layer select popup -->
+<div id="layerPopup">
+  <button id="lpBtn-base"    onclick="setLayer('base');closeLayerPopup()">🌍 Base</button>
+  <button id="lpBtn-overlay" onclick="setLayer('overlay');closeLayerPopup()">✨ Overlay</button>
+</div>
+
+<!-- Spot link popup -->
+<div id="spotPopup">
+  <button class="spClose" onclick="closeSpotPopup()">✕</button>
+  <div class="spCoords" id="spotCoords">Col: – &nbsp;Row: –</div>
+  <div class="spZoomRow">
+    <button class="szBtn" data-z="0.5" onclick="setSpotZoom(this)">½×</button>
+    <button class="szBtn on" data-z="1" onclick="setSpotZoom(this)">1×</button>
+    <button class="szBtn" data-z="2" onclick="setSpotZoom(this)">2×</button>
+    <button class="szBtn" data-z="3" onclick="setSpotZoom(this)">3×</button>
+  </div>
+  <div class="spUrlRow">
+    <span class="spUrlLbl">🔗 ბაზა URL</span>
+    <input class="spUrlInp" id="spotBaseUrlInp" type="text" placeholder="URL" oninput="spotBaseUrl=this.value.trim()">
+  </div>
+  <button class="spCopy" onclick="copySpotLink()">📋 კოპი: URL + #spot</button>
+</div>
+
+<!-- ═══════════════════════════════════════════ SCRIPTS ════
+     Load order matters: each file depends only on files above it.
+     ═══════════════════════════════════════════════════════ -->
+<script src="js/state.js"></script>
+<script src="js/tile-engine.js"></script>
+<script src="js/render.js"></script>
+<script src="js/tools.js"></script>
+<script src="js/objects.js"></script>
+<script src="js/ui-palette.js"></script>
+<script src="js/save-load.js"></script>
+<script src="js/export-png.js"></script>
+<script src="js/export-html.js"></script>
+<script src="js/ui-panels.js"></script>
+<script src="js/ui-areas.js"></script>
+<script src="js/menu-builder.js"></script>
+<script src="js/projects.js"></script>
+
+<!-- ─── Initialisation (runs after all modules are loaded) ─── -->
+<script>
+// Wire up the project-name input's Enter key (needs projSaveBtn from projects.js)
+document.getElementById("projNameInput").addEventListener("keydown", function(e) {
+  if (e.key === "Enter") saveProject();
+});
+
+// Wire up tile name modal Enter key
+document.getElementById("tname").addEventListener("keydown", function(e) {
+  if (e.key === "Enter") confirmAdd();
+});
+
+// Wire up project overlay background-tap to close
+document.getElementById("projOverlay").addEventListener("click", function(e) {
+  if (e.target === document.getElementById("projOverlay")) closeProjects();
+});
+
+// Initialise map arrays, build UI, centre view
+map        = Array.from({ length: ROWS }, () => Array(COLS).fill(""));
+overlayMap = Array.from({ length: ROWS }, () => Array(COLS).fill(""));
+
+buildPalette();
+rebuildOff();
+
+setTimeout(function() { centerView(); scheduleRender(); }, 60);
+window.addEventListener("resize", function() { centerView(); scheduleRender(); });
+</script>
+</body>
+</html>
