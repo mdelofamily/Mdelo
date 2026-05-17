@@ -118,7 +118,8 @@ async function doExportHTML() {
       }
     });
 
-    const CROP = 1;
+    // CROP = 0 — no border trimming
+    const CROP = 0;
     const exp  = document.createElement("canvas");
     exp.width  = _full.width  - CROP * 2;
     exp.height = _full.height - CROP * 2;
