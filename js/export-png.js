@@ -1,22 +1,22 @@
 // ============================================================
 //  export-png.js  —  PNG Export
 //  Depends on: state.js, tile-engine.js, render.js
-//  NOTE: never draws from offscreen (tainted). Re-renders from
-//        freshly fetch()-ed blob images to avoid CORS errors.
+//  NOTE: never draws from offscreen (tainted). Re-renders
+//        everything from fresh fetch()-ed blobs (no CORS error).
 // ============================================================
 
 async function exportPNG() {
   try {
     toast("🖼 PNG მზადდება...");
 
-    // ── Step 1: collect all external sheet URLs ──
+    // ── Step 1: collect all sheet URLs ──
     const allTiles = [...customTiles, ...autoTiles, ...dualTiles];
     const sheetUrls = [...new Set([
       ...allTiles.filter(t => t.sheetUrl).map(t => t.sheetUrl),
       ...objects.map(o => tileMap.get(o.id)?.sheetUrl).filter(Boolean)
     ])];
 
-    // ── Step 2: fetch sheets as blob → untainted Image ──
+    // ── Step 2: fetch → blob → untainted Image ──
     const cleanSheets = new Map();
     await Promise.all(sheetUrls.map(url =>
       fetch(url)
@@ -33,7 +33,7 @@ async function exportPNG() {
         .catch(() => {})
     ));
 
-    // ── Step 3: create clean export canvas ──
+    // ── Step 3: create export canvas ──
     const exp  = document.createElement("canvas");
     exp.width  = COLS * TS;
     exp.height = ROWS * TS;
@@ -42,7 +42,7 @@ async function exportPNG() {
     ctx.fillStyle = "#111";
     ctx.fillRect(0, 0, exp.width, exp.height);
 
-    // ── helper: draw one tile using cleanSheets ──
+    // ── helper: draw one tile ──
     function _drawClean(id, px, py, mask) {
       const t = tileMap.get(id);
       if (!t) return;
@@ -60,7 +60,7 @@ async function exportPNG() {
       }
     }
 
-    // ── helper: render one full map layer ──
+    // ── helper: render one layer ──
     function _renderLayer(lmap) {
       if (!lmap || !lmap.length) return;
 
@@ -108,11 +108,11 @@ async function exportPNG() {
       }
     }
 
-    // ── Step 4: render base + overlay layers ──
+    // ── Step 4: render tile layers ──
     _renderLayer(map);
     if (overlayMap && overlayMap.length) _renderLayer(overlayMap);
 
-    // ── Step 5: draw placed objects ──
+    // ── Step 5: draw objects ──
     objects.forEach(obj => {
       const def = tileMap.get(obj.id);
       const ow  = (obj.cols || 1) * TS;
@@ -125,7 +125,46 @@ async function exportPNG() {
       }
     });
 
-    // ── Step 6: export ──
+    // ── Step 6: draw object labels (title or lb) ──
+    const FONT_SIZE = Math.max(9, Math.round(TS * 0.38));
+    ctx.font        = `bold ${FONT_SIZE}px sans-serif`;
+    ctx.textAlign   = "left";
+    ctx.textBaseline = "top";
+
+    objects.forEach(obj => {
+      const label = (obj.title || obj.lb || "").trim();
+      if (!label) return;
+
+      const ow = (obj.cols || 1) * TS;
+      const ox = obj.x * TS;
+      const oy = obj.y * TS;
+
+      const metrics  = ctx.measureText(label);
+      const textW    = Math.ceil(metrics.width);
+      const textH    = FONT_SIZE;
+      const PAD      = 3;
+      const boxW     = textW + PAD * 2;
+      const boxH     = textH + PAD * 2;
+
+      // center above object
+      const bx = ox + Math.round((ow - boxW) / 2);
+      const by = oy - boxH - 2;
+
+      // clamp to canvas
+      const fx = Math.max(0, Math.min(exp.width  - boxW, bx));
+      const fy = Math.max(0, Math.min(exp.height - boxH, by));
+
+      // dark pill background
+      ctx.fillStyle = "rgba(0,0,0,0.72)";
+      _roundRect(ctx, fx, fy, boxW, boxH, 3);
+      ctx.fill();
+
+      // white text
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(label, fx + PAD, fy + PAD);
+    });
+
+    // ── Step 7: download ──
     const fname = (currentProjectName || "rpg-map").replace(/[^a-zA-Z0-9ა-ჿ_\-]/g, "_");
     exp.toBlob(blob => {
       if (!blob) { toast("❌ PNG: toBlob ვერ შესრულდა"); return; }
@@ -139,5 +178,21 @@ async function exportPNG() {
   }
 }
 
+// ── rounded rect helper (no Path2D needed) ──
+function _roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
 // ── WINDOW BINDINGS ──
-window.exportPNG = exportPNG;
+window.exportPNG   = exportPNG;
+window._roundRect  = _roundRect;

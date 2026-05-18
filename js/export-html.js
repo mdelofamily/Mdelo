@@ -118,7 +118,7 @@ async function doExportHTML() {
       }
     });
 
-    // CROP = 0 — no border trimming
+    // CROP = 0 — ჩარჩო არ გამოჩნდება viewer-ში
     const CROP = 0;
     const exp  = document.createElement("canvas");
     exp.width  = _full.width  - CROP * 2;
