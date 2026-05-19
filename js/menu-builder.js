@@ -12,6 +12,14 @@ function _findNode(id, nodes) {
   return null;
 }
 
+function _findParentNode(childId, nodes) {
+  for (const n of (nodes || _menuSections)) {
+    if (n.children && n.children.find(c => c.id === childId)) return n;
+    if (n.children) { const p = _findParentNode(childId, n.children); if (p) return p; }
+  }
+  return null;
+}
+
 function _removeChildById(id, nodes) {
   for (const n of (nodes || _menuSections)) {
     if (n.children) {
@@ -21,6 +29,31 @@ function _removeChildById(id, nodes) {
     }
   }
   return false;
+}
+
+// ── MOVE FUNCTIONS ──
+function _moveSection(secId, direction) {
+  const idx = _menuSections.findIndex(s => s.id === secId);
+  if (idx < 0) return;
+  if (direction === "up" && idx > 0) {
+    [_menuSections[idx - 1], _menuSections[idx]] = [_menuSections[idx], _menuSections[idx - 1]];
+  } else if (direction === "down" && idx < _menuSections.length - 1) {
+    [_menuSections[idx + 1], _menuSections[idx]] = [_menuSections[idx], _menuSections[idx + 1]];
+  }
+  renderMenuBuilder();
+}
+
+function _moveChild(childId, direction) {
+  const parent = _findParentNode(childId);
+  if (!parent || !parent.children) return;
+  const idx = parent.children.findIndex(c => c.id === childId);
+  if (idx < 0) return;
+  if (direction === "up" && idx > 0) {
+    [parent.children[idx - 1], parent.children[idx]] = [parent.children[idx], parent.children[idx - 1]];
+  } else if (direction === "down" && idx < parent.children.length - 1) {
+    [parent.children[idx + 1], parent.children[idx]] = [parent.children[idx], parent.children[idx + 1]];
+  }
+  renderMenuBuilder();
 }
 
 // ── SECTION / ITEM MUTATIONS ──
@@ -108,10 +141,21 @@ function _renderNode(node, depth, isRoot) {
   titleI.placeholder = depth === 0 ? "სექციის სახელი" : "ქვე-სექციის სახელი";
   titleI.style.cssText = "flex:1;background:var(--panel);border:1px solid var(--border);color:var(--text);font-size:" + (depth === 0 ? "13px" : "12px") + ";padding:3px 6px;border-radius:4px;";
   titleI.oninput = () => _updateNodeMeta(node.id, "title", titleI.value);
+  
+  // move buttons
+  const moveCtrl = document.createElement("div"); moveCtrl.style.cssText = "display:flex;gap:2px;";
+  const upB = document.createElement("button"); upB.textContent = "▲";
+  upB.style.cssText = "background:none;border:1px solid var(--border);color:var(--text);font-size:12px;cursor:pointer;width:26px;height:26px;border-radius:4px;padding:0;";
+  upB.onclick = () => isRoot ? _moveSection(node.id, "up") : _moveChild(node.id, "up");
+  const dnB = document.createElement("button"); dnB.textContent = "▼";
+  dnB.style.cssText = "background:none;border:1px solid var(--border);color:var(--text);font-size:12px;cursor:pointer;width:26px;height:26px;border-radius:4px;padding:0;";
+  dnB.onclick = () => isRoot ? _moveSection(node.id, "down") : _moveChild(node.id, "down");
+  moveCtrl.appendChild(upB); moveCtrl.appendChild(dnB);
+  
   const delB = document.createElement("button"); delB.textContent = "✕";
   delB.style.cssText = "background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;";
   delB.onclick = () => isRoot ? _removeSection(node.id) : _removeChild(node.id);
-  hdr.appendChild(iconI); hdr.appendChild(titleI); hdr.appendChild(delB);
+  hdr.appendChild(iconI); hdr.appendChild(titleI); hdr.appendChild(moveCtrl); hdr.appendChild(delB);
   wrap.appendChild(hdr);
 
   // items
@@ -210,3 +254,5 @@ window._removeItem         = _removeItem;
 window._updateNodeMeta     = _updateNodeMeta;
 window._updateItem         = _updateItem;
 window._insertLinkIntoItem = _insertLinkIntoItem;
+window._moveSection        = _moveSection;
+window._moveChild          = _moveChild;
