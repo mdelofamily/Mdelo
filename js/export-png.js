@@ -1,8 +1,7 @@
 // ============================================================
 //  export-png.js  —  PNG Export
 //  Depends on: state.js, tile-engine.js, render.js
-//  NOTE: never draws from offscreen (tainted). Re-renders
-//        everything from fresh fetch()-ed blobs (no CORS error).
+//  Labels: o.title only (popup menu), speech bubble with arrow
 // ============================================================
 
 async function exportPNG() {
@@ -64,7 +63,6 @@ async function exportPNG() {
     function _renderLayer(lmap) {
       if (!lmap || !lmap.length) return;
 
-      // Pass 1 — regular tiles
       for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
           const id = lmap[r][c]; if (!id) continue;
@@ -73,7 +71,6 @@ async function exportPNG() {
         }
       }
 
-      // Pass 2 — dual grid
       dualTiles.forEach(dt => {
         const compat = dt.compatibleWith || [];
         const sh     = dt.sheetUrl ? cleanSheets.get(dt.sheetUrl) : null;
@@ -97,7 +94,6 @@ async function exportPNG() {
         }
       });
 
-      // Pass 3 — autotiles
       for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
           const id = lmap[r][c]; if (!id) continue;
@@ -108,7 +104,7 @@ async function exportPNG() {
       }
     }
 
-    // ── Step 4: render tile layers ──
+    // ── Step 4: render layers ──
     _renderLayer(map);
     if (overlayMap && overlayMap.length) _renderLayer(overlayMap);
 
@@ -118,50 +114,91 @@ async function exportPNG() {
       const ow  = (obj.cols || 1) * TS;
       const oh  = (obj.rows || 1) * TS;
       if (def?.sheetUrl && cleanSheets.has(def.sheetUrl)) {
-        const sh = cleanSheets.get(def.sheetUrl);
-        ctx.drawImage(sh, def.sx, def.sy, def.sw, def.sh, obj.x * TS, obj.y * TS, ow, oh);
+        ctx.drawImage(cleanSheets.get(def.sheetUrl),
+          def.sx, def.sy, def.sw, def.sh,
+          obj.x * TS, obj.y * TS, ow, oh);
       } else if (obj.img) {
         try { ctx.drawImage(obj.img, obj.x * TS, obj.y * TS, ow, oh); } catch (_) {}
       }
     });
 
-    // ── Step 6: draw object labels (title or lb) ──
-    const FONT_SIZE = Math.max(9, Math.round(TS * 0.38));
-    ctx.font        = `bold ${FONT_SIZE}px sans-serif`;
-    ctx.textAlign   = "left";
+    // ── Step 6: draw speech bubble labels (o.title only) ──
+    const FONT_SIZE = Math.max(10, Math.round(TS * 0.4));
+    const PAD_X     = 7;
+    const PAD_Y     = 5;
+    const RADIUS    = 5;
+    const ARROW_H   = 7;   // arrow height pointing down toward object
+    const ARROW_W   = 8;   // arrow half-width
+
+    ctx.font         = `bold ${FONT_SIZE}px sans-serif`;
+    ctx.textAlign    = "left";
     ctx.textBaseline = "top";
 
     objects.forEach(obj => {
-      const label = (obj.title || obj.lb || "").trim();
+      const label = (obj.title || "").trim();
       if (!label) return;
 
       const ow = (obj.cols || 1) * TS;
+      const oh = (obj.rows || 1) * TS;
       const ox = obj.x * TS;
       const oy = obj.y * TS;
 
-      const metrics  = ctx.measureText(label);
-      const textW    = Math.ceil(metrics.width);
-      const textH    = FONT_SIZE;
-      const PAD      = 3;
-      const boxW     = textW + PAD * 2;
-      const boxH     = textH + PAD * 2;
+      const textW = ctx.measureText(label).width;
+      const boxW  = Math.ceil(textW) + PAD_X * 2;
+      const boxH  = FONT_SIZE + PAD_Y * 2;
 
-      // center above object
-      const bx = ox + Math.round((ow - boxW) / 2);
-      const by = oy - boxH - 2;
+      // bubble center X = object center, bubble sits above object
+      const arrowTipY = oy - 2;                  // tip of arrow points here
+      const bubbleY   = arrowTipY - ARROW_H - boxH;
+      const bubbleCX  = ox + ow / 2;
+      const bubbleX   = Math.max(1, Math.min(exp.width - boxW - 1, Math.round(bubbleCX - boxW / 2)));
+      const arrowCX   = Math.max(bubbleX + RADIUS + ARROW_W + 1,
+                        Math.min(bubbleX + boxW - RADIUS - ARROW_W - 1,
+                        Math.round(bubbleCX)));
 
-      // clamp to canvas
-      const fx = Math.max(0, Math.min(exp.width  - boxW, bx));
-      const fy = Math.max(0, Math.min(exp.height - boxH, by));
+      const by = Math.max(1, bubbleY);
 
-      // dark pill background
-      ctx.fillStyle = "rgba(0,0,0,0.72)";
-      _roundRect(ctx, fx, fy, boxW, boxH, 3);
+      // ── draw bubble + arrow as one path ──
+      ctx.beginPath();
+      // top-left corner
+      ctx.moveTo(bubbleX + RADIUS, by);
+      // top edge → top-right
+      ctx.lineTo(bubbleX + boxW - RADIUS, by);
+      ctx.quadraticCurveTo(bubbleX + boxW, by, bubbleX + boxW, by + RADIUS);
+      // right edge → bottom-right
+      ctx.lineTo(bubbleX + boxW, by + boxH - RADIUS);
+      ctx.quadraticCurveTo(bubbleX + boxW, by + boxH, bubbleX + boxW - RADIUS, by + boxH);
+      // bottom edge → arrow right
+      ctx.lineTo(arrowCX + ARROW_W, by + boxH);
+      // arrow pointing down
+      ctx.lineTo(arrowCX, arrowTipY);
+      ctx.lineTo(arrowCX - ARROW_W, by + boxH);
+      // continue bottom edge → bottom-left
+      ctx.lineTo(bubbleX + RADIUS, by + boxH);
+      ctx.quadraticCurveTo(bubbleX, by + boxH, bubbleX, by + boxH - RADIUS);
+      // left edge → top-left
+      ctx.lineTo(bubbleX, by + RADIUS);
+      ctx.quadraticCurveTo(bubbleX, by, bubbleX + RADIUS, by);
+      ctx.closePath();
+
+      // shadow
+      ctx.shadowColor   = "rgba(0,0,0,0.45)";
+      ctx.shadowBlur    = 4;
+      ctx.shadowOffsetY = 2;
+      ctx.fillStyle     = "rgba(15,20,28,0.88)";
       ctx.fill();
 
-      // white text
+      // border
+      ctx.shadowColor = "transparent";
+      ctx.shadowBlur  = 0;
+      ctx.shadowOffsetY = 0;
+      ctx.strokeStyle = "rgba(255,255,255,0.18)";
+      ctx.lineWidth   = 1;
+      ctx.stroke();
+
+      // text
       ctx.fillStyle = "#ffffff";
-      ctx.fillText(label, fx + PAD, fy + PAD);
+      ctx.fillText(label, bubbleX + PAD_X, by + PAD_Y);
     });
 
     // ── Step 7: download ──
@@ -178,21 +215,5 @@ async function exportPNG() {
   }
 }
 
-// ── rounded rect helper (no Path2D needed) ──
-function _roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  ctx.lineTo(x + r, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
-}
-
 // ── WINDOW BINDINGS ──
-window.exportPNG   = exportPNG;
-window._roundRect  = _roundRect;
+window.exportPNG = exportPNG;
