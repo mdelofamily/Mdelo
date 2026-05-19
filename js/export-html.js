@@ -1,4 +1,4 @@
-// ============================================================
+.// ============================================================
 //  export-html.js  —  HTML Viewer Export & Config Export
 //  Depends on: state.js, tile-engine.js, render.js, save-load.js, menu-builder.js
 // ============================================================
@@ -155,7 +155,7 @@ function _buildViewerHTML({ title, w, h, b64, useCanvasRenderer, cfgJSLiteral, a
 <title>${title}</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-body{background:#4a7c3f;overflow:hidden;width:100vw;height:100vh;}
+body{background:#111;overflow:hidden;width:100vw;height:100vh;}
 #mapWrap{width:100vw;height:100vh;overflow:scroll;cursor:grab;touch-action:pan-x pan-y;-webkit-overflow-scrolling:touch;position:relative;}
 #mapWrap:active{cursor:grabbing;}
 #sizer{position:absolute;top:0;left:0;pointer-events:none;}
