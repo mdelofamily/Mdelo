@@ -285,7 +285,14 @@ function _slFb(text){const ta=document.createElement('textarea');ta.value=text;t
 // ── hash navigation ──
 function applySpotHash(){const h=window.location.hash;if(!h.startsWith('#spot='))return;const parts=h.slice(6).split(',');if(parts.length<2)return;const col=parseInt(parts[0]),row=parseInt(parts[1]),z=parts.length>=3?parseFloat(parts[2]):1;if(isNaN(col)||isNaN(row)||isNaN(z))return;scale=Math.max(0.2,Math.min(8,z));inner.style.transform='scale('+scale+')';sizer.style.width=(${w}*scale)+'px';sizer.style.height=(${h}*scale)+'px';const sx=Math.max(0,col*${TS}*scale-wrap.clientWidth/2),sy=Math.max(0,row*${TS}*scale-wrap.clientHeight/2);let n=0;(function go(){wrap.scrollLeft=sx;wrap.scrollTop=sy;if(++n<8)setTimeout(go,150);})();}
 function applyAreaHash(){const h=window.location.hash;if(!h.startsWith('#area='))return;const title=decodeURIComponent(h.slice(6).replace(/\\+/g,' '));if(!title)return;function tryFit(n){const els=document.querySelectorAll('.hs-area[data-title="'+title+'"]');if(els.length){fitAreas(title);return;}if(n>0)setTimeout(()=>tryFit(n-1),300);}setTimeout(()=>tryFit(10),200);}
-window.addEventListener('load',()=>{applySpotHash();applyAreaHash();});
+window.addEventListener('load',()=>{
+  if(!window.location.hash){
+    // cover zoom — map fills screen edge-to-edge, no black border visible
+    const s=Math.max(window.innerWidth/${w},window.innerHeight/${h});
+    applyScale(Math.max(0.1,s),0,0);
+  }
+  applySpotHash();applyAreaHash();
+});
 window.addEventListener('hashchange',()=>{applySpotHash();applyAreaHash();});
 <\/script>
 </body>
