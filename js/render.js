@@ -43,8 +43,14 @@ function rebuildOff() {
   offCtx = offscreen.getContext("2d");
   offCtx.imageSmoothingEnabled = false;
   offCtx.clearRect(0, 0, offscreen.width, offscreen.height);
-  offCtx.fillStyle = "#111";
+  offCtx.fillStyle = "#3a5c2a";
   offCtx.fillRect(0, 0, offscreen.width, offscreen.height);
+
+  // clip to exact map bounds — dual grid overflow will be cut at edges
+  offCtx.save();
+  offCtx.beginPath();
+  offCtx.rect(0, 0, COLS * TS, ROWS * TS);
+  offCtx.clip();
 
   // ── BASE LAYER ──
   // Pass 1: non-auto, non-dual tiles
@@ -55,7 +61,7 @@ function rebuildOff() {
       drawTile(offCtx, id, c * TS, r * TS, TS);
     }
   }
-  // Pass 2: dual grid
+  // Pass 2: dual grid (clipped — no overflow at edges)
   if (dualTiles.length > 0) renderDualGrid(offCtx, map);
   // Pass 3: autotiles
   for (let r = 0; r < ROWS; r++) {
@@ -68,7 +74,7 @@ function rebuildOff() {
   }
 
   // ── OVERLAY LAYER ──
-  if (!overlayMap.length) return;
+  if (!overlayMap.length) { offCtx.restore(); return; }
   // Pass 4: overlay non-auto, non-dual
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
@@ -77,7 +83,7 @@ function rebuildOff() {
       drawTile(offCtx, id, c * TS, r * TS, TS);
     }
   }
-  // Pass 5: overlay dual grid
+  // Pass 5: overlay dual grid (clipped)
   if (dualTiles.length > 0) renderDualGrid(offCtx, overlayMap);
   // Pass 6: overlay autotiles
   for (let r = 0; r < ROWS; r++) {
@@ -88,6 +94,8 @@ function rebuildOff() {
       drawTile(offCtx, id, c * TS, r * TS, TS, getBitmask(c, r, id, overlayMap));
     }
   }
+
+  offCtx.restore(); // remove clip
 }
 
 // ── MAIN RENDER ──
