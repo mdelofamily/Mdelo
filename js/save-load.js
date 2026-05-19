@@ -59,6 +59,41 @@ function restoreObjects(savedObjs) {
   scheduleRender();
 }
 
+// ── APPLY LOADED DATA (shared by loadMap + loadProject) ──
+function _applyLoadedData(d) {
+  const customs = d.custom    || [];
+  const ats     = d.autoTiles || [];
+  const dts     = d.dualTiles || [];
+  const total   = customs.length + ats.length + dts.length;
+  let   loaded  = 0;
+  let   called  = false; // guard: finalise only once
+
+  function done() {
+    loaded++;
+    if (loaded < total) return;
+    if (called) return;
+    called = true;
+    rebuildTileMap();
+    buildPalette();
+    rebuildOff();
+    centerView();
+    restoreObjects(d.objects || []);
+    scheduleRender();
+    toast("📂 ჩატვირთულია");
+  }
+
+  if (total === 0) {
+    rebuildTileMap(); buildPalette(); rebuildOff(); centerView();
+    restoreObjects(d.objects || []); scheduleRender();
+    toast("📂 ჩატვირთულია");
+    return;
+  }
+
+  if (ats.length)     _loadAutoTilesArr(ats, done);
+  if (dts.length)     _loadDualTiles(dts, done);
+  if (customs.length) customs.forEach(ct => _loadCustomTile(ct, done));
+}
+
 // ── LOAD MAP FROM JSON FILE ──
 function loadMap(e) {
   const f = e.target.files[0]; if (!f) return;
@@ -72,27 +107,7 @@ function loadMap(e) {
       hist = [];
       customTiles = []; autoTiles = []; dualTiles = [];
 
-      const customs = d.custom    || [];
-      const ats     = d.autoTiles || [];
-      const dts     = d.dualTiles || [];
-      let pending   = customs.length + ats.length + dts.length;
-
-      function done() {
-        if (--pending <= 0) {
-          rebuildTileMap(); buildPalette(); rebuildOff(); centerView();
-          restoreObjects(d.objects || []);
-          scheduleRender(); toast("📂 ჩატვირთულია");
-        }
-      }
-
-      if (pending === 0) {
-        rebuildTileMap(); buildPalette(); rebuildOff(); centerView();
-        restoreObjects(d.objects || []); scheduleRender(); toast("📂 ჩატვირთულია");
-      } else {
-        if (ats.length)     _loadAutoTilesArr(ats, done);
-        if (dts.length)     _loadDualTiles(dts, done);
-        if (customs.length) customs.forEach(ct => _loadCustomTile(ct, done));
-      }
+      _applyLoadedData(d);
 
       // restore legend / hotspot data
       if (d.legendDesc  != null) document.getElementById("legTabDesc").value = d.legendDesc || "";
@@ -114,3 +129,4 @@ window.getMapData      = getMapData;
 window.saveMap         = saveMap;
 window.restoreObjects  = restoreObjects;
 window.loadMap         = loadMap;
+window._applyLoadedData = _applyLoadedData;

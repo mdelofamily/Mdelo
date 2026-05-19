@@ -21,7 +21,6 @@ function makeThumb() {
     ctx.drawImage(offscreen, 0, 0, 64, 64);
     return th.toDataURL("image/png");
   } catch (e) {
-    // coord-tile sheets taint the canvas — return a solid placeholder
     const th  = document.createElement("canvas"); th.width = 64; th.height = 64;
     th.getContext("2d").fillStyle = "#1a2e1a";
     th.getContext("2d").fillRect(0, 0, 64, 64);
@@ -74,35 +73,7 @@ function loadProject(name) {
   hist       = [];
   customTiles = []; autoTiles = []; dualTiles = [];
 
-  const customs = d.custom    || [];
-  const ats     = d.autoTiles || [];
-  const dts     = d.dualTiles || [];
-  let   pending = customs.length + ats.length + dts.length;
-
-  function done() {
-    if (--pending <= 0) {
-      rebuildTileMap(); buildPalette(); rebuildOff(); centerView();
-      objects = [];
-      (d.objects || []).forEach(o => {
-        const def = tileMap.get(o.id); if (!def) return;
-        const img = def.img || getImg(o.id);
-        if (img) objects.push({ ...o, img });
-      });
-      scheduleRender();
-    }
-  }
-
-  if (pending === 0) { rebuildTileMap(); buildPalette(); rebuildOff(); centerView(); scheduleRender(); }
-  else {
-    if (customs.length) customs.forEach(ct => _loadCustomTile(ct, done));
-    if (ats.length)     _loadAutoTilesArr(ats, done);
-    if (dts.length)     _loadDualTiles(dts, done);
-  }
-
-  currentProjectName = name;
-  document.getElementById("projNameInput").value = name;
-
-  // restore legend data
+  // restore legend data before tile loading
   if (d.legendDesc  != null) document.getElementById("legTabDesc").value = d.legendDesc || "";
   if (d.legendLabels)        _legendLabels = { ...(d.legendLabels || {}) };
   if (d.legendMenu)          { _menuSections = d.legendMenu || []; renderMenuBuilder(); }
@@ -113,8 +84,12 @@ function loadProject(name) {
     if (sui) sui.value = spotBaseUrl;
   }
 
+  currentProjectName = name;
+  document.getElementById("projNameInput").value = name;
   closeProjects();
-  toast("📂 '" + name + "' გაიხსნა");
+
+  // use shared loader with race-condition fix
+  _applyLoadedData(d);
 }
 
 // ── DELETE ──
