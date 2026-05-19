@@ -247,10 +247,11 @@ const _CFG=JSON.parse(${cfgJSLiteral});
 ${useCanvasRenderer ? _canvasRendererScript(TS) : ""}
 // ── zoom ──
 const wrap=document.getElementById('mapWrap'),inner=document.getElementById('mapInner'),sizer=document.getElementById('sizer');
-// MIN_SCALE = cover: map always fills screen edge-to-edge, no black border ever
-const MIN_SCALE=Math.max(window.innerWidth/${w},window.innerHeight/${h});
+// MIN_SCALE = cover: map always fills screen, recalculated on resize (address bar hide/show)
+let MIN_SCALE=Math.max(window.innerWidth/${w},window.innerHeight/${h});
 let scale=MIN_SCALE;
 function applyScale(s,ox,oy){const prev=scale;scale=Math.max(MIN_SCALE,Math.min(8,s));const ratio=scale/prev;wrap.scrollLeft=(wrap.scrollLeft+ox)*ratio-ox;wrap.scrollTop=(wrap.scrollTop+oy)*ratio-oy;inner.style.transform='scale('+scale+')';sizer.style.width=(${w}*scale)+'px';sizer.style.height=(${h}*scale)+'px';}
+window.addEventListener('resize',()=>{MIN_SCALE=Math.max(window.innerWidth/${w},window.innerHeight/${h});if(scale<MIN_SCALE)applyScale(MIN_SCALE,wrap.clientWidth/2,wrap.clientHeight/2);});
 wrap.addEventListener('wheel',e=>{e.preventDefault();const r=wrap.getBoundingClientRect();applyScale(scale*(e.deltaY<0?1.12:0.89),e.clientX-r.left,e.clientY-r.top);},{passive:false});
 let p0=null,pDist=0,pScale=1;
 wrap.addEventListener('touchstart',e=>{if(e.touches.length===2){wrap.style.touchAction='none';p0=e.touches[0];const p1=e.touches[1];pDist=Math.hypot(p1.clientX-p0.clientX,p1.clientY-p0.clientY);pScale=scale;e.preventDefault();}},{passive:false});
