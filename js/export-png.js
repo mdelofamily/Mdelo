@@ -185,7 +185,7 @@ async function exportPNG() {
       ctx.shadowColor   = "rgba(0,0,0,0.45)";
       ctx.shadowBlur    = 4;
       ctx.shadowOffsetY = 2;
-      ctx.fillStyle     = "rgba(15,20,28,0.88)";
+      ctx.fillStyle     = "rgba(15,20,28,0.35)";
       ctx.fill();
 
       // border
