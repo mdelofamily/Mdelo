@@ -176,8 +176,8 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
 .gm-section-hdr.open .arrow{transform:rotate(180deg);}
 .gm-section-body{display:none;padding:8px 14px 12px;border-top:1px solid rgba(48,54,61,0.4);}
 .gm-section-body.open{display:block;}
-.gm-section-body.compact{padding:4px 10px 6px;}
-.gm-section-body.compact .gm-item{font:12px/1.5 sans-serif;padding:0;}
+.gm-section-body.compact{padding:2px 8px 4px;}
+.gm-section-body.compact .gm-item{font:12px/1.4 sans-serif;padding:0;}
 .gm-item{font:13px/1.8 sans-serif;color:rgba(180,190,200,0.85);padding:1px 0;}
 .gm-progress-row{display:flex;align-items:center;gap:8px;padding:4px 0;}
 .gm-progress-label{font:13px sans-serif;color:rgba(180,190,200,0.85);min-width:100px;}
