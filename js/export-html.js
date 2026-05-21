@@ -208,7 +208,7 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
 #questBtn{position:fixed;bottom:14px;left:14px;z-index:30;width:38px;height:38px;border-radius:50%;background:rgba(22,27,34,0.3);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(8px);border:1px solid rgba(48,54,61,0.6);color:rgba(180,190,200,0.8);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
 #questPopup{display:none;position:fixed;bottom:62px;left:14px;z-index:30;background:rgba(22,27,34,0.3);backdrop-filter:blur(2px);border:1px solid rgba(48,54,61,0.5);border-radius:10px;padding:12px 14px;max-width:min(88vw,420px);font:13px/1.6 sans-serif;color:rgba(200,210,220,0.9);white-space:pre-wrap;}
 #notifBar{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:30;display:flex;gap:8px;align-items:center;pointer-events:auto;}
-.ncard{width:44px;height:44px;border-radius:10px;border:2px solid var(--nc);background:rgba(13,17,23,0.65);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;position:relative;box-shadow:0 2px 12px rgba(0,0,0,0.4);opacity:0.82;}
+.ncard{width:44px;height:44px;border-radius:10px;border:2px solid var(--nc);background:rgba(13,17,23,0.2);backdrop-filter:blur(1px);display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;position:relative;box-shadow:0 2px 12px rgba(0,0,0,0.4);opacity:0.82;}
 .ncard:active{opacity:1;}
 .ncard.pulse{animation:npulse 1.2s infinite;}
 @keyframes npulse{0%,100%{box-shadow:0 0 0 0 var(--nc);}50%{box-shadow:0 0 0 6px transparent;}}
