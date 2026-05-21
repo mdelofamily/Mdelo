@@ -192,7 +192,7 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
 .hs-dot{position:absolute;top:-18px;left:50%;transform:translateX(-50%);width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,0.6);box-shadow:0 0 4px rgba(255,255,255,0.8);pointer-events:none;}
 .hs-marker{position:absolute;top:-8px;left:50%;transform:translate(-50%,-50%);font-size:18px;font-weight:bold;font-family:sans-serif;line-height:1;pointer-events:auto;-webkit-text-stroke:2px rgba(0,0,0,0.9);paint-order:stroke fill;}
 .hs-marker.exc{color:#f0a500;}.hs-marker.q{color:#e8e8e8;}.hs-marker.chat{color:#4ade80;}
-#hsPopup{display:none;position:fixed;z-index:50;background:rgba(22,27,34,0.95);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(88,166,255,0.35);border-radius:10px;padding:12px 34px 12px 14px;max-width:min(88vw,360px);font:13px/1.7 sans-serif;color:rgba(200,210,220,0.92);}
+#hsPopup{display:none;position:fixed;z-index:50;background:rgba(22,27,34,0.6);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(88,166,255,0.35);border-radius:10px;padding:12px 34px 12px 14px;max-width:min(88vw,360px);font:13px/1.7 sans-serif;color:rgba(200,210,220,0.92);}
 #hsPopup.show{display:block;}
 #hsPopupTitle{font-size:14px;font-weight:600;color:#ffffff;margin-bottom:5px;padding-right:20px;}
 #hsClose{position:absolute;top:10px;right:12px;background:none;border:none;color:#8b949e;font-size:18px;cursor:pointer;line-height:1;}
@@ -218,7 +218,7 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
 .ncard[data-type="emergency"]{--nc:#f85149;}
 .ncard[data-type="done"]{--nc:#4ade80;}
 .ncard[data-type="project"]{--nc:#c084fc;}
-#notifPopup{display:none;position:fixed;z-index:70;background:rgba(13,17,23,0.3);backdrop-filter:blur(2px);border:2px solid var(--nc,#58a6ff);border-radius:12px;padding:14px 40px 14px 14px;max-width:min(88vw,360px);font:13px/1.6 sans-serif;color:#e6edf3;box-shadow:0 4px 24px rgba(0,0,0,0.5);}
+#notifPopup{display:none;position:fixed;z-index:70;background:rgba(13,17,23,0.3);backdrop-filter:blur(1px);border:2px solid var(--nc,#58a6ff);border-radius:12px;padding:14px 40px 14px 14px;max-width:min(88vw,360px);font:13px/1.6 sans-serif;color:#e6edf3;box-shadow:0 4px 24px rgba(0,0,0,0.5);}
 #notifPopup.show{display:block;}
 #notifPopup .np-type{font-size:11px;color:var(--nc,#58a6ff);font-weight:600;margin-bottom:4px;text-transform:uppercase;}
 #notifPopup .np-sender{font-size:11px;color:#8b949e;margin-bottom:8px;}
