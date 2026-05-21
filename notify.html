@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>შეტყობინება — Mdelo</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+body{background:#0d1117;min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:24px 16px;font-family:sans-serif;color:#e6edf3;}
+h1{font-size:18px;font-weight:700;color:#f0a500;margin-bottom:24px;text-align:center;}
+.form{width:100%;max-width:420px;display:flex;flex-direction:column;gap:14px;}
+label{font-size:12px;color:#8b949e;margin-bottom:4px;display:block;}
+input,textarea,select{width:100%;background:#161b22;border:1px solid #30363d;color:#e6edf3;font-size:14px;padding:10px 12px;border-radius:8px;font-family:sans-serif;outline:none;}
+input:focus,textarea:focus,select:focus{border-color:#f0a500;}
+textarea{resize:none;min-height:80px;}
+.type-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+.type-btn{padding:10px 4px;border-radius:8px;border:2px solid #30363d;background:#161b22;color:#8b949e;font-size:12px;cursor:pointer;text-align:center;transition:all .15s;}
+.type-btn.sel{border-color:var(--c);color:var(--c);background:rgba(255,255,255,0.04);}
+.type-btn[data-type="info"]{--c:#58a6ff;}
+.type-btn[data-type="warning"]{--c:#f0a500;}
+.type-btn[data-type="danger"]{--c:#fb8f44;}
+.type-btn[data-type="emergency"]{--c:#f85149;}
+.type-btn[data-type="done"]{--c:#4ade80;}
+.type-btn[data-type="project"]{--c:#c084fc;}
+.send-btn{width:100%;padding:14px;background:#f0a500;color:#000;font-size:15px;font-weight:700;border:none;border-radius:10px;cursor:pointer;margin-top:4px;}
+.send-btn:active{opacity:0.8;}
+.send-btn:disabled{background:#30363d;color:#8b949e;cursor:default;}
+#toast{display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#161b22;border:1px solid #30363d;color:#e6edf3;padding:10px 20px;border-radius:8px;font-size:13px;z-index:99;}
+</style>
+</head>
+<body>
+<h1>📢 შეტყობინება</h1>
+<div class="form">
+
+  <div>
+    <label>შენი სახელი</label>
+    <input type="text" id="sender" placeholder="გიორგი" maxlength="30">
+  </div>
+
+  <div>
+    <label>ტიპი</label>
+    <div class="type-grid">
+      <div class="type-btn" data-type="info">💬 ინფო</div>
+      <div class="type-btn" data-type="warning">⚠ გაფრთხ.</div>
+      <div class="type-btn" data-type="danger">‼ საფრთხე</div>
+      <div class="type-btn" data-type="emergency">🔴 განგაში</div>
+      <div class="type-btn" data-type="done">✅ მზადაა</div>
+      <div class="type-btn" data-type="project">🚀 პროექტი</div>
+    </div>
+  </div>
+
+  <div>
+    <label>მთავარი ტექსტი</label>
+    <input type="text" id="text" placeholder="კატის საჭმელი იწურება" maxlength="100">
+  </div>
+
+  <div>
+    <label>დეტალი (არასავალდებულო)</label>
+    <textarea id="detail" placeholder="დამატებითი ინფორმაცია..."></textarea>
+  </div>
+
+  <div>
+    <label>მიბმული ადგილი (არასავალდებულო)</label>
+    <input type="text" id="linked_area" placeholder="მაგ: main_field, gate..." maxlength="50">
+  </div>
+
+  <button class="send-btn" id="sendBtn" onclick="send()">გაგზავნა 🚀</button>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const SUPABASE_URL = "https://miqenmsgwkkmtxwwbxzo.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1pcWVubXNnd2trbXR4d3dieHpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzMDc0NzYsImV4cCI6MjA5NDg4MzQ3Nn0.VfJgVoPC-ZbjlcuwMriYrNXb-3E2OgC92nOR9hOPgKI";
+
+const SYMBOLS = {
+  info: "💬", warning: "⚠", danger: "‼",
+  emergency: "🔴", done: "✅", project: "🚀"
+};
+
+// restore sender name
+const savedName = localStorage.getItem("mdelo_sender");
+if (savedName) document.getElementById("sender").value = savedName;
+
+// type selection
+let selType = null;
+document.querySelectorAll(".type-btn").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll(".type-btn").forEach(b => b.classList.remove("sel"));
+    btn.classList.add("sel");
+    selType = btn.dataset.type;
+  };
+});
+
+function toast(msg, dur = 2500) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.style.display = "block";
+  setTimeout(() => t.style.display = "none", dur);
+}
+
+async function send() {
+  const sender = document.getElementById("sender").value.trim();
+  const text   = document.getElementById("text").value.trim();
+  const detail = document.getElementById("detail").value.trim();
+  const linked = document.getElementById("linked_area").value.trim();
+
+  if (!sender) { toast("⚠ სახელი შეიყვანე"); return; }
+  if (!selType) { toast("⚠ ტიპი აირჩიე"); return; }
+  if (!text)    { toast("⚠ ტექსტი შეიყვანე"); return; }
+
+  localStorage.setItem("mdelo_sender", sender);
+
+  const btn = document.getElementById("sendBtn");
+  btn.disabled = true; btn.textContent = "იგზავნება...";
+
+  try {
+    const res = await fetch(SUPABASE_URL + "/rest/v1/notifications", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": SUPABASE_KEY,
+        "Authorization": "Bearer " + SUPABASE_KEY,
+        "Prefer": "return=minimal"
+      },
+      body: JSON.stringify({
+        type:        selType,
+        symbol:      SYMBOLS[selType],
+        text:        text,
+        detail:      detail || null,
+        sender:      sender,
+        linked_area: linked || null
+      })
+    });
+
+    if (res.ok) {
+      toast("✅ გაიგზავნა!");
+      document.getElementById("text").value = "";
+      document.getElementById("detail").value = "";
+      document.getElementById("linked_area").value = "";
+      document.querySelectorAll(".type-btn").forEach(b => b.classList.remove("sel"));
+      selType = null;
+    } else {
+      const err = await res.text();
+      toast("❌ შეცდომა: " + err, 4000);
+    }
+  } catch(e) {
+    toast("❌ კავშირის შეცდომა", 3000);
+  }
+
+  btn.disabled = false; btn.textContent = "გაგზავნა 🚀";
+}
+</script>
+</body>
+</html>
