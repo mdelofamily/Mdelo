@@ -207,6 +207,24 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
 #hsPopup a{color:#58a6ff;text-decoration:none;}#hsPopup a:hover{text-decoration:underline;}
 #questBtn{position:fixed;bottom:14px;left:14px;z-index:30;width:38px;height:38px;border-radius:50%;background:rgba(22,27,34,0.8);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid rgba(48,54,61,0.6);color:rgba(180,190,200,0.8);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
 #questPopup{display:none;position:fixed;bottom:62px;left:14px;z-index:30;background:rgba(22,27,34,0.88);backdrop-filter:blur(12px);border:1px solid rgba(48,54,61,0.5);border-radius:10px;padding:12px 14px;max-width:min(88vw,420px);font:13px/1.6 sans-serif;color:rgba(200,210,220,0.9);white-space:pre-wrap;}
+#notifBar{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:30;display:flex;gap:8px;align-items:center;pointer-events:auto;}
+.ncard{width:44px;height:44px;border-radius:10px;border:2px solid var(--nc);background:rgba(13,17,23,0.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;position:relative;box-shadow:0 2px 12px rgba(0,0,0,0.4);}
+.ncard.pulse{animation:npulse 1.2s infinite;}
+@keyframes npulse{0%,100%{box-shadow:0 0 0 0 var(--nc);}50%{box-shadow:0 0 0 6px transparent;}}
+.ncard[data-type="info"]{--nc:#58a6ff;}
+.ncard[data-type="warning"]{--nc:#f0a500;}
+.ncard[data-type="danger"]{--nc:#fb8f44;}
+.ncard[data-type="emergency"]{--nc:#f85149;}
+.ncard[data-type="done"]{--nc:#4ade80;}
+.ncard[data-type="project"]{--nc:#c084fc;}
+#notifPopup{display:none;position:fixed;z-index:70;background:rgba(13,17,23,0.97);backdrop-filter:blur(16px);border:2px solid var(--nc,#58a6ff);border-radius:12px;padding:14px 40px 14px 14px;max-width:min(88vw,360px);font:13px/1.6 sans-serif;color:#e6edf3;box-shadow:0 4px 24px rgba(0,0,0,0.5);}
+#notifPopup.show{display:block;}
+#notifPopup .np-type{font-size:11px;color:var(--nc,#58a6ff);font-weight:600;margin-bottom:4px;text-transform:uppercase;}
+#notifPopup .np-sender{font-size:11px;color:#8b949e;margin-bottom:8px;}
+#notifPopup .np-text{font-size:14px;font-weight:600;color:#fff;margin-bottom:6px;}
+#notifPopup .np-detail{font-size:12px;color:rgba(180,200,220,0.85);}
+#notifPopup .np-area{margin-top:10px;padding:6px 10px;background:rgba(240,165,0,0.1);border:1px solid rgba(240,165,0,0.3);border-radius:6px;font-size:12px;color:#f0a500;cursor:pointer;text-align:center;}
+#notifClose{position:absolute;top:10px;right:12px;background:none;border:none;color:#8b949e;font-size:18px;cursor:pointer;line-height:1;}
 #spotLinkPopup{display:none;position:fixed;z-index:60;background:rgba(22,27,34,0.97);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid #58a6ff;border-radius:10px;padding:11px 13px;width:200px;flex-direction:column;gap:7px;box-shadow:0 4px 24px rgba(0,0,0,0.5);}
 #spotLinkPopup.show{display:flex;}
 #spotLinkPopup .slClose{position:absolute;top:7px;right:9px;background:none;border:none;color:#8b949e;font-size:15px;cursor:pointer;line-height:1;}
@@ -228,6 +246,8 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
   </div>
 </div>
 ${mapDesc ? `<button id="questBtn" onclick="toggleQuest()">?</button><div id="questPopup">${mapDesc.replace(/\n/g, "<br>")}</div>` : `<button id="questBtn" style="display:none">?</button>`}
+<div id="notifBar"></div>
+<div id="notifPopup"><button id="notifClose" onclick="closeNotifPopup()">✕</button><div class="np-type" id="npType"></div><div class="np-sender" id="npSender"></div><div class="np-text" id="npText"></div><div class="np-detail" id="npDetail"></div><div class="np-area" id="npArea" style="display:none" onclick="goToArea()">🗺 რუკაზე ნახვა →</div></div>
 <button id="menuBtn" onclick="toggleMenu()">☰</button>
 <div id="gameMenu"><button class="gmClose" onclick="toggleMenu()">✕</button><div id="gmContent"></div></div>
 <div id="hsPopup"><button id="hsClose" onclick="closeHsPopup()">✕</button><div id="hsPopupTitle"></div><div id="hsPopupBody"></div></div>
@@ -288,7 +308,17 @@ function _slFb(text){const ta=document.createElement('textarea');ta.value=text;t
 // ── hash navigation ──
 function applySpotHash(){const h=window.location.hash;if(!h.startsWith('#spot='))return;const parts=h.slice(6).split(',');if(parts.length<2)return;const col=parseInt(parts[0]),row=parseInt(parts[1]),z=parts.length>=3?parseFloat(parts[2]):1;if(isNaN(col)||isNaN(row)||isNaN(z))return;scale=Math.max(0.2,Math.min(8,z));inner.style.transform='scale('+scale+')';sizer.style.width=(${w}*scale)+'px';sizer.style.height=(${h}*scale)+'px';const sx=Math.max(0,col*${TS}*scale-wrap.clientWidth/2),sy=Math.max(0,row*${TS}*scale-wrap.clientHeight/2);let n=0;(function go(){wrap.scrollLeft=sx;wrap.scrollTop=sy;if(++n<8)setTimeout(go,150);})();}
 function applyAreaHash(){const h=window.location.hash;if(!h.startsWith('#area='))return;const title=decodeURIComponent(h.slice(6).replace(/\\+/g,' '));if(!title)return;function tryFit(n){const els=document.querySelectorAll('.hs-area[data-title="'+title+'"]');if(els.length){fitAreas(title);return;}if(n>0)setTimeout(()=>tryFit(n-1),300);}setTimeout(()=>tryFit(10),200);}
-window.addEventListener('load',()=>{applySpotHash();applyAreaHash();});
+// ── notifications ──
+const SUPA_URL='https://miqenmsgwkkmtxwwbxzo.supabase.co';
+const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1pcWVubXNnd2trbXR4d3dieHpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzMDc0NzYsImV4cCI6MjA5NDg4MzQ3Nn0.VfJgVoPC-ZbjlcuwMriYrNXb-3E2OgC92nOR9hOPgKI';
+const TYPE_LABELS={info:'ინფო',warning:'გაფრთხილება',danger:'საფრთხე',emergency:'განგაში',done:'მზადაა',project:'პროექტი'};
+let _notifs=[],_curNotif=null;
+async function loadNotifs(){try{const r=await fetch(SUPA_URL+'/rest/v1/notifications?order=created_at.desc&limit=20',{headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY}});if(!r.ok)return;_notifs=await r.json();renderNotifBar();}catch(e){}}
+function renderNotifBar(){const bar=document.getElementById('notifBar');if(!bar)return;bar.innerHTML='';if(!_notifs.length)return;_notifs.forEach((n,i)=>{const c=document.createElement('div');c.className='ncard'+(n.type==='emergency'?' pulse':'');c.dataset.type=n.type||'info';c.title=n.text||'';c.textContent=n.symbol||'💬';c.onclick=()=>openNotifPopup(n);bar.appendChild(c);});}
+function openNotifPopup(n){_curNotif=n;const p=document.getElementById('notifPopup');p.style.setProperty('--nc',{info:'#58a6ff',warning:'#f0a500',danger:'#fb8f44',emergency:'#f85149',done:'#4ade80',project:'#c084fc'}[n.type]||'#58a6ff');document.getElementById('npType').textContent=(TYPE_LABELS[n.type]||n.type).toUpperCase();document.getElementById('npSender').textContent=n.sender?('👤 '+n.sender):'';document.getElementById('npText').textContent=n.text||'';const det=document.getElementById('npDetail');det.textContent=n.detail||'';det.style.display=n.detail?'block':'none';const ar=document.getElementById('npArea');ar.style.display=n.linked_area?'block':'none';if(n.linked_area)ar.textContent='🗺 '+n.linked_area+' — რუკაზე ნახვა →';const pw=Math.min(window.innerWidth*0.9,360);p.style.cssText='display:block;left:'+((window.innerWidth-pw)/2)+'px;bottom:72px;max-width:'+pw+'px;';p.classList.add('show');}
+function closeNotifPopup(){const p=document.getElementById('notifPopup');p.classList.remove('show');p.style.display='none';}
+function goToArea(){if(!_curNotif||!_curNotif.linked_area)return;closeNotifPopup();const title=_curNotif.linked_area;const els=document.querySelectorAll('.hs-area[data-title="'+title+'"]');if(els.length){fitAreas(title);blinkAreasByGroupOrTitle('',title);}else{const hs=document.querySelector('.hotspot[data-title="'+title+'"]');if(hs){const ox=+hs.dataset.ox,oy=+hs.dataset.oy;wrap.scrollLeft=ox*scale-wrap.clientWidth/2;wrap.scrollTop=oy*scale-wrap.clientHeight/2;}}}
+window.addEventListener('load',()=>{loadNotifs();applySpotHash();applyAreaHash();});
 window.addEventListener('hashchange',()=>{applySpotHash();applyAreaHash();});
 <\/script>
 </body>
