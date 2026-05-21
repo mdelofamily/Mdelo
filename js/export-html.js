@@ -218,7 +218,7 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
 .ncard[data-type="emergency"]{--nc:#f85149;}
 .ncard[data-type="done"]{--nc:#4ade80;}
 .ncard[data-type="project"]{--nc:#c084fc;}
-#notifPopup{display:none;position:fixed;z-index:70;background:rgba(13,17,23,0.3);backdrop-filter:blur(4px);border:2px solid var(--nc,#58a6ff);border-radius:12px;padding:14px 40px 14px 14px;max-width:min(88vw,360px);font:13px/1.6 sans-serif;color:#e6edf3;box-shadow:0 4px 24px rgba(0,0,0,0.5);}
+#notifPopup{display:none;position:fixed;z-index:70;background:rgba(13,17,23,0.3);backdrop-filter:blur(2px);border:2px solid var(--nc,#58a6ff);border-radius:12px;padding:14px 40px 14px 14px;max-width:min(88vw,360px);font:13px/1.6 sans-serif;color:#e6edf3;box-shadow:0 4px 24px rgba(0,0,0,0.5);}
 #notifPopup.show{display:block;}
 #notifPopup .np-type{font-size:11px;color:var(--nc,#58a6ff);font-weight:600;margin-bottom:4px;text-transform:uppercase;}
 #notifPopup .np-sender{font-size:11px;color:#8b949e;margin-bottom:8px;}
