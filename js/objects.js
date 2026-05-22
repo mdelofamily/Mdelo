@@ -48,27 +48,12 @@ function openObjProps(idx) {
   document.getElementById("objTitleInp").value   = o.title   || "";
   document.getElementById("objTooltipInp").value = o.tooltip || "";
   _syncMarkerBtns(_editingObjMarker);
-  // load dialogue
   _editingDialogue = JSON.parse(JSON.stringify(o.dialogue || []));
   if (_editingDialogue.length === 0) {
     _editingDialogue.push(_newNode());
   }
   _renderDialogueEditor();
-  // switch to first tab
-  _switchObjTab("info");
   document.getElementById("objPropsModal").classList.add("show");
-}
-
-function closeObjProps() {
-  document.getElementById("objPropsModal").classList.remove("show");
-  _editingObjIdx = -1;
-}
-
-function _switchObjTab(tab) {
-  ["info","dialogue"].forEach(t => {
-    document.getElementById("objTab_" + t).classList.toggle("on", t === tab);
-    document.getElementById("objTabContent_" + t).style.display = t === tab ? "flex" : "none";
-  });
 }
 
 function setObjMarker(m) {
@@ -322,4 +307,3 @@ window.addDialogueNode    = addDialogueNode;
 window.removeDialogueNode = removeDialogueNode;
 window.addDialogueBtn     = addDialogueBtn;
 window.removeDialogueBtn  = removeDialogueBtn;
-window._switchObjTab      = _switchObjTab;
