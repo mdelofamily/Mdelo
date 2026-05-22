@@ -78,12 +78,13 @@ async function doExportHTML() {
       const ox = o.x * TS_, oy = o.y * TS_, ow = o.cols * TS_, oh = o.rows * TS_;
       const title   = ((o.title || o.lb) || "").replace(/'/g, "&#39;").replace(/"/g, "&quot;");
       const tooltip = (o.tooltip || "").replace(/'/g, "&#39;").replace(/"/g, "&quot;");
-      const hasInteraction = o.tooltip || o.title || o.marker;
+      const hasInteraction = o.tooltip || o.title || o.marker || (o.dialogue && o.dialogue.length);
       const markerCls = o.marker === "!" ? "exc" : o.marker === "?" ? "q" : o.marker === "💬" ? "chat" : "";
       const markerHtml = hasInteraction
         ? (markerCls ? `<div class="hs-marker ${markerCls}">${o.marker}</div>` : `<div class="hs-dot"></div>`)
         : "";
-      return `<div class="hotspot${hasInteraction ? "" : " no-interact"}" data-ox="${ox}" data-oy="${oy}" data-ow="${ow}" data-oh="${oh}" data-title="${title}" data-tooltip="${tooltip}" style="left:${ox}px;top:${oy}px;width:${ow}px;height:${oh}px;">${markerHtml}</div>`;
+      const objJson = (o.dialogue && o.dialogue.length) ? ` data-objjson='${JSON.stringify({title:o.title,lb:o.lb,dialogue:o.dialogue}).replace(/'/g,"&#39;")}'` : "";
+      return `<div class="hotspot${hasInteraction ? "" : " no-interact"}" data-ox="${ox}" data-oy="${oy}" data-ow="${ow}" data-oh="${oh}" data-title="${title}" data-tooltip="${tooltip}"${objJson} style="left:${ox}px;top:${oy}px;width:${ow}px;height:${oh}px;">${markerHtml}</div>`;
     });
 
     const embeddedAreas = hotAreas.map(a => {
@@ -251,7 +252,7 @@ ${mapDesc ? `<button id="questBtn" onclick="toggleQuest()">?</button><div id="qu
 <div id="notifPopup"><button id="notifClose" onclick="closeNotifPopup()">✕</button><div class="np-type" id="npType"></div><div class="np-sender" id="npSender"></div><div class="np-text" id="npText"></div><div class="np-detail" id="npDetail"></div><div class="np-area" id="npArea" style="display:none" onclick="goToArea()">🗺 რუკაზე ნახვა →</div></div>
 <button id="menuBtn" onclick="toggleMenu()">☰</button>
 <div id="gameMenu"><button class="gmClose" onclick="toggleMenu()">✕</button><div id="gmContent"></div></div>
-<div id="hsPopup"><button id="hsClose" onclick="closeHsPopup()">✕</button><div id="hsPopupTitle"></div><div id="hsPopupBody"></div></div>
+<div id="hsPopup"><button id="hsClose" onclick="closeHsPopup()">✕</button><div id="hsPopupTitle"></div><div id="hsPopupBody"></div><div id="hsPopupBtns" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div></div>
 <div id="areaPopup"><button class="ap-close" onclick="closeAreaPopup()">✕</button><div class="ap-title" id="areaPopupTitle"></div><div class="ap-tip" id="areaPopupTip"></div></div>
 <div id="spotLinkPopup">
   <button class="slClose" onclick="closeSlPopup()">✕</button>
@@ -279,7 +280,7 @@ wrap.addEventListener('touchmove',e=>{if(e.touches.length===2){const a=e.touches
 wrap.addEventListener('touchend',e=>{if(e.touches.length<2)wrap.style.touchAction='pan-x pan-y';},{passive:true});
 // ── hotspots ──
 function parseLinks(t){let o='',i=0;while(i<t.length){const s=t.indexOf('[[',i);if(s<0){o+=t.slice(i);break;}o+=t.slice(i,s);const e=t.indexOf(']]',s+2);if(e<0){o+=t.slice(s);break;}const inner2=t.slice(s+2,e);const p=inner2.indexOf('|');if(p<0){o+=inner2;}else{const lbl=inner2.slice(0,p),url=inner2.slice(p+1).trim(),safe=url.startsWith('http')||url.startsWith('//')||url.startsWith('/')?url:'#';o+='<a href="'+safe+'" target="_blank" style="color:#58a6ff;">'+lbl+'</a>';}i=e+2;}return o.replace(/\\n/g,'<br>');}
-wrap.addEventListener('click',e=>{if(e.target.closest('#menuBtn')||e.target.closest('#gameMenu'))return;const hs=e.target.closest('.hotspot');if(hs&&!hs.classList.contains('no-interact')){closeHsPopup();closeAreaPopup();if(hs.classList.contains('hs-area')){const t=hs.dataset.title||'',grp=hs.dataset.group||'';blinkAreasByGroupOrTitle(grp,t);if(t)openAreaPopup(t,hs.dataset.tooltip||'');}else{openHsPopup(hs,hs.dataset.title||'',hs.dataset.tooltip||'');}return;}if(!e.target.closest('#hsPopup')&&!e.target.closest('#areaPopup')){closeHsPopup();closeAreaPopup();}});
+wrap.addEventListener('click',e=>{if(e.target.closest('#menuBtn')||e.target.closest('#gameMenu'))return;const hs=e.target.closest('.hotspot');if(hs&&!hs.classList.contains('no-interact')){closeHsPopup();closeAreaPopup();if(hs.classList.contains('hs-area')){const t=hs.dataset.title||'',grp=hs.dataset.group||'';blinkAreasByGroupOrTitle(grp,t);if(t)openAreaPopup(t,hs.dataset.tooltip||'');}else{const objData=hs.dataset.objjson?JSON.parse(hs.dataset.objjson):null;openHsPopup(hs,hs.dataset.title||'',hs.dataset.tooltip||'',objData);}return;}if(!e.target.closest('#hsPopup')&&!e.target.closest('#areaPopup')){closeHsPopup();closeAreaPopup();}});
 let _objBlinkRaf=null,_objBlinkMarker=null;
 function _startObjBlink(el){
   _stopObjBlink();
@@ -318,7 +319,105 @@ function buildItems(parent,items){(items||[]).forEach(item=>{const itObj=typeof 
 function buildSubs(parent,children,depth){(children||[]).forEach(sub=>{const hasChildren=(sub.children&&sub.children.length>0);if(!hasChildren){// compact: no card, just a simple row
 const row=document.createElement('div');row.style.cssText='display:flex;align-items:center;gap:6px;padding:3px 4px;';const ic=document.createElement('span');ic.textContent=sub.icon||'📁';ic.style.cssText='font-size:13px;';const ti=document.createElement('span');ti.textContent=sub.title||'';ti.style.cssText='font:12px/1.4 sans-serif;color:rgba(180,200,220,0.85);';row.appendChild(ic);row.appendChild(ti);parent.appendChild(row);if(sub.items&&sub.items.length){const il=document.createElement('div');il.style.cssText='padding:0 4px 4px 22px;';buildItems(il,sub.items);parent.appendChild(il);}return;}const sw=document.createElement('div');sw.className='gm-section';sw.style.marginTop='6px';sw.style.marginLeft=(depth*8)+'px';const sh2=document.createElement('div');sh2.className='gm-section-hdr';sh2.style.fontSize=(depth===0?'13px':'12px');sh2.innerHTML=\`<span>\${sub.icon||'📁'}</span><span>\${sub.title}</span><span class="arrow">▼</span>\`;sh2.onclick=()=>toggleSection(sh2);const sb=document.createElement('div');sb.className='gm-section-body';buildItems(sb,sub.items);buildSubs(sb,sub.children,depth+1);sw.appendChild(sh2);sw.appendChild(sb);parent.appendChild(sw);});}
 function buildMenu(cfg){const ct=document.getElementById('gmContent');ct.innerHTML='';if(cfg.title){const t=document.createElement('div');t.style.cssText='font:16px/1 sans-serif;color:rgba(230,237,243,0.9);text-align:center;padding:0 0 12px;font-weight:600;';t.textContent=cfg.title;ct.appendChild(t);}(cfg.menu||[]).forEach(sec=>{const wrap2=document.createElement('div');wrap2.className='gm-section';const hasChildren=(sec.children&&sec.children.length>0);const hdr=document.createElement('div');hdr.className='gm-section-hdr';hdr.innerHTML=\`<span>\${sec.icon||'📁'}</span><span>\${sec.title}</span>\${hasChildren?'<span class="arrow">▼</span>':''}\`;if(hasChildren)hdr.onclick=()=>toggleSection(hdr);else{hdr.style.cursor='default';hdr.style.padding='5px 12px';}const body=document.createElement('div');body.className='gm-section-body';if(!hasChildren){body.classList.add('open');body.classList.add('compact');}buildItems(body,sec.items);buildSubs(body,sec.children,0);wrap2.appendChild(hdr);wrap2.appendChild(body);ct.appendChild(wrap2);});}
-// ── typewriter ──
+// ── dialogue engine ──
+const SUPA_URL_D='https://miqenmsgwkkmtxwwbxzo.supabase.co';
+const SUPA_KEY_D='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1pcWVubXNnd2trbXR4d3dieHpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzMDc0NzYsImV4cCI6MjA5NDg4MzQ3Nn0.VfJgVoPC-ZbjlcuwMriYrNXb-3E2OgC92nOR9hOPgKI';
+let _dlgNodes={},_dlgObj=null,_dlgTwTimer=null;
+
+function _parseNodes(text){
+  const result={};
+  const parts=text.split(/---node:([^-]+)---/);
+  let first=null;
+  if(parts.length===1){result['__main__']=text.trim();return{nodes:result,first:'__main__'};}
+  for(let i=0;i<parts.length;i+=2){
+    const txt=(parts[i]||'').trim();
+    const id=parts[i+1]||'__main__';
+    if(txt||i===0){if(!first)first=i===0?'__main__':id;result[i===0?'__main__':id]=txt;}
+    if(parts[i+1]){if(!first)first=parts[i+1];result[parts[i+1]]=(parts[i+2]||'').trim();}
+  }
+  // simpler parse
+  const segs=text.split(/(---node:[^-]+---)/);
+  const r2={};let f2=null;
+  for(let i=0;i<segs.length;i++){
+    if(segs[i].startsWith('---node:')){
+      const id=segs[i].slice(8,-3);
+      r2[id]=(segs[i+1]||'').trim();
+      if(!f2)f2=id;
+      i++;
+    } else if(i===0&&segs[i].trim()){
+      r2['__first__']=segs[i].trim();
+      f2='__first__';
+    }
+  }
+  return{nodes:r2,first:f2};
+}
+
+function _dlgShowNode(nodeId){
+  const text=_dlgNodes[nodeId]||'';
+  const body=document.getElementById('hsPopupBody');
+  const btnWrap=document.getElementById('hsPopupBtns');
+  if(btnWrap)btnWrap.innerHTML='';
+  if(_dlgTwTimer){clearInterval(_dlgTwTimer);_dlgTwTimer=null;}
+
+  _typewriterHTML(body,parseLinks(text),35,()=>{
+    // show buttons after typewriter
+    if(!_dlgObj||!_dlgObj.dialogue)return;
+    // find node's buttons
+    const nodeDef=_dlgObj.dialogue.find(n=>n.id===nodeId);
+    if(!nodeDef||!nodeDef.buttons||!nodeDef.buttons.length)return;
+    if(!btnWrap)return;
+    nodeDef.buttons.forEach(btn=>{
+      if(!btn.label)return;
+      const b=document.createElement('button');
+      b.textContent=btn.label;
+      b.style.cssText='flex:1;min-width:80px;height:36px;background:var(--panel,rgba(22,27,34,0.9));border:1px solid rgba(88,166,255,0.4);color:#e6edf3;font-size:13px;border-radius:8px;cursor:pointer;';
+      b.onclick=()=>{
+        // notify
+        if(btn.notify){
+          const sender=localStorage.getItem('mdelo_sender')||'ანონიმი';
+          const txt=btn.notifyText||(sender+' — '+btn.label+' ('+(_dlgObj.title||_dlgObj.lb||'')+')');
+          fetch(SUPA_URL_D+'/rest/v1/notifications',{
+            method:'POST',
+            headers:{'Content-Type':'application/json','apikey':SUPA_KEY_D,'Authorization':'Bearer '+SUPA_KEY_D,'Prefer':'return=minimal'},
+            body:JSON.stringify({type:'info',symbol:'💬',text:txt,sender:sender,linked_area:''})
+          }).catch(()=>{});
+        }
+        // link
+        if(btn.link)window.open(btn.link,'_blank');
+        // next node
+        if(btn.nextNode&&_dlgNodes[btn.nextNode]){
+          _dlgShowNode(btn.nextNode);
+        } else {
+          closeHsPopup();
+        }
+      };
+      btnWrap.appendChild(b);
+    });
+  });
+}
+
+function openHsPopup(el,title,raw,obj){
+  _dlgObj=obj||null;
+  const popup=document.getElementById('hsPopup');
+  document.getElementById('hsPopupTitle').textContent=title||'';
+  document.getElementById('hsPopupBody').innerHTML='';
+  const bw=document.getElementById('hsPopupBtns');
+  if(bw)bw.innerHTML='';
+  const pw=Math.min(window.innerWidth*0.88,360),left=(window.innerWidth-pw)/2,top=Math.max(60,(window.innerHeight-200)/2);
+  popup.style.cssText='display:block;left:'+left+'px;top:'+top+'px;max-width:'+pw+'px;';
+  popup.classList.add('show');
+  wrap.style.overflow='hidden';
+  if(el)_startObjBlink(el);
+
+  // check dialogue
+  if(obj&&obj.dialogue&&obj.dialogue.length>0&&obj.dialogue[0].text){
+    const parsed=_parseNodes(obj.dialogue[0].text);
+    _dlgNodes=parsed.nodes;
+    _dlgShowNode(parsed.first||obj.dialogue[0].id);
+  } else {
+    _typewriterHTML(document.getElementById('hsPopupBody'),parseLinks(raw||''),35);
+  }
+}
 let _twTimer=null;
 function _typewriter(el,text,speed,onDone){
   if(_twTimer){clearInterval(_twTimer);_twTimer=null;}
@@ -335,7 +434,27 @@ function _twSpeed(type){
   if(type==='warning')return 45;
   return 35;
 }
-function openHsPopup(el,title,raw){const popup=document.getElementById('hsPopup');document.getElementById('hsPopupTitle').textContent=title||'';document.getElementById('hsPopupBody').innerHTML='';const pw=Math.min(window.innerWidth*0.88,360),left=(window.innerWidth-pw)/2,top=Math.max(60,(window.innerHeight-200)/2);popup.style.cssText='display:block;left:'+left+'px;top:'+top+'px;max-width:'+pw+'px;';popup.classList.add('show');wrap.style.overflow='hidden';if(el)_startObjBlink(el);const body=document.getElementById('hsPopupBody');const parsed=parseLinks(raw||'');const tmp=document.createElement('div');tmp.innerHTML=parsed;const plain=tmp.textContent;_typewriter(body,plain,35);}
+function _typewriterHTML(el,html,speed,onDone){
+  if(_twTimer){clearInterval(_twTimer);_twTimer=null;}
+  el.innerHTML='';
+  const tmp=document.createElement('div');tmp.innerHTML=html;
+  const nodes=Array.from(tmp.childNodes);
+  let ni=0,ci=0,cur=null;
+  function next(){
+    if(ni>=nodes.length){if(onDone)onDone();return;}
+    const node=nodes[ni];
+    if(node.nodeType===3){
+      if(!cur){cur=document.createTextNode('');el.appendChild(cur);}
+      const full=node.textContent;
+      if(ci<full.length){cur.textContent+=full[ci++];}
+      else{ni++;ci=0;cur=null;}
+    } else {
+      el.appendChild(node.cloneNode(true));ni++;ci=0;cur=null;
+    }
+  }
+  _twTimer=setInterval(()=>{next();if(ni>=nodes.length){clearInterval(_twTimer);_twTimer=null;if(onDone)onDone();}},speed);
+}
+function openHsPopup(el,title,raw){const popup=document.getElementById('hsPopup');document.getElementById('hsPopupTitle').textContent=title||'';document.getElementById('hsPopupBody').innerHTML='';const pw=Math.min(window.innerWidth*0.88,360),left=(window.innerWidth-pw)/2,top=Math.max(60,(window.innerHeight-200)/2);popup.style.cssText='display:block;left:'+left+'px;top:'+top+'px;max-width:'+pw+'px;';popup.classList.add('show');wrap.style.overflow='hidden';if(el)_startObjBlink(el);const body=document.getElementById('hsPopupBody');_typewriterHTML(body,parseLinks(raw||''),35);}
 function openNotifPopup(n){_curNotif=n;const p=document.getElementById('notifPopup');p.style.setProperty('--nc',{info:'#58a6ff',warning:'#f0a500',danger:'#fb8f44',emergency:'#f85149',done:'#4ade80',project:'#c084fc'}[n.type]||'#58a6ff');document.getElementById('npType').textContent=(TYPE_LABELS[n.type]||n.type).toUpperCase();document.getElementById('npSender').textContent=n.sender?('👤 '+n.sender):'';const textEl=document.getElementById('npText');textEl.textContent='';const detEl=document.getElementById('npDetail');detEl.style.display='none';detEl.textContent='';const ar=document.getElementById('npArea');ar.style.display='none';const spd=_twSpeed(n.type);_typewriter(textEl,n.text||'',spd,()=>{if(n.detail){detEl.style.display='block';_typewriter(detEl,n.detail,spd);}});if(n.linked_area){ar.style.display='block';ar.textContent='🗺 '+n.linked_area+' — რუკაზე ნახვა →';}const pw=Math.min(window.innerWidth*0.9,360);p.style.cssText='display:block;left:'+((window.innerWidth-pw)/2)+'px;bottom:72px;max-width:'+pw+'px;';p.classList.add('show');}
 function toggleQuest(){const p=document.getElementById('questPopup');if(!p)return;if(p.style.display==='block'){p.style.display='none';}else{p.style.display='block';const full=p.dataset.full||(p.dataset.full=p.textContent);p.textContent='';_typewriter(p,full,60);}}
 let _slCell={col:0,row:0},_slZoom=1;
