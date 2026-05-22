@@ -408,33 +408,25 @@ body{display:flex;flex-direction:column;}
   <div id="objPropsBox">
     <h3>✎ ობიექტის Properties</h3>
 
-    <!-- tabs -->
-    <div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:2px;">
-      <button id="objTab_info" class="tab on" onclick="window._switchObjTab('info')" style="flex:1;font-size:12px;">ℹ ინფო</button>
-      <button id="objTab_dialogue" class="tab" onclick="window._switchObjTab('dialogue')" style="flex:1;font-size:12px;">💬 დიალოგი</button>
+    <!-- marker + title (always visible) -->
+    <input id="objTitleInp" placeholder="სათაური"
+      style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:13px;padding:6px 9px;border-radius:6px;">
+    <div class="marker-row">
+      <span>მარკერი:</span>
+      <button class="mkbtn on" id="mk-none" onclick="setObjMarker('')">—</button>
+      <button class="mkbtn"    id="mk-exc"  onclick="setObjMarker('!')">!</button>
+      <button class="mkbtn"    id="mk-q"    onclick="setObjMarker('?')">?</button>
+      <button class="mkbtn"    id="mk-chat" onclick="setObjMarker('💬')">💬</button>
     </div>
 
-    <!-- info tab -->
-    <div id="objTabContent_info" style="display:flex;flex-direction:column;gap:10px;">
-      <input id="objTitleInp" placeholder="სათაური (popup-ში გამოჩნდება)"
-        style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:13px;padding:6px 9px;border-radius:6px;">
-      <div class="marker-row">
-        <span>მარკერი:</span>
-        <button class="mkbtn on" id="mk-none" onclick="setObjMarker('')">—</button>
-        <button class="mkbtn"    id="mk-exc"  onclick="setObjMarker('!')">!</button>
-        <button class="mkbtn"    id="mk-q"    onclick="setObjMarker('?')">?</button>
-        <button class="mkbtn"    id="mk-chat" onclick="setObjMarker('💬')">💬</button>
-      </div>
-      <textarea id="objTooltipInp" placeholder="ტექსტი... ინტერაქციისას გამოჩნდება"></textarea>
+    <!-- dialogue -->
+    <div style="font-size:11px;color:var(--muted);line-height:1.5;">
+      გამყოფი: <code style="color:var(--accent);">---node:id---</code> — ბლოკებად ყოფს
     </div>
+    <div id="dialogueEditor" style="display:flex;flex-direction:column;gap:8px;max-height:45vh;overflow-y:auto;"></div>
 
-    <!-- dialogue tab -->
-    <div id="objTabContent_dialogue" style="display:none;flex-direction:column;gap:8px;max-height:50vh;overflow-y:auto;">
-      <div style="font-size:11px;color:var(--muted);line-height:1.5;">
-        გამყოფი: <code style="color:var(--accent);">---node:id---</code> — ტექსტს ბლოკებად ყოფს
-      </div>
-      <div id="dialogueEditor" style="display:flex;flex-direction:column;gap:8px;"></div>
-    </div>
+    <!-- hidden tooltip for backwards compat -->
+    <textarea id="objTooltipInp" style="display:none;"></textarea>
 
     <div class="mrow" style="gap:6px;">
       <button class="mbtn warn" onclick="deleteObjFromProps()" style="flex:0.6;border-color:var(--red);color:var(--red);">🗑 წაშლა</button>
