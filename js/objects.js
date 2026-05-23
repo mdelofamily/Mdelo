@@ -103,10 +103,7 @@ function _newNode() {
   return {
     id: "node_" + idx,
     text: "",
-    buttons: [
-      { label: "✅ დიახ", nextNode: "", notify: true,  notifyText: "", link: "" },
-      { label: "❌ არა",  nextNode: "", notify: false, notifyText: "", link: "" }
-    ]
+    buttons: []
   };
 }
 

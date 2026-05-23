@@ -193,9 +193,11 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
 .hs-dot{position:absolute;top:-18px;left:50%;transform:translateX(-50%);width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,0.6);box-shadow:0 0 4px rgba(255,255,255,0.8);pointer-events:none;}
 .hs-marker{position:absolute;top:-8px;left:50%;transform:translate(-50%,-50%);font-size:18px;font-weight:bold;font-family:sans-serif;line-height:1;pointer-events:auto;-webkit-text-stroke:2px rgba(0,0,0,0.9);paint-order:stroke fill;}
 .hs-marker.exc{color:#f0a500;}.hs-marker.q{color:#e8e8e8;}.hs-marker.chat{color:#4ade80;}
-#hsPopup{display:none;position:fixed;z-index:50;left:50%!important;top:50%!important;transform:translate(-50%,-50%);background:rgba(22,27,34,0.4);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(88,166,255,0.35);border-radius:10px;padding:12px 34px 12px 14px;width:min(88vw,360px);font:13px/1.7 sans-serif;color:rgba(200,210,220,0.92);}
-#hsPopup.show{display:block;}
-#hsPopupTitle{font-size:14px;font-weight:600;color:#ffffff;margin-bottom:5px;padding-right:20px;}
+#hsPopup{display:none;position:fixed;z-index:50;left:50%!important;top:50%!important;transform:translate(-50%,-50%);background:rgba(22,27,34,0.4);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(88,166,255,0.35);border-radius:10px;padding:12px 34px 12px 14px;width:min(88vw,360px);font:13px/1.7 sans-serif;color:rgba(200,210,220,0.92);display:none;flex-direction:column;max-height:60dvh;}
+#hsPopup.show{display:flex;}
+#hsPopupTitle{font-size:14px;font-weight:600;color:#ffffff;margin-bottom:5px;padding-right:20px;flex-shrink:0;}
+#hsPopupScroll{flex:1;overflow-y:auto;-webkit-mask-image:linear-gradient(to bottom,transparent 0%,black 12%,black 80%,transparent 100%);mask-image:linear-gradient(to bottom,transparent 0%,black 12%,black 80%,transparent 100%);}
+#hsPopupBtns{display:flex;flex-direction:column;gap:6px;margin-top:10px;flex-shrink:0;}
 #hsClose{position:absolute;top:10px;right:12px;background:none;border:none;color:#8b949e;font-size:18px;cursor:pointer;line-height:1;}
 .hs-area{border:none;background:transparent;cursor:pointer;border-radius:4px;}
 .hotspot.no-interact{cursor:default;pointer-events:none;}
@@ -252,7 +254,7 @@ ${mapDesc ? `<button id="questBtn" onclick="toggleQuest()">?</button><div id="qu
 <div id="notifPopup"><button id="notifClose" onclick="closeNotifPopup()">✕</button><div class="np-type" id="npType"></div><div class="np-sender" id="npSender"></div><div class="np-text" id="npText"></div><div class="np-detail" id="npDetail"></div><div class="np-area" id="npArea" style="display:none" onclick="goToArea()">🗺 რუკაზე ნახვა →</div></div>
 <button id="menuBtn" onclick="toggleMenu()">☰</button>
 <div id="gameMenu"><button class="gmClose" onclick="toggleMenu()">✕</button><div id="gmContent"></div></div>
-<div id="hsPopup"><button id="hsClose" onclick="closeHsPopup()">✕</button><div id="hsPopupTitle"></div><div id="hsPopupBody"></div><div id="hsPopupBtns" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div></div>
+<div id="hsPopup"><button id="hsClose" onclick="closeHsPopup()">✕</button><div id="hsPopupTitle"></div><div id="hsPopupScroll"><div id="hsPopupBody"></div></div><div id="hsPopupBtns"></div></div>
 <div id="areaPopup"><button class="ap-close" onclick="closeAreaPopup()">✕</button><div class="ap-title" id="areaPopupTitle"></div><div class="ap-tip" id="areaPopupTip"></div></div>
 <div id="spotLinkPopup">
   <button class="slClose" onclick="closeSlPopup()">✕</button>
@@ -347,7 +349,7 @@ function _dlgShowNode(nodeId){
       if(!btn.label)return;
       const b=document.createElement('button');
       b.textContent=btn.label;
-      b.style.cssText='flex:1;min-width:80px;height:36px;background:rgba(22,27,34,0.2);border:1px solid rgba(88,166,255,0.4);color:#e6edf3;font-size:13px;border-radius:8px;cursor:pointer;margin-top:2px;';
+      b.style.cssText='width:100%;height:40px;background:rgba(22,27,34,0.2);border:1px solid rgba(88,166,255,0.4);color:#e6edf3;font-size:13px;border-radius:8px;cursor:pointer;text-align:center;';
       b.onclick=()=>{
         if(btn.notify){
           const sender=localStorage.getItem('mdelo_sender')||'ანონიმი';
