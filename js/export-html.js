@@ -74,7 +74,7 @@ async function doExportHTML() {
 
     // build hotspot HTML
     const TS_ = TS;
-    const embeddedHotspots = objects.map(o => {
+    const embeddedHotspots = objects.map((o, oi) => {
       const ox = o.x * TS_, oy = o.y * TS_, ow = o.cols * TS_, oh = o.rows * TS_;
       const title   = ((o.title || o.lb) || "").replace(/'/g, "&#39;").replace(/"/g, "&quot;");
       const tooltip = (o.tooltip || "").replace(/'/g, "&#39;").replace(/"/g, "&quot;");
@@ -83,8 +83,7 @@ async function doExportHTML() {
       const markerHtml = hasInteraction
         ? (markerCls ? `<div class="hs-marker ${markerCls}">${o.marker}</div>` : `<div class="hs-dot"></div>`)
         : "";
-      const objJson = (o.dialogue && o.dialogue.length) ? ` data-objjson='${JSON.stringify({title:o.title,lb:o.lb,dialogue:o.dialogue}).replace(/'/g,"&#39;")}'` : "";
-      return `<div class="hotspot${hasInteraction ? "" : " no-interact"}" data-ox="${ox}" data-oy="${oy}" data-ow="${ow}" data-oh="${oh}" data-title="${title}" data-tooltip="${tooltip}"${objJson} style="left:${ox}px;top:${oy}px;width:${ow}px;height:${oh}px;">${markerHtml}</div>`;
+      return `<div class="hotspot${hasInteraction ? "" : " no-interact"}" data-ox="${ox}" data-oy="${oy}" data-ow="${ow}" data-oh="${oh}" data-title="${title}" data-tooltip="${tooltip}" data-oi="${oi}" style="left:${ox}px;top:${oy}px;width:${ow}px;height:${oh}px;">${markerHtml}</div>`;
     });
 
     const embeddedAreas = hotAreas.map(a => {
@@ -268,6 +267,7 @@ ${mapDesc ? `<button id="questBtn" onclick="toggleQuest()">?</button><div id="qu
 <div class="info">${w}\u00d7${h} \u00b7 ${COLS}\u00d7${ROWS}</div>
 <script>
 const _CFG=JSON.parse(${cfgJSLiteral});
+const _OBJS=${JSON.stringify(_objsWithSrc.map(o => ({title:o.title,lb:o.lb,dialogue:o.dialogue||[]})))};
 ${useCanvasRenderer ? _canvasRendererScript(TS) : ""}
 // ── zoom ──
 const wrap=document.getElementById('mapWrap'),inner=document.getElementById('mapInner'),sizer=document.getElementById('sizer');
@@ -280,7 +280,7 @@ wrap.addEventListener('touchmove',e=>{if(e.touches.length===2){const a=e.touches
 wrap.addEventListener('touchend',e=>{if(e.touches.length<2)wrap.style.touchAction='pan-x pan-y';},{passive:true});
 // ── hotspots ──
 function parseLinks(t){let o='',i=0;while(i<t.length){const s=t.indexOf('[[',i);if(s<0){o+=t.slice(i);break;}o+=t.slice(i,s);const e=t.indexOf(']]',s+2);if(e<0){o+=t.slice(s);break;}const inner2=t.slice(s+2,e);const p=inner2.indexOf('|');if(p<0){o+=inner2;}else{const lbl=inner2.slice(0,p),url=inner2.slice(p+1).trim(),safe=url.startsWith('http')||url.startsWith('//')||url.startsWith('/')?url:'#';o+='<a href="'+safe+'" target="_blank" style="color:#58a6ff;">'+lbl+'</a>';}i=e+2;}return o.replace(/\\n/g,'<br>');}
-wrap.addEventListener('click',e=>{if(e.target.closest('#menuBtn')||e.target.closest('#gameMenu'))return;const hs=e.target.closest('.hotspot');if(hs&&!hs.classList.contains('no-interact')){closeHsPopup();closeAreaPopup();if(hs.classList.contains('hs-area')){const t=hs.dataset.title||'',grp=hs.dataset.group||'';blinkAreasByGroupOrTitle(grp,t);if(t)openAreaPopup(t,hs.dataset.tooltip||'');}else{const objData=hs.dataset.objjson?JSON.parse(hs.dataset.objjson):null;openHsPopup(hs,hs.dataset.title||'',hs.dataset.tooltip||'',objData);}return;}if(!e.target.closest('#hsPopup')&&!e.target.closest('#areaPopup')){closeHsPopup();closeAreaPopup();}});
+wrap.addEventListener('click',e=>{if(e.target.closest('#menuBtn')||e.target.closest('#gameMenu'))return;const hs=e.target.closest('.hotspot');if(hs&&!hs.classList.contains('no-interact')){closeHsPopup();closeAreaPopup();if(hs.classList.contains('hs-area')){const t=hs.dataset.title||'',grp=hs.dataset.group||'';blinkAreasByGroupOrTitle(grp,t);if(t)openAreaPopup(t,hs.dataset.tooltip||'');}else{const oi=hs.dataset.oi;const objData=(oi!=null&&_OBJS[+oi])?_OBJS[+oi]:null;openHsPopup(hs,hs.dataset.title||'',hs.dataset.tooltip||'',objData);}return;}if(!e.target.closest('#hsPopup')&&!e.target.closest('#areaPopup')){closeHsPopup();closeAreaPopup();}});
 let _objBlinkRaf=null,_objBlinkMarker=null;
 function _startObjBlink(el){
   _stopObjBlink();
