@@ -347,7 +347,6 @@ function _dlgShowNode(nodeId){
 
   _typewriterHTML(body,parseLinks(node.text||''),35,()=>{
     if(!btnWrap)return;
-    btnWrap.style.opacity='0';
     (node.buttons||[]).forEach(btn=>{
       if(!btn.label)return;
       const b=document.createElement('button');
