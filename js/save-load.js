@@ -9,9 +9,10 @@ function getMapData() {
     cols: COLS, rows: ROWS, map, overlayMap,
     objects: objects.map(o => ({
       id: o.id, lb: o.lb, x: o.x, y: o.y, cols: o.cols, rows: o.rows,
-      ...(o.title   ? { title:   o.title   } : {}),
-      ...(o.tooltip ? { tooltip: o.tooltip } : {}),
-      ...(o.marker  ? { marker:  o.marker  } : {})
+      ...(o.title    ? { title:    o.title    } : {}),
+      ...(o.tooltip  ? { tooltip:  o.tooltip  } : {}),
+      ...(o.marker   ? { marker:   o.marker   } : {}),
+      ...(o.dialogue && o.dialogue.length ? { dialogue: o.dialogue } : {})
     })),
     custom: customTiles.map(t => ({
       id: t.id, lb: t.lb,
@@ -66,7 +67,7 @@ function _applyLoadedData(d) {
   const dts     = d.dualTiles || [];
   const total   = customs.length + ats.length + dts.length;
   let   loaded  = 0;
-  let   called  = false; // guard: finalise only once
+  let   called  = false;
 
   function done() {
     loaded++;
@@ -109,7 +110,6 @@ function loadMap(e) {
 
       _applyLoadedData(d);
 
-      // restore legend / hotspot data
       if (d.legendDesc  != null) document.getElementById("legTabDesc").value = d.legendDesc || "";
       if (d.legendLabels)        _legendLabels = { ...(d.legendLabels || {}) };
       if (d.legendMenu)          { _menuSections = d.legendMenu || []; renderMenuBuilder(); }
@@ -125,8 +125,8 @@ function loadMap(e) {
 }
 
 // ── WINDOW BINDINGS ──
-window.getMapData      = getMapData;
-window.saveMap         = saveMap;
-window.restoreObjects  = restoreObjects;
-window.loadMap         = loadMap;
+window.getMapData       = getMapData;
+window.saveMap          = saveMap;
+window.restoreObjects   = restoreObjects;
+window.loadMap          = loadMap;
 window._applyLoadedData = _applyLoadedData;
