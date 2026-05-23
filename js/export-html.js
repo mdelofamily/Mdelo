@@ -196,7 +196,8 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
 #hsPopup{display:none;position:fixed;z-index:50;left:50%!important;top:50%!important;transform:translate(-50%,-50%);background:rgba(22,27,34,0.4);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(88,166,255,0.35);border-radius:10px;padding:12px 34px 12px 14px;width:min(88vw,360px);font:13px/1.7 sans-serif;color:rgba(200,210,220,0.92);display:none;flex-direction:column;max-height:60dvh;}
 #hsPopup.show{display:flex;}
 #hsPopupTitle{font-size:14px;font-weight:600;color:#ffffff;margin-bottom:5px;padding-right:20px;flex-shrink:0;}
-#hsPopupScroll{flex:1;overflow-y:auto;-webkit-mask-image:linear-gradient(to bottom,transparent 0%,black 12%,black 80%,transparent 100%);mask-image:linear-gradient(to bottom,transparent 0%,black 12%,black 80%,transparent 100%);}
+#hsPopupScroll{height:88px;overflow-y:auto;-webkit-mask-image:linear-gradient(to bottom,transparent 0%,black 12%,black 80%,transparent 100%);mask-image:linear-gradient(to bottom,transparent 0%,black 12%,black 80%,transparent 100%);scrollbar-width:none;}
+#hsPopupScroll::-webkit-scrollbar{display:none;}
 #hsPopupBtns{display:flex;flex-direction:column;gap:6px;margin-top:10px;flex-shrink:0;}
 #hsClose{position:absolute;top:10px;right:12px;background:none;border:none;color:#8b949e;font-size:18px;cursor:pointer;line-height:1;}
 .hs-area{border:none;background:transparent;cursor:pointer;border-radius:4px;}
