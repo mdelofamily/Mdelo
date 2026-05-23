@@ -136,7 +136,8 @@ async function doExportHTML() {
     const html = _buildViewerHTML({
       title: currentProjectName || "RPG Map",
       w, h, b64, useCanvasRenderer, cfgJSLiteral,
-      allHotspots, mapDesc, COLS, ROWS, TS
+      allHotspots, mapDesc, COLS, ROWS, TS,
+      objsData: mapData.objects.map(o => ({title:o.title,lb:o.lb,dialogue:o.dialogue||[]}))
     });
 
     downloadFile(html, fname + ".html", "text/html");
@@ -145,7 +146,7 @@ async function doExportHTML() {
 }
 
 // ── VIEWER HTML BUILDER ──
-function _buildViewerHTML({ title, w, h, b64, useCanvasRenderer, cfgJSLiteral, allHotspots, mapDesc, COLS, ROWS, TS }) {
+function _buildViewerHTML({ title, w, h, b64, useCanvasRenderer, cfgJSLiteral, allHotspots, mapDesc, COLS, ROWS, TS, objsData }) {
   return `<!DOCTYPE html>
 <html lang="ka">
 <head>
@@ -267,7 +268,7 @@ ${mapDesc ? `<button id="questBtn" onclick="toggleQuest()">?</button><div id="qu
 <div class="info">${w}\u00d7${h} \u00b7 ${COLS}\u00d7${ROWS}</div>
 <script>
 const _CFG=JSON.parse(${cfgJSLiteral});
-const _OBJS=${JSON.stringify(mapData.objects.map(o => ({title:o.title,lb:o.lb,dialogue:o.dialogue||[]})))};
+const _OBJS=${JSON.stringify(objsData)};
 ${useCanvasRenderer ? _canvasRendererScript(TS) : ""}
 // ── zoom ──
 const wrap=document.getElementById('mapWrap'),inner=document.getElementById('mapInner'),sizer=document.getElementById('sizer');
