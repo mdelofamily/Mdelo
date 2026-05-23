@@ -99,8 +99,9 @@ function deleteObjFromProps() {
 let _editingDialogue = [];
 
 function _newNode() {
+  const idx = _editingDialogue.length;
   return {
-    id: "node_" + Date.now(),
+    id: "node_" + idx,
     text: "",
     buttons: [
       { label: "✅ დიახ", nextNode: "", notify: true,  notifyText: "", link: "" },
