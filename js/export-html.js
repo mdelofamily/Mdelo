@@ -324,67 +324,40 @@ const SUPA_URL_D='https://miqenmsgwkkmtxwwbxzo.supabase.co';
 const SUPA_KEY_D='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1pcWVubXNnd2trbXR4d3dieHpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzMDc0NzYsImV4cCI6MjA5NDg4MzQ3Nn0.VfJgVoPC-ZbjlcuwMriYrNXb-3E2OgC92nOR9hOPgKI';
 let _dlgNodes={},_dlgObj=null,_dlgTwTimer=null;
 
-function _parseNodes(text){
-  const result={};
-  const parts=text.split(/---node:([^-]+)---/);
-  let first=null;
-  if(parts.length===1){result['__main__']=text.trim();return{nodes:result,first:'__main__'};}
-  for(let i=0;i<parts.length;i+=2){
-    const txt=(parts[i]||'').trim();
-    const id=parts[i+1]||'__main__';
-    if(txt||i===0){if(!first)first=i===0?'__main__':id;result[i===0?'__main__':id]=txt;}
-    if(parts[i+1]){if(!first)first=parts[i+1];result[parts[i+1]]=(parts[i+2]||'').trim();}
-  }
-  // simpler parse
-  const segs=text.split(/(---node:[^-]+---)/);
-  const r2={};let f2=null;
-  for(let i=0;i<segs.length;i++){
-    if(segs[i].startsWith('---node:')){
-      const id=segs[i].slice(8,-3);
-      r2[id]=(segs[i+1]||'').trim();
-      if(!f2)f2=id;
-      i++;
-    } else if(i===0&&segs[i].trim()){
-      r2['__first__']=segs[i].trim();
-      f2='__first__';
-    }
-  }
-  return{nodes:r2,first:f2};
+function _parseNodes(dialogue){
+  // dialogue is array of node objects from editor
+  const nodes={};
+  (dialogue||[]).forEach(n=>{ nodes[n.id]=n; });
+  const first=dialogue&&dialogue.length?dialogue[0].id:null;
+  return{nodes,first};
 }
 
 function _dlgShowNode(nodeId){
-  const text=_dlgNodes[nodeId]||'';
+  const node=_dlgNodes[nodeId];
+  if(!node)return;
   const body=document.getElementById('hsPopupBody');
   const btnWrap=document.getElementById('hsPopupBtns');
   if(btnWrap)btnWrap.innerHTML='';
-  if(_dlgTwTimer){clearInterval(_dlgTwTimer);_dlgTwTimer=null;}
+  body.innerHTML='';
 
-  _typewriterHTML(body,parseLinks(text),35,()=>{
-    // show buttons after typewriter
-    if(!_dlgObj||!_dlgObj.dialogue)return;
-    // find node's buttons
-    const nodeDef=_dlgObj.dialogue.find(n=>n.id===nodeId);
-    if(!nodeDef||!nodeDef.buttons||!nodeDef.buttons.length)return;
+  _typewriterHTML(body,parseLinks(node.text||''),35,()=>{
     if(!btnWrap)return;
-    nodeDef.buttons.forEach(btn=>{
+    (node.buttons||[]).forEach(btn=>{
       if(!btn.label)return;
       const b=document.createElement('button');
       b.textContent=btn.label;
-      b.style.cssText='flex:1;min-width:80px;height:36px;background:var(--panel,rgba(22,27,34,0.9));border:1px solid rgba(88,166,255,0.4);color:#e6edf3;font-size:13px;border-radius:8px;cursor:pointer;';
+      b.style.cssText='flex:1;min-width:80px;height:36px;background:rgba(22,27,34,0.9);border:1px solid rgba(88,166,255,0.4);color:#e6edf3;font-size:13px;border-radius:8px;cursor:pointer;margin-top:2px;';
       b.onclick=()=>{
-        // notify
         if(btn.notify){
           const sender=localStorage.getItem('mdelo_sender')||'ანონიმი';
-          const txt=btn.notifyText||(sender+' — '+btn.label+' ('+(_dlgObj.title||_dlgObj.lb||'')+')');
+          const txt=btn.notifyText||(sender+' — '+btn.label);
           fetch(SUPA_URL_D+'/rest/v1/notifications',{
             method:'POST',
             headers:{'Content-Type':'application/json','apikey':SUPA_KEY_D,'Authorization':'Bearer '+SUPA_KEY_D,'Prefer':'return=minimal'},
             body:JSON.stringify({type:'info',symbol:'💬',text:txt,sender:sender,linked_area:''})
           }).catch(()=>{});
         }
-        // link
         if(btn.link)window.open(btn.link,'_blank');
-        // next node
         if(btn.nextNode&&_dlgNodes[btn.nextNode]){
           _dlgShowNode(btn.nextNode);
         } else {
@@ -409,11 +382,10 @@ function openHsPopup(el,title,raw,obj){
   wrap.style.overflow='hidden';
   if(el)_startObjBlink(el);
 
-  // check dialogue
-  if(obj&&obj.dialogue&&obj.dialogue.length>0&&obj.dialogue[0].text){
-    const parsed=_parseNodes(obj.dialogue[0].text);
+  if(obj&&obj.dialogue&&obj.dialogue.length>0){
+    const parsed=_parseNodes(obj.dialogue);
     _dlgNodes=parsed.nodes;
-    _dlgShowNode(parsed.first||obj.dialogue[0].id);
+    if(parsed.first)_dlgShowNode(parsed.first);
   } else {
     _typewriterHTML(document.getElementById('hsPopupBody'),parseLinks(raw||''),35);
   }
