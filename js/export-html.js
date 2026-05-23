@@ -347,7 +347,7 @@ function _dlgShowNode(nodeId){
       if(!btn.label)return;
       const b=document.createElement('button');
       b.textContent=btn.label;
-      b.style.cssText='flex:1;min-width:80px;height:36px;background:rgba(22,27,34,0.9);border:1px solid rgba(88,166,255,0.4);color:#e6edf3;font-size:13px;border-radius:8px;cursor:pointer;margin-top:2px;';
+      b.style.cssText='flex:1;min-width:80px;height:36px;background:rgba(22,27,34,0.2);border:1px solid rgba(88,166,255,0.4);color:#e6edf3;font-size:13px;border-radius:8px;cursor:pointer;margin-top:2px;';
       b.onclick=()=>{
         if(btn.notify){
           const sender=localStorage.getItem('mdelo_sender')||'ანონიმი';
