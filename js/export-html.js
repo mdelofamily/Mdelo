@@ -372,7 +372,7 @@ function _dlgShowNode(nodeId){
       };
       btnWrap.appendChild(b);
     });
-    requestAnimationFrame(()=>{ btnWrap.classList.add('visible'); });
+    setTimeout(()=>{ btnWrap.classList.add('visible'); }, 50);
   },()=>{
     // auto-scroll as typewriter types
     const scroll=document.getElementById('hsPopupScroll');
