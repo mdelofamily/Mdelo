@@ -78,7 +78,7 @@ async function doExportHTML() {
       const ox = o.x * TS_, oy = o.y * TS_, ow = o.cols * TS_, oh = o.rows * TS_;
       const title   = ((o.title || o.lb) || "").replace(/'/g, "&#39;").replace(/"/g, "&quot;");
       const tooltip = (o.tooltip || "").replace(/'/g, "&#39;").replace(/"/g, "&quot;");
-      const hasInteraction = (o.tooltip || o.title || o.marker || (o.dialogue && o.dialogue.length)) && (o.title || o.marker || o.dialogue?.length);
+      const hasInteraction = !!(o.title || o.marker || (o.dialogue && o.dialogue.length && o.dialogue[0].text));
       const markerCls = o.marker === "!" ? "exc" : o.marker === "?" ? "q" : o.marker === "💬" ? "chat" : "";
       const markerHtml = hasInteraction
         ? (markerCls ? `<div class="hs-marker ${markerCls}">${o.marker}</div>` : `<div class="hs-dot"></div>`)
