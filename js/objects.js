@@ -56,6 +56,11 @@ function openObjProps(idx) {
   document.getElementById("objPropsModal").classList.add("show");
 }
 
+function closeObjProps() {
+  document.getElementById("objPropsModal").classList.remove("show");
+  _editingObjIdx = -1;
+}
+
 function setObjMarker(m) {
   _editingObjMarker = m;
   _syncMarkerBtns(m);
