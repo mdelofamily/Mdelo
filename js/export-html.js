@@ -267,7 +267,7 @@ ${mapDesc ? `<button id="questBtn" onclick="toggleQuest()">?</button><div id="qu
 <div class="info">${w}\u00d7${h} \u00b7 ${COLS}\u00d7${ROWS}</div>
 <script>
 const _CFG=JSON.parse(${cfgJSLiteral});
-const _OBJS=${JSON.stringify(_objsWithSrc.map(o => ({title:o.title,lb:o.lb,dialogue:o.dialogue||[]})))};
+const _OBJS=${JSON.stringify(mapData.objects.map(o => ({title:o.title,lb:o.lb,dialogue:o.dialogue||[]})))};
 ${useCanvasRenderer ? _canvasRendererScript(TS) : ""}
 // ── zoom ──
 const wrap=document.getElementById('mapWrap'),inner=document.getElementById('mapInner'),sizer=document.getElementById('sizer');
