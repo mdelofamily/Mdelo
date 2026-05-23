@@ -375,7 +375,7 @@ function _dlgShowNode(nodeId){
   },()=>{
     // auto-scroll as typewriter types
     const scroll=document.getElementById('hsPopupScroll');
-    if(scroll){const target=scroll.scrollHeight;const start=scroll.scrollTop;const diff=target-start;let t=0;const step=()=>{t+=16;scroll.scrollTop=start+diff*(t/400);if(t<400)requestAnimationFrame(step);};requestAnimationFrame(step);}
+    if(scroll){const target=scroll.scrollHeight;const start=scroll.scrollTop;const diff=target-start;let t=0;const step=()=>{t+=16;scroll.scrollTop=start+diff*(t/250);if(t<250)requestAnimationFrame(step);};requestAnimationFrame(step);}
   });
 }
 
