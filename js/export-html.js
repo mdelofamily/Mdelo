@@ -381,7 +381,7 @@ function _dlgShowNode(nodeId){
       const diff=target-start;
       if(diff<=0)return;
       let t=0;
-      const dur=300;
+      const dur=150;
       const step=()=>{
         t+=16;
         const p=Math.min(t/dur,1);
