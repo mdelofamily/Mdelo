@@ -152,6 +152,11 @@ function _buildViewerHTML({ title, w, h, b64, useCanvasRenderer, cfgJSLiteral, a
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#f0a500">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="logo.png">
 <title>${title}</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
@@ -193,13 +198,13 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
 .hs-dot{position:absolute;top:-18px;left:50%;transform:translateX(-50%);width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,0.6);box-shadow:0 0 4px rgba(255,255,255,0.8);pointer-events:none;}
 .hs-marker{position:absolute;top:-8px;left:50%;transform:translate(-50%,-50%);font-size:18px;font-weight:bold;font-family:sans-serif;line-height:1;pointer-events:auto;-webkit-text-stroke:2px rgba(0,0,0,0.9);paint-order:stroke fill;}
 .hs-marker.exc{color:#f0a500;}.hs-marker.q{color:#e8e8e8;}.hs-marker.chat{color:#4ade80;}
-#hsPopup{display:none;position:fixed;z-index:50;left:50%!important;top:20%!important;transform:translateX(-50%)!important;background:rgba(22,27,34,0.4);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(88,166,255,0.35);border-radius:10px;padding:12px 34px 12px 14px;width:min(88vw,360px);font:13px/1.7 sans-serif;color:rgba(200,210,220,0.92);flex-direction:column;}
+#hsPopup{display:none;position:fixed;z-index:50;left:50%!important;top:50%!important;transform:translate(-50%,-50%);background:rgba(22,27,34,0.4);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(88,166,255,0.35);border-radius:10px;padding:12px 34px 12px 14px;width:min(88vw,360px);font:13px/1.7 sans-serif;color:rgba(200,210,220,0.92);flex-direction:column;}
 #hsPopup.show{display:flex;}
 #hsPopupTitle{font-size:14px;font-weight:600;color:#ffffff;margin-bottom:5px;padding-right:20px;flex-shrink:0;}
-#hsPopupScroll{height:88px;overflow-y:auto;-webkit-mask-image:linear-gradient(to bottom,transparent 0%,black 15%,black 75%,transparent 100%);mask-image:linear-gradient(to bottom,transparent 0%,black 15%,black 75%,transparent 100%);scrollbar-width:none;}
+#hsPopupScroll{height:88px;overflow-y:auto;-webkit-mask-image:linear-gradient(to bottom,transparent 0%,black 12%,black 80%,transparent 100%);mask-image:linear-gradient(to bottom,transparent 0%,black 12%,black 80%,transparent 100%);scrollbar-width:none;}
 #hsPopupScroll::-webkit-scrollbar{display:none;}
-#hsPopupBtns{display:flex;flex-direction:column;gap:6px;flex-shrink:0;max-height:0;overflow:hidden;opacity:0;transition:max-height 0.5s cubic-bezier(0.4,0,0.2,1),margin-top 0.5s ease,opacity 0.4s ease 0.2s;}
-#hsPopupBtns.visible{max-height:400px;margin-top:10px;opacity:1;}
+#hsPopupBtns{display:flex;flex-direction:column;gap:6px;margin-top:10px;flex-shrink:0;min-height:52px;transition:opacity 0.3s ease;}
+#hsPopupBtns:empty{min-height:0;margin-top:0;}
 #hsClose{position:absolute;top:10px;right:12px;background:none;border:none;color:#8b949e;font-size:18px;cursor:pointer;line-height:1;}
 .hs-area{border:none;background:transparent;cursor:pointer;border-radius:4px;}
 .hotspot.no-interact{cursor:default;pointer-events:none;}
@@ -342,11 +347,12 @@ function _dlgShowNode(nodeId){
   if(!node)return;
   const body=document.getElementById('hsPopupBody');
   const btnWrap=document.getElementById('hsPopupBtns');
-  if(btnWrap){btnWrap.innerHTML='';btnWrap.classList.remove('visible');}
+  if(btnWrap)btnWrap.innerHTML='';
   body.innerHTML='';
 
   _typewriterHTML(body,parseLinks(node.text||''),35,()=>{
     if(!btnWrap)return;
+    btnWrap.style.opacity='0';
     (node.buttons||[]).forEach(btn=>{
       if(!btn.label)return;
       const b=document.createElement('button');
@@ -371,25 +377,11 @@ function _dlgShowNode(nodeId){
       };
       btnWrap.appendChild(b);
     });
-    setTimeout(()=>{ btnWrap.classList.add('visible'); }, 50);
+    requestAnimationFrame(()=>{ btnWrap.style.opacity='1'; });
   },()=>{
-    // smooth scroll follows typewriter
+    // auto-scroll as typewriter types
     const scroll=document.getElementById('hsPopupScroll');
-    if(scroll){
-      const target=scroll.scrollHeight-scroll.clientHeight;
-      const start=scroll.scrollTop;
-      const diff=target-start;
-      if(diff<=0)return;
-      let t=0;
-      const dur=150;
-      const step=()=>{
-        t+=16;
-        const p=Math.min(t/dur,1);
-        scroll.scrollTop=start+diff*(p<0.5?2*p*p:(1-(2-2*p)*(2-2*p)/2));
-        if(t<dur)requestAnimationFrame(step);
-      };
-      requestAnimationFrame(step);
-    }
+    if(scroll)scroll.scrollTop=scroll.scrollHeight;
   });
 }
 
@@ -469,7 +461,7 @@ const SUPA_URL='https://miqenmsgwkkmtxwwbxzo.supabase.co';
 const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1pcWVubXNnd2trbXR4d3dieHpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzMDc0NzYsImV4cCI6MjA5NDg4MzQ3Nn0.VfJgVoPC-ZbjlcuwMriYrNXb-3E2OgC92nOR9hOPgKI';
 const TYPE_LABELS={info:'ინფო',warning:'გაფრთხილება',danger:'საფრთხე',emergency:'განგაში',done:'მზადაა',project:'პროექტი'};
 let _notifs=[],_curNotif=null;
-async function loadNotifs(){try{const r=await fetch(SUPA_URL+'/rest/v1/notifications?order=created_at.desc&limit=20',{headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY}});if(!r.ok)return;_notifs=await r.json();renderNotifBar();}catch(e){}}
+async function loadNotifs(){try{const r=await fetch(SUPA_URL+'/rest/v1/notifications?order=created_at.desc&limit=20',{headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY}});if(!r.ok)return;_notifs=await r.json();renderNotifBar();if(navigator.setAppBadge&&_notifs.length){navigator.setAppBadge(_notifs.length);}else if(navigator.clearAppBadge){navigator.clearAppBadge();}}catch(e){}}
 function renderNotifBar(){const bar=document.getElementById('notifBar');if(!bar)return;bar.innerHTML='';if(!_notifs.length)return;const MAX=4;const visible=_notifs.slice(0,MAX);visible.forEach(n=>{const c=document.createElement('div');c.className='ncard'+(n.type==='emergency'?' pulse':'');c.dataset.type=n.type||'info';c.title=n.text||'';c.textContent=n.symbol||'💬';c.onclick=()=>openNotifPopup(n);bar.appendChild(c);});if(_notifs.length>MAX){const hidden=_notifs.length-MAX;const more=document.createElement('div');more.style.cssText='width:44px;height:44px;border-radius:10px;background:rgba(13,17,23,0.65);backdrop-filter:blur(8px);border:1px solid #30363d;color:#8b949e;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0.82;';more.textContent='+'+hidden;more.onclick=()=>openNotifList();bar.appendChild(more);}}
 function openNotifList(){closeNotifPopup();const p=document.getElementById('notifPopup');p.style.setProperty('--nc','#58a6ff');document.getElementById('npType').textContent='ყველა შეტყობინება';document.getElementById('npSender').textContent='';const body=document.getElementById('npText');body.innerHTML='';_notifs.forEach(n=>{const row=document.createElement('div');row.style.cssText='display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(48,54,61,0.4);cursor:pointer;';row.innerHTML='<span style="font-size:16px;">'+(n.symbol||'💬')+'</span><span style="font-size:12px;color:#e6edf3;flex:1;">'+(n.text||'')+'</span>';row.onclick=()=>openNotifPopup(n);body.appendChild(row);});document.getElementById('npDetail').textContent='';document.getElementById('npDetail').style.display='none';document.getElementById('npArea').style.display='none';const pw=Math.min(window.innerWidth*0.9,360);p.style.cssText='display:block;left:'+((window.innerWidth-pw)/2)+'px;bottom:72px;max-width:'+pw+'px;';p.classList.add('show');}
 function closeNotifPopup(){const p=document.getElementById('notifPopup');p.classList.remove('show');p.style.display='none';}
