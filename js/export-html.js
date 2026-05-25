@@ -104,7 +104,7 @@ async function doExportHTML() {
 
     // draw full map
     const _full = document.createElement("canvas");
-    _full.width = offscreen.width; _full.height = offscreen.height;
+    _full.width = offscreen.width + TS/2; _full.height = offscreen.height + TS/2;
     const _fctx = _full.getContext("2d"); _fctx.imageSmoothingEnabled = false;
     _fctx.fillStyle = "#111"; _fctx.fillRect(0, 0, _full.width, _full.height);
     _fctx.drawImage(offscreen, 0, 0);
