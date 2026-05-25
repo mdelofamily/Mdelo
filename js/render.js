@@ -20,7 +20,7 @@ function drawCell(ctx, col, row) {
   const id = map[row][col];
   if (!id) {
     ctx.clearRect(col * TS, row * TS, TS, TS);
-    ctx.fillStyle = "#3a5c2a";
+    ctx.fillStyle = "#111";
     ctx.fillRect(col * TS, row * TS, TS, TS);
     return;
   }
@@ -33,6 +33,8 @@ function drawCell(ctx, col, row) {
 }
 
 // ── REBUILD OFFSCREEN BUFFER ──
+// Full repaint of all layers onto offscreen canvas.
+// Call whenever map data changes.
 function rebuildOff() {
   if (!offscreen) offscreen = document.createElement("canvas");
   if (offscreen.width  !== COLS * TS) offscreen.width  = COLS * TS;
@@ -44,13 +46,14 @@ function rebuildOff() {
   offCtx.fillStyle = "#3a5c2a";
   offCtx.fillRect(0, 0, offscreen.width, offscreen.height);
 
-  // clip to exact map bounds — dual grid overflow cut at edges
+  // clip to exact map bounds — dual grid overflow will be cut at edges
   offCtx.save();
   offCtx.beginPath();
   offCtx.rect(0, 0, COLS * TS, ROWS * TS);
   offCtx.clip();
 
   // ── BASE LAYER ──
+  // Pass 1: non-auto, non-dual tiles
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       const id = map[r][c]; if (!id) continue;
@@ -58,7 +61,9 @@ function rebuildOff() {
       drawTile(offCtx, id, c * TS, r * TS, TS);
     }
   }
+  // Pass 2: dual grid (clipped — no overflow at edges)
   if (dualTiles.length > 0) renderDualGrid(offCtx, map);
+  // Pass 3: autotiles
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       const id = map[r][c]; if (!id) continue;
@@ -70,6 +75,7 @@ function rebuildOff() {
 
   // ── OVERLAY LAYER ──
   if (!overlayMap.length) { offCtx.restore(); return; }
+  // Pass 4: overlay non-auto, non-dual
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       const id = overlayMap[r]?.[c]; if (!id) continue;
@@ -77,7 +83,9 @@ function rebuildOff() {
       drawTile(offCtx, id, c * TS, r * TS, TS);
     }
   }
+  // Pass 5: overlay dual grid (clipped)
   if (dualTiles.length > 0) renderDualGrid(offCtx, overlayMap);
+  // Pass 6: overlay autotiles
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       const id = overlayMap[r]?.[c]; if (!id) continue;
@@ -131,6 +139,7 @@ function render() {
     }
   });
 
+  // object markers
   objects.forEach(obj => {
     if (!obj.marker) return;
     const cx = (obj.x + obj.cols / 2) * TS;
@@ -148,6 +157,7 @@ function render() {
     ctx.restore();
   });
 
+  // obj_place preview
   if ((curTool === "obj_place") && (lockedPos || hoverCell)) {
     const obj = getObjDef(curTile);
     if (obj) {
@@ -176,6 +186,7 @@ function render() {
     }
   }
 
+  // obj_move selection outline
   if (curTool === "obj_move" && selectedObj !== null && objects[selectedObj]) {
     const o = objects[selectedObj];
     ctx.strokeStyle = "#f0a500"; ctx.lineWidth = 2 / zoom;
@@ -184,6 +195,7 @@ function render() {
     ctx.setLineDash([]);
   }
 
+  // 2b) area hotspots
   const previewArea =
     _pendingArea && hoverCell
       ? { x1: Math.min(_pendingArea.x1, hoverCell.col),
@@ -199,6 +211,7 @@ function render() {
 
   const allAreas = [...hotAreas, ...(previewArea ? [{ ...previewArea, _preview: true }] : [])];
 
+  // grouped areas (union fill)
   const drawnGroups = new Set();
   allAreas.filter(a => a.groupId && !a._preview).forEach(a => {
     if (drawnGroups.has(a.groupId)) return;
@@ -222,6 +235,7 @@ function render() {
     }
   });
 
+  // non-grouped areas
   allAreas.filter(a => !a.groupId || a._preview).forEach(a => {
     const ax = a.x1 * TS, ay = a.y1 * TS, aw = (a.x2 - a.x1) * TS, ah = (a.y2 - a.y1) * TS;
     const col = a._preview ? "#facc15" : "#58a6ff";
