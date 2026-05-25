@@ -160,7 +160,7 @@ function _buildViewerHTML({ title, w, h, b64, useCanvasRenderer, cfgJSLiteral, a
 <title>${title}</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
+body{background:#ff0000;overflow:hidden;width:100vw;height:100dvh;}
 #mapWrap{width:100vw;height:100dvh;overflow:scroll;cursor:grab;touch-action:pan-x pan-y;-webkit-overflow-scrolling:touch;position:relative;}
 #mapWrap:active{cursor:grabbing;}
 #sizer{position:absolute;top:0;left:0;pointer-events:none;}
