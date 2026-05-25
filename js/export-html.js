@@ -104,7 +104,7 @@ async function doExportHTML() {
 
     // draw full map
     const _full = document.createElement("canvas");
-    _full.width = COLS * TS - TS; _full.height = ROWS * TS - TS;
+    _full.width = offscreen.width; _full.height = offscreen.height;
     const _fctx = _full.getContext("2d"); _fctx.imageSmoothingEnabled = false;
     _fctx.fillStyle = "#111"; _fctx.fillRect(0, 0, _full.width, _full.height);
     _fctx.drawImage(offscreen, 0, 0);
@@ -118,7 +118,7 @@ async function doExportHTML() {
       }
     });
 
-    const CROP = 0;
+    const CROP = 1;
     const exp  = document.createElement("canvas");
     exp.width  = _full.width  - CROP * 2;
     exp.height = _full.height - CROP * 2;
