@@ -63,7 +63,7 @@ async function doExportHTML() {
     });
 
     const embeddedCfg = JSON.stringify({
-      title: currentProjectName || "RPG Map",
+      title: currentProjectName || "მდელო",
       description: mapDesc,
       menu: getMenuData(),
       cols: COLS, rows: ROWS,
