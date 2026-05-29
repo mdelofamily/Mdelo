@@ -169,7 +169,7 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
 #topbar{position:fixed;top:0;left:0;right:0;z-index:10;display:flex;align-items:center;gap:10px;padding:7px 12px;background:rgba(13,17,23,0.55);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-bottom:1px solid rgba(48,54,61,0.35);pointer-events:none;}
 #topbar>*{pointer-events:auto;}
 #mapTitle{font:13px sans-serif;color:rgba(230,237,243,0.65);}
-#termBtn{background:transparent;border:none;color:rgba(230,237,243,0.65);font:13px sans-serif;cursor:pointer;padding:0;letter-spacing:.01em;transition:color .15s;pointer-events:auto;}
+#termBtn{display:none;background:transparent;border:none;color:rgba(230,237,243,0.65);font:13px sans-serif;cursor:pointer;padding:0;letter-spacing:.01em;transition:color .15s;pointer-events:auto;}
 #termBtn:hover{color:#00ff88;}
 #termBtn .tm-tilde{color:#00ff88;margin-right:2px;opacity:.8;}
 #mdlTerm{position:fixed;top:0;left:0;right:0;height:46vh;z-index:998;display:flex;flex-direction:column;background:rgba(0,0,0,.25);backdrop-filter:blur(2px) saturate(.75);-webkit-backdrop-filter:blur(2px) saturate(.75);border-bottom:1px solid rgba(0,255,136,.15);box-shadow:0 6px 32px rgba(0,0,0,.55);transform:translateY(-100%);transition:transform 220ms cubic-bezier(.22,1,.36,1);overflow:hidden;}
