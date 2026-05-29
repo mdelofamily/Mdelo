@@ -527,9 +527,8 @@ window.addEventListener('load',()=>{
 window.addEventListener('hashchange',()=>{applySpotHash();applyAreaHash();});
 // ── terminal ──
 function _tmInit(){
-  var isPWA=window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
-  if(!isPWA)return;
   document.getElementById('termBtn').style.display='block';
+  document.getElementById('mapTitle').style.display='none';
   document.getElementById('mapTitle').style.display='none';
 }
 var _tmOpen=false,_tmFull=false,_tmHist=[],_tmHIdx=-1,_tmHCur='';
