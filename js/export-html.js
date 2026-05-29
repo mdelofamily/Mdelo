@@ -516,6 +516,7 @@ window.addEventListener('load',()=>{
   _startRealtime();
   applySpotHash();
   applyAreaHash();
+  _tmInit();
   if('serviceWorker' in navigator){
     navigator.serviceWorker.register('sw.js').then(reg=>{
       if('periodicSync' in reg){reg.periodicSync.register('notif-check',{minInterval:5*60*1000}).catch(()=>{});}
