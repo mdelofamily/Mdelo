@@ -195,7 +195,7 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
 .tl.tok{color:#00ff88;opacity:.7;}.tl.tok::before{content:'\\2713 ';}
 .tl.tnf{color:#ffcc00;opacity:.8;}.tl.tnf::before{content:'\\00b7 ';}
 .tl.ter{color:#ff5555;}.tl.ter::before{content:'\\2717 ';}
-.tl.tdm{color:#555;font-size:12px;}
+.tl.tdm{color:#aaa;font-size:12px;}
 .tl.tsy{color:#3a7a4a;font-size:11px;letter-spacing:.05em;opacity:.7;}.tl.tsy::before{content:'# ';}
 .tm-ir{position:relative;z-index:1;display:flex;align-items:center;padding:7px 13px;border-top:1px solid rgba(0,255,136,.09);background:rgba(0,0,0,.2);flex-shrink:0;}
 .tm-pr{color:#00ff88;font-family:'Courier New',monospace;font-size:13px;margin-right:7px;opacity:.45;white-space:nowrap;}
@@ -282,7 +282,7 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
 <body>
 <div id="topbar"><button id="termBtn" onclick="toggleTerm()"><span class="tm-tilde">~</span>${title}</button><span id="mapTitle">${title}</span></div>
 <div id="mdlTerm">
-  <div class="tm-wm"><img src="logo.png" alt="" onerror="this.style.display=\'none\'"><span class="tm-wm-txt">MDELO</span></div>
+  <div class="tm-wm"><img src="logo.png" alt="" onerror="this.style.display=\'none\'"></div>
   <div class="tm-hdr"><span class="tm-path"><em>~/</em>mdelo</span><div class="tm-ctrl"><button id="tmFullBtn" onclick="tmToggleFull()">\u26F6</button><button onclick="tmClear()">\u232B</button><button onclick="closeTerm()">\u2715</button></div></div>
   <div id="tmOut"></div>
   <div class="tm-ir"><span class="tm-pr">~/mdelo $</span><input id="tmIn" autocomplete="off" spellcheck="false" placeholder="\u10D1\u10E0\u10eb\u10d0\u10dc\u10d4\u10d1\u10d0..."><span id="tmHint"></span></div>
