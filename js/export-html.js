@@ -293,7 +293,7 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
   <div class="tm-wm"><img src="logo.png" alt="" onerror="this.style.display=\'none\'"></div>
   <div class="tm-hdr"><span class="tm-path"><em>~/</em>mdelo</span><div class="tm-ctrl"><button id="tmFullBtn" onclick="tmToggleFull()">\u26F6</button><button onclick="tmClear()">\u232B</button><button onclick="closeTerm()">\u2715</button></div></div>
   <div id="tmOut"></div>
-  <div class="tm-ir"><span class="tm-pr">~/mdelo $</span><button id="tmSlashBtn" onclick="tmInsertSlash()" title="/ ბრძანება">/</button><input id="tmIn" autocomplete="off" spellcheck="false" placeholder="\u10D0\u10D9\u10E0\u10D4\u10D1\u10D4 \u10E2\u10D4\u10E5\u10E1\u10E2\u10D8 \u10D0\u10DC \u10D3\u10D0\u10EC\u10D4\u10E8\u10D8 /\u10D1\u10E0\u10eb\u10d0\u10dc\u10d0..."><span id="tmHint"></span></div>
+  <div class="tm-ir"><span class="tm-pr">~/mdelo $</span><button id="tmSlashBtn" onclick="tmInsertSlash()" title="/ ბრძანება">/</button><input id="tmIn" autocomplete="off" spellcheck="false" placeholder="..."><span id="tmHint"></span></div>
 </div>
 <div id="mapWrap">
   <div id="sizer" style="width:${w}px;height:${h}px;"></div>
