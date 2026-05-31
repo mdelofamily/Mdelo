@@ -148,12 +148,13 @@ function render() {
     ctx.save();
     ctx.font = "bold " + fs + "px sans-serif";
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    const col = obj.marker === "!" ? "#f0a500" : obj.marker === "?" ? "#e0e0e0" : "#4ade80";
+    const col = obj.marker === "!" ? "#f0a500" : obj.marker === "?" ? "#e0e0e0" : "#58a6ff";
+    const markerTxt = obj.marker === "💬" ? "..." : obj.marker;
     ctx.strokeStyle = "rgba(0,0,0,0.95)";
     ctx.lineWidth = fs * 0.3; ctx.lineJoin = "round";
-    ctx.strokeText(obj.marker, cx, cy);
+    ctx.strokeText(markerTxt, cx, cy);
     ctx.fillStyle = col;
-    ctx.fillText(obj.marker, cx, cy);
+    ctx.fillText(markerTxt, cx, cy);
     ctx.restore();
   });
 
