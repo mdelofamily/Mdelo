@@ -172,5 +172,56 @@ function _esc(s) {
     .replace(/>/g, '&gt;');
 }
 
+// ── dialogue[] → DSL serializer ────────────────────────────
+function unparseDialogue(o) {
+  const nodes    = o.dialogue || [];
+  const title    = o.title  || o.lb || '';
+  const marker   = o.marker || '';
+  if (!nodes.length && !title) return '';
+
+  const mrkSym = marker === '!' ? '!' : marker === '?' ? '?' : marker === '💬' ? '...' : '';
+  const lines  = [];
+
+  nodes.forEach((node, ni) => {
+    // node header
+    const hdr = '@' + ni + (mrkSym && ni === 0 ? ' ' + mrkSym : '') + (title && ni === 0 ? ' ' + title : '');
+    lines.push(hdr);
+
+    // text — strip HTML tags back to plain DSL
+    if (node.text) {
+      const plain = node.text
+        .replace(/<br>/gi, '\n')
+        .replace(/<b>\[\]<\/b>\s*/gi, '[] ')
+        .replace(/<b>([^<]*)<\/b>\s*/gi, '[$1] ')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g,  '<')
+        .replace(/&gt;/g,  '>');
+      plain.split('\n').forEach(l => { if (l.trim()) lines.push(l.trim()); });
+    }
+
+    // buttons
+    (node.buttons || []).forEach(btn => {
+      if (!btn.label) return;
+      const next  = btn.nextNode ? ' =>' + btn.nextNode.replace('node_', '') : '';
+      const notif = btn.notify
+        ? (btn.notifyText ? ' ->! ' + btn.notifyText : '!')
+        : '';
+      if (btn.notify && !btn.notifyText) {
+        lines.push('->!' + btn.label + next);
+      } else if (btn.notify && btn.notifyText) {
+        lines.push('-> ' + btn.label + ' ->! ' + btn.notifyText + next);
+      } else {
+        lines.push('-> ' + btn.label + next);
+      }
+    });
+
+    if (ni < nodes.length - 1) lines.push('');
+  });
+
+  return lines.join('\n');
+}
+
 // ── WINDOW BINDINGS ────────────────────────────────────────
-window.parseBulkDSL = parseBulkDSL;
+window.parseBulkDSL    = parseBulkDSL;
+window.unparseDialogue = unparseDialogue;

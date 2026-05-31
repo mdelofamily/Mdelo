@@ -44,7 +44,7 @@ function doPlaceObject(col, row) {
 function openObjProps(idx) {
   _editingObjIdx = idx;
   const o = objects[idx];
-  document.getElementById("objDslInp").value = o.dsl || "";
+  document.getElementById("objDslInp").value = o.dsl || unparseDialogue(o) || "";
   document.getElementById("objPropsModal").classList.add("show");
   setTimeout(function() {
     var inp = document.getElementById("objDslInp");
