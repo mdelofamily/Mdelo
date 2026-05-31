@@ -81,7 +81,7 @@ async function doExportHTML() {
       const hasInteraction = !!(o.title || o.marker || (o.dialogue && o.dialogue.length && o.dialogue[0].text));
       const markerCls = o.marker === "!" ? "exc" : o.marker === "?" ? "q" : o.marker === "..." ? "chat" : "";
       const markerHtml = hasInteraction
-      const markerHtml = hasInteraction ? (markerCls ? `<div class="hs-marker ${markerCls}">${o.marker==='💬'?'...':o.marker}</div>` : `<div class="hs-dot"></div>`) : "";
+        ? (markerCls ? `<div class="hs-marker ${markerCls}">${o.marker}</div>` : `<div class="hs-dot"></div>`)
         : "";
       return `<div class="hotspot${hasInteraction ? "" : " no-interact"}" data-ox="${ox}" data-oy="${oy}" data-ow="${ow}" data-oh="${oh}" data-title="${title}" data-tooltip="${tooltip}" data-oi="${oi}" style="left:${ox}px;top:${oy}px;width:${ow}px;height:${oh}px;">${markerHtml}</div>`;
     });
