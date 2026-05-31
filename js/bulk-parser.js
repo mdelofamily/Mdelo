@@ -68,7 +68,7 @@ function parseBulkDSL(raw) {
       const title  = m ? (m[3] || '').trim() : '';
       const marker = mrkRaw === '!'   ? '!'  :
                      mrkRaw === '?'   ? '?'  :
-                     mrkRaw === '...' ? '💬' : '';
+                     mrkRaw === '...' ? '...' : '';
 
       if (idx === '0') { rootTitle = title; rootMarker = marker; }
 
