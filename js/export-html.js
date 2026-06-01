@@ -398,7 +398,8 @@ function _dlgShowNode(nodeId){
   if(btnWrap){btnWrap.innerHTML='';btnWrap.classList.remove('visible');}
   body.innerHTML='';
 
-const txt=(node.text||'').replace(/<b>\[\]<\/b>/g,localStorage.getItem('mdelo_nick')||'მოგზაური');    if(!btnWrap)return;
+  const txt=(node.text||'').replace(/\[\]/g,localStorage.getItem('mdelo_nick')||'მოგზაური');_typewriterHTML(body,parseLinks(txt),35,()=>{
+    if(!btnWrap)return;
     (node.buttons||[]).forEach(btn=>{
       if(!btn.label)return;
       const b=document.createElement('button');
