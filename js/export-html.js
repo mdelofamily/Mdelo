@@ -81,7 +81,7 @@ async function doExportHTML() {
       const hasInteraction = !!(o.title || o.marker || (o.dialogue && o.dialogue.length && o.dialogue[0].text));
       const markerCls = o.marker === "!" ? "exc" : o.marker === "?" ? "q" : o.marker === "..." ? "chat" : "";
       const markerHtml = hasInteraction
-        ? (markerCls ? `<div class="hs-marker ${markerCls}">${o.marker==='💬'?'...':o.marker}</div>` : `<div class="hs-dot"></div>`)
+        ? (markerCls ? `<div class="hs-marker ${markerCls}">${o.marker}</div>` : `<div class="hs-dot"></div>`)
         : "";
       return `<div class="hotspot${hasInteraction ? "" : " no-interact"}" data-ox="${ox}" data-oy="${oy}" data-ow="${ow}" data-oh="${oh}" data-title="${title}" data-tooltip="${tooltip}" data-oi="${oi}" style="left:${ox}px;top:${oy}px;width:${ow}px;height:${oh}px;">${markerHtml}</div>`;
     });
@@ -126,7 +126,10 @@ async function doExportHTML() {
     ectx.drawImage(_full, -CROP, -CROP);
 
     const fname          = (currentProjectName || "rpg-map").replace(/[^a-zA-Z0-9ა-ჿ_\-]/g, "_");
-    const b64            = "", useCanvasRenderer = true;
+    const hasCoordTiles  = [...customTiles, ...autoTiles, ...dualTiles].some(t => t.sheetUrl);
+    let   b64            = "", useCanvasRenderer = false;
+    if (!hasCoordTiles) { try { b64 = exp.toDataURL("image/png"); } catch (e) { b64 = ""; } }
+    else { useCanvasRenderer = true; }
     const w = exp.width, h = exp.height;
     const cfgJSLiteral = JSON.stringify(embeddedCfg);
 
@@ -231,13 +234,13 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
 .hotspot{position:absolute;cursor:pointer;z-index:5;overflow:visible;background:none!important;border:none!important;}
 .hs-dot{position:absolute;top:-18px;left:50%;transform:translateX(-50%);width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,0.6);box-shadow:0 0 4px rgba(255,255,255,0.8);pointer-events:none;}
 .hs-marker{position:absolute;top:-8px;left:50%;transform:translate(-50%,-50%);font-size:18px;font-weight:bold;font-family:sans-serif;line-height:1;pointer-events:auto;-webkit-text-stroke:2px rgba(0,0,0,0.9);paint-order:stroke fill;}
-.hs-marker.exc{color:#f0a500;}.hs-marker.q{color:#e8e8e8;}.hs-marker.chat{color:#58a6ff;}
+.hs-marker.exc{color:#f0a500;}.hs-marker.q{color:#e8e8e8;}.hs-marker.chat{color:#4ade80;}
 #hsPopup{display:none;position:fixed;z-index:50;left:50%!important;top:20%!important;transform:translateX(-50%)!important;background:rgba(22,27,34,0.4);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(88,166,255,0.35);border-radius:10px;padding:12px 34px 12px 14px;width:min(88vw,360px);font:13px/1.7 sans-serif;color:rgba(200,210,220,0.92);flex-direction:column;}
 #hsPopup.show{display:flex;}
+#hsPopup.show{display:flex;}
 #hsPopupTitle{font-size:14px;font-weight:600;color:#ffffff;margin-bottom:5px;padding-right:20px;flex-shrink:0;}
-#hsPopupScroll{height:min(52vh,400px);overflow-y:auto;-webkit-mask-image:linear-gradient(to bottom,transparent 0%,black 8%,black 85%,transparent 100%);mask-image:linear-gradient(to bottom,transparent 0%,black 8%,black 85%,transparent 100%);scrollbar-width:thin;scrollbar-color:rgba(88,166,255,0.2) transparent;}
-#hsPopupScroll::-webkit-scrollbar{width:3px;}
-#hsPopupScroll::-webkit-scrollbar-thumb{background:rgba(88,166,255,0.2);border-radius:2px;}
+#hsPopupScroll{height:88px;overflow-y:auto;-webkit-mask-image:linear-gradient(to bottom,transparent 0%,black 15%,black 75%,transparent 100%);mask-image:linear-gradient(to bottom,transparent 0%,black 15%,black 75%,transparent 100%);scrollbar-width:none;}
+#hsPopupScroll::-webkit-scrollbar{display:none;}
 #hsPopupBtns{display:flex;flex-direction:column;gap:6px;flex-shrink:0;max-height:0;overflow:hidden;opacity:0;transition:max-height 0.5s cubic-bezier(0.4,0,0.2,1),margin-top 0.5s ease,opacity 0.4s ease 0.2s;}
 #hsPopupBtns.visible{max-height:400px;margin-top:10px;opacity:1;}
 #hsClose{position:absolute;top:10px;right:12px;background:none;border:none;color:#8b949e;font-size:18px;cursor:pointer;line-height:1;}
@@ -387,91 +390,53 @@ function _parseNodes(dialogue){
   return{nodes,first};
 }
 
-function _dlgScrollBottom(){
-  const scroll=document.getElementById('hsPopupScroll');
-  if(!scroll)return;
-  const target=scroll.scrollHeight-scroll.clientHeight;
-  const start=scroll.scrollTop;
-  const diff=target-start;
-  if(diff<=0)return;
-  let t=0;const dur=200;
-  const step=()=>{t+=16;const p=Math.min(t/dur,1);scroll.scrollTop=start+diff*(p<0.5?2*p*p:(1-(2-2*p)*(2-2*p)/2));if(t<dur)requestAnimationFrame(step);};
-  requestAnimationFrame(step);
-}
-
-function _dlgAppendLine(html){
-  const body=document.getElementById('hsPopupBody');
-  if(!body)return;
-  // add spacer between messages
-  if(body.children.length>0){
-    const sp=document.createElement('div');
-    sp.style.cssText='height:4px;';
-    body.appendChild(sp);
-  }
-  const line=document.createElement('div');
-  line.style.cssText='line-height:1.65;';
-  line.innerHTML=html;
-  body.appendChild(line);
-  return line;
-}
-
 function _dlgShowNode(nodeId){
   const node=_dlgNodes[nodeId];
   if(!node)return;
+  const body=document.getElementById('hsPopupBody');
   const btnWrap=document.getElementById('hsPopupBtns');
   if(btnWrap){btnWrap.innerHTML='';btnWrap.classList.remove('visible');}
+  body.innerHTML='';
 
-  // replace [] with player name
-  const nick=localStorage.getItem('mdelo_nick')||'მოგზაური';
-  const rawTxt=(node.text||'').replace(/<b>\[\]<\/b>/g,'<b>'+nick+'</b>').replace(/\[\]/g,nick);
-
-  if(!rawTxt.trim()){
-    // no text — show buttons immediately
-    _dlgRenderBtns(node,btnWrap);
-    return;
-  }
-
-  const line=_dlgAppendLine('');
-  _typewriterHTML(line,parseLinks(rawTxt),35,()=>{
-    _dlgRenderBtns(node,btnWrap);
+  const txt=(node.text||'').replace(/\[\]/g,localStorage.getItem('mdelo_nick')||'მოგზაური');_typewriterHTML(body,parseLinks(txt),35,()=>{
+    if(!btnWrap)return;
+    (node.buttons||[]).forEach(btn=>{
+      if(!btn.label)return;
+      const b=document.createElement('button');
+      b.textContent=btn.label;
+      b.style.cssText='width:100%;height:40px;background:rgba(22,27,34,0.2);border:1px solid rgba(88,166,255,0.4);color:#e6edf3;font-size:13px;border-radius:8px;cursor:pointer;text-align:center;';
+      b.onclick=()=>{
+        if(btn.notify){
+          const sender=localStorage.getItem('mdelo_sender')||'ანონიმი';
+          const txt=btn.notifyText||(sender+' — '+btn.label);
+          fetch(SUPA_URL_D+'/rest/v1/notifications',{
+            method:'POST',
+            headers:{'Content-Type':'application/json','apikey':SUPA_KEY_D,'Authorization':'Bearer '+SUPA_KEY_D,'Prefer':'return=minimal'},
+            body:JSON.stringify({type:'info',symbol:'💬',text:txt,sender:sender,linked_area:''})
+          }).catch(()=>{});
+        }
+        if(btn.link)window.open(btn.link,'_blank');
+        if(btn.nextNode&&_dlgNodes[btn.nextNode]){
+          _dlgShowNode(btn.nextNode);
+        } else {
+          closeHsPopup();
+        }
+      };
+      btnWrap.appendChild(b);
+    });
+    setTimeout(()=>{ btnWrap.classList.add('visible'); }, 50);
   },()=>{
-    _dlgScrollBottom();
+    const scroll=document.getElementById('hsPopupScroll');
+    if(scroll){
+      const target=scroll.scrollHeight-scroll.clientHeight;
+      const start=scroll.scrollTop;
+      const diff=target-start;
+      if(diff<=0)return;
+      let t=0;const dur=150;
+      const step=()=>{t+=16;const p=Math.min(t/dur,1);scroll.scrollTop=start+diff*(p<0.5?2*p*p:(1-(2-2*p)*(2-2*p)/2));if(t<dur)requestAnimationFrame(step);};
+      requestAnimationFrame(step);
+    }
   });
-}
-
-function _dlgRenderBtns(node,btnWrap){
-  if(!btnWrap)return;
-  (node.buttons||[]).forEach(btn=>{
-    if(!btn.label)return;
-    const b=document.createElement('button');
-    b.textContent=btn.label;
-    b.style.cssText='width:100%;height:40px;background:rgba(22,27,34,0.2);border:1px solid rgba(88,166,255,0.4);color:#e6edf3;font-size:13px;border-radius:8px;cursor:pointer;text-align:center;';
-    b.onclick=()=>{
-      // append chosen label to flow as player line
-      const nick=localStorage.getItem('mdelo_nick')||'მოგზაური';
-      _dlgAppendLine('<span style="color:#58a6ff;font-weight:600;">'+nick+':</span> '+btn.label);
-      _dlgScrollBottom();
-      // hide buttons
-      btnWrap.innerHTML='';btnWrap.classList.remove('visible');
-      if(btn.notify){
-        const sender=localStorage.getItem('mdelo_sender')||'ანონიმი';
-        const ntxt=btn.notifyText||(sender+' — '+btn.label);
-        fetch(SUPA_URL_D+'/rest/v1/notifications',{
-          method:'POST',
-          headers:{'Content-Type':'application/json','apikey':SUPA_KEY_D,'Authorization':'Bearer '+SUPA_KEY_D,'Prefer':'return=minimal'},
-          body:JSON.stringify({type:'info',symbol:'💬',text:ntxt,sender:sender,linked_area:''})
-        }).catch(()=>{});
-      }
-      if(btn.link)window.open(btn.link,'_blank');
-      if(btn.nextNode&&_dlgNodes[btn.nextNode]){
-        setTimeout(()=>_dlgShowNode(btn.nextNode),300);
-      } else {
-        closeHsPopup();
-      }
-    };
-    btnWrap.appendChild(b);
-  });
-  setTimeout(()=>{btnWrap.classList.add('visible');_dlgScrollBottom();},50);
 }
 
 function openHsPopup(el,title,raw,obj){
