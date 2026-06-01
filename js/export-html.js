@@ -81,7 +81,7 @@ async function doExportHTML() {
       const hasInteraction = !!(o.title || o.marker || (o.dialogue && o.dialogue.length && o.dialogue[0].text));
       const markerCls = o.marker === "!" ? "exc" : o.marker === "?" ? "q" : o.marker === "..." ? "chat" : "";
       const markerHtml = hasInteraction
-        ? (markerCls ? `<div class="hs-marker ${markerCls}">${o.marker}</div>` : `<div class="hs-dot"></div>`)
+        ? (markerCls ? `<div class="hs-marker ${markerCls}">${o.marker==='💬'?'...':o.marker}</div>` : `<div class="hs-dot"></div>`)
         : "";
       return `<div class="hotspot${hasInteraction ? "" : " no-interact"}" data-ox="${ox}" data-oy="${oy}" data-ow="${ow}" data-oh="${oh}" data-title="${title}" data-tooltip="${tooltip}" data-oi="${oi}" style="left:${ox}px;top:${oy}px;width:${ow}px;height:${oh}px;">${markerHtml}</div>`;
     });
@@ -126,10 +126,7 @@ async function doExportHTML() {
     ectx.drawImage(_full, -CROP, -CROP);
 
     const fname          = (currentProjectName || "rpg-map").replace(/[^a-zA-Z0-9ა-ჿ_\-]/g, "_");
-    const hasCoordTiles  = [...customTiles, ...autoTiles, ...dualTiles].some(t => t.sheetUrl);
-    let   b64            = "", useCanvasRenderer = false;
-    if (!hasCoordTiles) { try { b64 = exp.toDataURL("image/png"); } catch (e) { b64 = ""; } }
-    else { useCanvasRenderer = true; }
+    const b64            = "", useCanvasRenderer = true;
     const w = exp.width, h = exp.height;
     const cfgJSLiteral = JSON.stringify(embeddedCfg);
 
@@ -234,9 +231,8 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
 .hotspot{position:absolute;cursor:pointer;z-index:5;overflow:visible;background:none!important;border:none!important;}
 .hs-dot{position:absolute;top:-18px;left:50%;transform:translateX(-50%);width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,0.6);box-shadow:0 0 4px rgba(255,255,255,0.8);pointer-events:none;}
 .hs-marker{position:absolute;top:-8px;left:50%;transform:translate(-50%,-50%);font-size:18px;font-weight:bold;font-family:sans-serif;line-height:1;pointer-events:auto;-webkit-text-stroke:2px rgba(0,0,0,0.9);paint-order:stroke fill;}
-.hs-marker.exc{color:#f0a500;}.hs-marker.q{color:#e8e8e8;}.hs-marker.chat{color:#4ade80;}
+.hs-marker.exc{color:#f0a500;}.hs-marker.q{color:#e8e8e8;}.hs-marker.chat{color:#58a6ff;}
 #hsPopup{display:none;position:fixed;z-index:50;left:50%!important;top:20%!important;transform:translateX(-50%)!important;background:rgba(22,27,34,0.4);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(88,166,255,0.35);border-radius:10px;padding:12px 34px 12px 14px;width:min(88vw,360px);font:13px/1.7 sans-serif;color:rgba(200,210,220,0.92);flex-direction:column;}
-#hsPopup.show{display:flex;}
 #hsPopup.show{display:flex;}
 #hsPopupTitle{font-size:14px;font-weight:600;color:#ffffff;margin-bottom:5px;padding-right:20px;flex-shrink:0;}
 #hsPopupScroll{height:min(52vh,400px);overflow-y:auto;-webkit-mask-image:linear-gradient(to bottom,transparent 0%,black 8%,black 85%,transparent 100%);mask-image:linear-gradient(to bottom,transparent 0%,black 8%,black 85%,transparent 100%);scrollbar-width:thin;scrollbar-color:rgba(88,166,255,0.2) transparent;}
