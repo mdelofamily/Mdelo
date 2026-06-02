@@ -148,10 +148,10 @@ async function doExportHTML() {
 
     // load viewer assets
     const [tmpl, runtimeJS, terminalJS, canvasRendererJS] = await Promise.all([
-      _fetchViewerAsset('viewer/viewer.html'),
-      _fetchViewerAsset('viewer/runtime.js'),
-      _fetchViewerAsset('viewer/terminal.js'),
-      _fetchViewerAsset('viewer/canvas-renderer.js'),
+      _fetchViewerAsset('js/viewer/viewer.html'),
+      _fetchViewerAsset('js/viewer/runtime.js'),
+      _fetchViewerAsset('js/viewer/terminal.js'),
+      _fetchViewerAsset('js/viewer/canvas-renderer.js'),
     ]);
 
     // map image tag
