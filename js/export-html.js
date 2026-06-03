@@ -172,19 +172,19 @@ async function doExportHTML() {
     const title = currentProjectName || "RPG Map";
     const html = tmpl
       .replace(/{{TITLE}}/g,          title)
-      .replace('{{W}}',               String(w))
-      .replace('{{H}}',               String(h))
-      .replace('{{COLS}}',            String(COLS))
-      .replace('{{ROWS}}',            String(ROWS))
-      .replace('{{MAP_IMG}}',         mapImgTag)
-      .replace('{{HOTSPOTS}}',        allHotspots)
-      .replace('{{QUEST_HTML}}',      questHtml)
-      .replace('{{CFG_LITERAL}}',     cfgJSLiteral)
-      .replace('{{OBJS_DATA}}',       JSON.stringify(objsData))
-      .replace('{{TS}}',              String(TS))
-      .replace('{{CANVAS_RENDERER}}', canvasRendererBlock)
-      .replace('{{RUNTIME_JS}}',      runtimeJS)
-      .replace('{{TERMINAL_JS}}',     terminalJS);
+      .replace(/{{W}}/g,               String(w))
+      .replace(/{{H}}/g,               String(h))
+      .replace(/{{COLS}}/g,            String(COLS))
+      .replace(/{{ROWS}}/g,            String(ROWS))
+      .replace(/{{MAP_IMG}}/g,         mapImgTag)
+      .replace(/{{HOTSPOTS}}/g,        allHotspots)
+      .replace(/{{QUEST_HTML}}/g,      questHtml)
+      .replace(/{{CFG_LITERAL}}/g,     cfgJSLiteral)
+      .replace(/{{OBJS_DATA}}/g,       JSON.stringify(objsData))
+      .replace(/{{TS}}/g,              String(TS))
+      .replace(/{{CANVAS_RENDERER}}/g, canvasRendererBlock)
+      .replace(/{{RUNTIME_JS}}/g,      runtimeJS)
+      .replace(/{{TERMINAL_JS}}/g,     terminalJS);
 
     downloadFile(html, fname + ".html", "text/html");
     toast("🌐 " + fname + ".html — მზადაა!");
