@@ -503,13 +503,89 @@ function renderNotifBar() {
     const c = document.createElement('div');
     c.className = 'ncard' + (n.type === 'emergency' ? ' pulse' : '');
     c.dataset.type = n.type || 'info'; c.title = n.text || ''; c.textContent = n.symbol || '💬';
-    c.onclick = () => openNotifPopup(n); bar.appendChild(c);
+    c.onclick = () => openNotifPopup(n);
+    // ── long tap → delete ──
+    let _lt = null;
+    c.addEventListener('touchstart', e => {
+      _lt = setTimeout(() => {
+        _lt = null;
+        if (navigator.vibrate) navigator.vibrate(40);
+        _ncardDeleteConfirm(c, n);
+      }, 600);
+    }, { passive: true });
+    c.addEventListener('touchmove',  () => { if (_lt) { clearTimeout(_lt); _lt = null; } }, { passive: true });
+    c.addEventListener('touchend',   () => { if (_lt) { clearTimeout(_lt); _lt = null; } }, { passive: true });
+    bar.appendChild(c);
   });
   if (_notifs.length > MAX) {
     const more = document.createElement('div');
     more.style.cssText = 'width:44px;height:44px;border-radius:10px;background:rgba(13,17,23,0.65);backdrop-filter:blur(8px);border:1px solid #30363d;color:#8b949e;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0.82;';
     more.textContent = '+' + (_notifs.length - MAX); more.onclick = () => openNotifList(); bar.appendChild(more);
   }
+}
+
+function _ncardDeleteConfirm(card, n) {
+  const type = n.type || 'info';
+
+  // emergency — დაბლოკილი
+  if (type === 'emergency') {
+    const ov = _ncardOverlay(card, '🔒', '#8b949e');
+    setTimeout(() => ov.remove(), 1200);
+    return;
+  }
+
+  // danger / warning — confirm dialog
+  if (type === 'danger' || type === 'warning') {
+    const ov = _ncardOverlay(card, '?', { danger: '#fb8f44', warning: '#f0a500' }[type]);
+    ov.style.flexDirection = 'column';
+    ov.style.gap = '4px';
+    ov.innerHTML = '';
+    const msg = document.createElement('div');
+    msg.style.cssText = 'font-size:10px;color:#fff;text-align:center;';
+    msg.textContent = 'წაიშალოს?';
+    const yes = document.createElement('button');
+    yes.style.cssText = 'background:#f85149;border:none;color:#fff;border-radius:5px;padding:2px 8px;font-size:11px;cursor:pointer;';
+    yes.textContent = 'კი';
+    const no = document.createElement('button');
+    no.style.cssText = 'background:#30363d;border:none;color:#ccc;border-radius:5px;padding:2px 8px;font-size:11px;cursor:pointer;';
+    no.textContent = 'არა';
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:4px;';
+    row.appendChild(yes); row.appendChild(no);
+    ov.appendChild(msg); ov.appendChild(row);
+    yes.addEventListener('click', async e => { e.stopPropagation(); await _ncardDoDelete(ov, n); });
+    no.addEventListener('click',  e => { e.stopPropagation(); ov.remove(); });
+    return;
+  }
+
+  // info / done / project — პირდაპირ წაშლა
+  const ov = _ncardOverlay(card, '🗑', '#f85149');
+  ov.addEventListener('click', async e => { e.stopPropagation(); await _ncardDoDelete(ov, n); });
+  setTimeout(() => {
+    function cancel(e) { if (!card.contains(e.target)) { ov.remove(); document.removeEventListener('touchstart', cancel); } }
+    document.addEventListener('touchstart', cancel, { passive: true });
+  }, 100);
+}
+
+function _ncardOverlay(card, icon, color) {
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:absolute;inset:0;border-radius:10px;background:' + color + 'dd;display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;z-index:2;';
+  ov.textContent = icon;
+  card.style.position = 'relative';
+  card.appendChild(ov);
+  return ov;
+}
+
+async function _ncardDoDelete(ov, n) {
+  ov.textContent = '…';
+  try {
+    const r = await fetch(SUPA_URL + '/rest/v1/notifications?id=eq.' + n.id, {
+      method: 'DELETE',
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
+    });
+    if (r.ok) await loadNotifs();
+    else ov.remove();
+  } catch (e) { ov.remove(); }
 }
 function _startRealtime() {
   if (typeof supabase === 'undefined') return;
