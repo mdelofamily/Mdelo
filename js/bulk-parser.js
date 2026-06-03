@@ -6,22 +6,43 @@
 
 //
 // DSL syntax reference:
-//   @N [marker] title        — node start  (marker: ! ? ...)
-//   [speaker] text           — named speaker block
-//   [] text                  — player name placeholder
-//   plain text               — narrator (no speaker)
-//   {atmosphere text}        — atmosphere / effect line
-//   [[label|url]]            — external link (inline)
-//   [[object name]]          — map object link (inline)
-//   -> text =>N              — choice button, no notification
-//   ->! text =>N             — choice + notification (auto text)
-//   -> text ->! notif =>N    — choice + explicit notification text
+//   @N [marker] title   — node start  (marker: ! ? ...)
+//   [speaker] text      — named speaker block
+//   [] text             — player name placeholder
+//   plain text          — narrator (no speaker)
+//   {atmosphere text}   — atmosphere / effect line
+//   [[label|url]]       — external link (inline)
+//   [[object name]]     — map object link (inline)
+//   -> text =>N         — choice, no notification
+//   ->. text =>N        — choice + 💬 info
+//   ->! text =>N        — choice + ⚠ warning
+//   ->!! text =>N       — choice + ❗ danger
+//   ->< text =>N        — choice + ✅ done
+//   ->> text =>N        — choice + 🚀 project
 //
 // Returns: { nodes: Array, title: string, marker: string }
 //   nodes  — dialogue[] ready for _editingDialogue
 //   title  — object title from @0 header (may be "")
 //   marker — object marker from @0 header (! ? 💬 or "")
 //
+
+// valid notification types (must match notify.html / viewer)
+const NOTIFY_TYPES = {
+  info:    '💬',
+  warning: '⚠',
+  danger:  '❗',
+  done:    '✅',
+  project: '🚀'
+};
+
+// DSL prefix → notifyType  (order matters: ->!! before ->!)
+const NOTIFY_PREFIXES = [
+  { prefix: '->!!', type: 'danger'  },
+  { prefix: '->>',  type: 'project' },
+  { prefix: '->.',  type: 'info'    },
+  { prefix: '->!',  type: 'warning' },
+  { prefix: '-><',  type: 'done'    },
+];
 
 function parseBulkDSL(raw) {
   const lines  = raw.replace(/\r\n/g, '\n').split('\n');
@@ -66,8 +87,8 @@ function parseBulkDSL(raw) {
       const idx    = m ? m[1] : '0';
       const mrkRaw = m ? (m[2] || '').trim() : '';
       const title  = m ? (m[3] || '').trim() : '';
-      const marker = mrkRaw === '!'   ? '!'  :
-                     mrkRaw === '?'   ? '?'  :
+      const marker = mrkRaw === '!'   ? '!'   :
+                     mrkRaw === '?'   ? '?'   :
                      mrkRaw === '...' ? '...' : '';
 
       if (idx === '0') { rootTitle = title; rootMarker = marker; }
@@ -107,8 +128,8 @@ function parseBulkDSL(raw) {
     const spkM = line.match(/^\[([^\]]*)\](.*)/);
     if (spkM) {
       flush();
-      speaker       = spkM[1];           // "" = player, "name" = named
-      const rest    = spkM[2].trim();
+      speaker    = spkM[1];           // "" = player, "name" = named
+      const rest = spkM[2].trim();
       if (rest) textBuf.push(rest);
       continue;
     }
@@ -132,14 +153,22 @@ function parseBulkDSL(raw) {
 
 // ── choice line parser ──────────────────────────────────────
 function _parseBtn(line) {
-  let rest   = line;
-  let notify = false;
+  let rest       = line;
+  let notify     = false;
+  let notifyType = null;
 
-  // strip leading ->! or ->
-  if (rest.startsWith('->!')) {
-    notify = true;
-    rest   = rest.slice(3).trim();
-  } else {
+  // match prefix (longest first — ->!! before ->!)
+  for (const { prefix, type } of NOTIFY_PREFIXES) {
+    if (rest.startsWith(prefix)) {
+      notify     = true;
+      notifyType = type;
+      rest       = rest.slice(prefix.length).trim();
+      break;
+    }
+  }
+
+  // plain -> with no notify prefix
+  if (!notify) {
     rest = rest.slice(2).trim();
   }
 
@@ -151,17 +180,8 @@ function _parseBtn(line) {
     nextNode = 'node_' + nxtM[2];
   }
 
-  // extract inline " ->! notif_text" separator
-  let notifyText = '';
-  const sep = rest.indexOf(' ->! ');
-  if (sep >= 0) {
-    notifyText = rest.slice(sep + 5).trim();
-    rest       = rest.slice(0, sep).trim();
-    notify     = true;
-  }
-
   if (!rest) return null;
-  return { label: rest, nextNode, notify, notifyText, link: '' };
+  return { label: rest, nextNode, notify, notifyType, notifyText: '', link: '' };
 }
 
 // ── minimal HTML escape ─────────────────────────────────────
@@ -174,17 +194,28 @@ function _esc(s) {
 
 // ── dialogue[] → DSL serializer ────────────────────────────
 function unparseDialogue(o) {
-  const nodes    = o.dialogue || [];
-  const title    = o.title  || o.lb || '';
-  const marker   = o.marker || '';
+  const nodes  = o.dialogue || [];
+  const title  = o.title  || o.lb || '';
+  const marker = o.marker || '';
   if (!nodes.length && !title) return '';
 
   const mrkSym = marker === '!' ? '!' : marker === '?' ? '?' : marker === '💬' ? '...' : '';
   const lines  = [];
 
+  // notifyType → DSL prefix
+  const TYPE_PREFIX = {
+    info:    '->.',
+    warning: '->!',
+    danger:  '->!!',
+    done:    '-><',
+    project: '->>',
+  };
+
   nodes.forEach((node, ni) => {
     // node header
-    const hdr = '@' + ni + (mrkSym && ni === 0 ? ' ' + mrkSym : '') + (title && ni === 0 ? ' ' + title : '');
+    const hdr = '@' + ni +
+      (mrkSym && ni === 0 ? ' ' + mrkSym : '') +
+      (title  && ni === 0 ? ' ' + title  : '');
     lines.push(hdr);
 
     // text — strip HTML tags back to plain DSL
@@ -203,17 +234,9 @@ function unparseDialogue(o) {
     // buttons
     (node.buttons || []).forEach(btn => {
       if (!btn.label) return;
-      const next  = btn.nextNode ? ' =>' + btn.nextNode.replace('node_', '') : '';
-      const notif = btn.notify
-        ? (btn.notifyText ? ' ->! ' + btn.notifyText : '!')
-        : '';
-      if (btn.notify && !btn.notifyText) {
-        lines.push('->!' + btn.label + next);
-      } else if (btn.notify && btn.notifyText) {
-        lines.push('-> ' + btn.label + ' ->! ' + btn.notifyText + next);
-      } else {
-        lines.push('-> ' + btn.label + next);
-      }
+      const next   = btn.nextNode ? ' =>' + btn.nextNode.replace('node_', '') : '';
+      const prefix = btn.notify ? (TYPE_PREFIX[btn.notifyType] || '->!') : '->';
+      lines.push(prefix + ' ' + btn.label + next);
     });
 
     if (ni < nodes.length - 1) lines.push('');
