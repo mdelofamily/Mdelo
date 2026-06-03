@@ -3,6 +3,7 @@
 // depends on: _CFG, scale (runtime.js), applyScale, fitAreas, toggleMenu (runtime.js)
 
 function _tmInit() {
+  if (!window.matchMedia('(display-mode: standalone)').matches) return;
   document.getElementById('termBtn').style.display = 'block';
   document.getElementById('mapTitle').style.display = 'none';
 }
