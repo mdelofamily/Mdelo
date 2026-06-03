@@ -9,7 +9,7 @@ function _tmInit() {
 }
 
 var _tmOpen = false, _tmFull = false, _tmHist = [], _tmHIdx = -1, _tmHCur = '';
-var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/წასვლა','/ლეგენდა','/მენიუ','/სრული','/დახურვა','/nick','/me','/who','/color','/help'];
+var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/წასვლა','/ლეგენდა','/მენიუ','/სრული','/ისტორია','/დახურვა','/nick','/me','/who','/color','/help'];
 
 function toggleTerm() { _tmOpen ? closeTerm() : _tmOpen_(); }
 function _tmOpen_() {
@@ -33,7 +33,44 @@ function tmToggleFull() {
 }
 function tmClear() { document.getElementById('tmOut').innerHTML = ''; }
 
-// ── output helpers ──
+// ── chat history (localStorage, 3 days) ──
+var _HIST_TTL = 3 * 24 * 60 * 60 * 1000;
+var _HIST_KEY = 'mdelo_chat_' + (location.pathname + location.search).replace(/[^a-zA-Z0-9]/g, '_');
+var _HIST_MAX = 300;
+
+function _histSave(html) {
+  try {
+    var raw = localStorage.getItem(_HIST_KEY);
+    var msgs = raw ? JSON.parse(raw) : [];
+    msgs.push({ h: html, t: Date.now() });
+    var cut = Date.now() - _HIST_TTL;
+    msgs = msgs.filter(function (m) { return m.t > cut; });
+    if (msgs.length > _HIST_MAX) msgs = msgs.slice(-_HIST_MAX);
+    localStorage.setItem(_HIST_KEY, JSON.stringify(msgs));
+  } catch (e) {}
+}
+
+function _histLoad() {
+  try {
+    var raw = localStorage.getItem(_HIST_KEY);
+    if (!raw) return;
+    var msgs = JSON.parse(raw);
+    var cut = Date.now() - _HIST_TTL;
+    msgs = msgs.filter(function (m) { return m.t > cut; });
+    if (!msgs.length) return;
+    var ago = Math.round((Date.now() - msgs[0].t) / 3600000);
+    _tmL('tdm', '── ისტორია (' + ago + ' სთ წინ) ──');
+    msgs.forEach(function (m) { _tmLH('chat hist', m.h); });
+    _tmL('tdm', '────────────────────────────────');
+  } catch (e) {}
+}
+
+function _histClear() {
+  try { localStorage.removeItem(_HIST_KEY); } catch (e) {}
+  _tmL('tok', 'ისტორია წაიშალა');
+}
+
+
 function _tmL(cls, txt) {
   var d = document.createElement('div'); d.className = 'tl ' + cls; d.textContent = txt;
   var o = document.getElementById('tmOut'); o.appendChild(d); o.scrollTop = o.scrollHeight;
@@ -41,6 +78,7 @@ function _tmL(cls, txt) {
 function _tmLH(cls, html) {
   var d = document.createElement('div'); d.className = 'tl ' + cls; d.innerHTML = html;
   var o = document.getElementById('tmOut'); o.appendChild(d); o.scrollTop = o.scrollHeight;
+  if (cls === 'chat') _histSave(html);
 }
 
 // public API — other scripts can print to terminal
@@ -63,6 +101,7 @@ function _tmBoot() {
   for (var i = 0; i < lines.length; i++) {
     (function (l, delay) { setTimeout(function () { _tmL(l[0], l[1]); }, delay); })(lines[i], i * 55);
   }
+  setTimeout(_histLoad, lines.length * 55 + 80);
 }
 
 // ── keyboard input ──
@@ -138,6 +177,7 @@ function _tmRun(raw) {
     'ლეგენდა':     _tmLegend,
     'მენიუ':       _tmMenu,
     'სრული':       tmToggleFull,
+    'ისტორია':     _histClear,
     'დახურვა':     closeTerm
   };
   var fn = map[cmd];
@@ -159,6 +199,7 @@ function _tmHelp() {
     ['/ლეგენდა',        'აღწერას ჩვენა/დამალვა'],
     ['/მენიუ',          'მენიუს toggle'],
     ['/სრული',          'სრული ↔ ნახევარი'],
+    ['/ისტორია',        'ჩატის ისტორიის წაშლა'],
     ['/დახურვა',        'დახურვა  [Esc]'],
     ['/nick სახელი',    'ნიკნეიმის შეცვლა'],
     ['/me ტექსტი',      '* აქშნის მესიჯი'],
