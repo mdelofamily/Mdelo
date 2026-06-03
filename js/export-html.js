@@ -73,7 +73,8 @@ async function doExportHTML() {
       return o;
     });
 
-    const embeddedCfg = JSON.stringify({
+    // single JSON.stringify — viewer does JSON.parse({{CFG_LITERAL}})
+    const embeddedCfg = {
       title: currentProjectName || "RPG Map",
       description: mapDesc,
       menu: getMenuData(),
@@ -81,7 +82,7 @@ async function doExportHTML() {
       map: mapData.map, overlayMap: mapData.overlayMap,
       objects: _objsWithSrc,
       custom: mapData.custom, autoTiles: mapData.autoTiles, dualTiles: mapData.dualTiles
-    });
+    };
 
     // build hotspot HTML
     const TS_ = TS;
