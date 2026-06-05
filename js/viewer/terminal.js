@@ -9,6 +9,7 @@ function _tmInit() {
 }
 
 var _tmOpen = false, _tmFull = false, _tmHist = [], _tmHIdx = -1, _tmHCur = '';
+var _tmBooted = false;
 var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/წასვლა','/ლეგენდა','/მენიუ','/სრული','/ისტორია','/დახურვა','/nick','/me','/who','/color','/help'];
 
 function toggleTerm() { _tmOpen ? closeTerm() : _tmOpen_(); }
@@ -16,7 +17,7 @@ function _tmOpen_() {
   _tmOpen = true;
   document.getElementById('mdlTerm').classList.add('open');
   setTimeout(function () { document.getElementById('tmIn').focus(); }, 240);
-  if (!document.getElementById('tmOut').children.length) _tmBoot();
+  if (!_tmBooted) { _tmBooted = true; _tmBoot(); }
 }
 function closeTerm() {
   _tmOpen = false; _tmFull = false;
