@@ -8,9 +8,9 @@ function _tmInit() {
   document.getElementById('mapTitle').style.display = 'none';
 }
 
-var _tmOpen = false, _tmFull = false, _tmHist = [], _tmHIdx = -1, _tmHCur = '';
+var _tmOpen = false, _tmFull = false, _tmHist = [], _tmHIdx = -1, _tmHCur = '', _tmMulti = false;
 var _tmBooted = false;
-var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/წასვლა','/ლეგენდა','/მენიუ','/სრული','/ისტორია','/დახურვა','/nick','/me','/who','/color','/help'];
+var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/წასვლა','/ლეგენდა','/მენიუ','/სრული','/ისტორია','/ვადა','/ტექსტი','/დახურვა','/nick','/me','/who','/color','/help'];
 
 function toggleTerm() { _tmOpen ? closeTerm() : _tmOpen_(); }
 function _tmOpen_() {
@@ -37,7 +37,10 @@ function tmClear() { document.getElementById('tmOut').innerHTML = ''; }
 // ── chat history (localStorage, 3 days) ──
 var _HIST_TTL = 3 * 24 * 60 * 60 * 1000;
 var _HIST_KEY = 'mdelo_chat_' + (_CFG && _CFG.title ? _CFG.title.replace(/[^a-zA-Z0-9ა-ჿ]/g, '_') : 'map');
+var _HIST_TTL_KEY = _HIST_KEY + '_ttl';
 var _HIST_MAX = 300;
+// load saved TTL
+(function () { try { var s = localStorage.getItem(_HIST_TTL_KEY); if (s) { var n = parseInt(s); if (n >= 1 && n <= 365) _HIST_TTL = n * 86400000; } } catch (e) {} })();
 
 function _histSave(html) {
   try {
@@ -70,6 +73,43 @@ function _histClear() {
   try { localStorage.removeItem(_HIST_KEY); } catch (e) {}
   _tmL('tok', 'ისტორია წაიშალა');
 }
+
+// ── multiline (chat) mode ──
+function tmToggleMulti() {
+  _tmMulti = !_tmMulti;
+  var btn   = document.getElementById('tmMlBtn');
+  var inp   = document.getElementById('tmIn');
+  var ta    = document.getElementById('tmTa');
+  var hint  = document.getElementById('tmHint');
+  var slash = document.getElementById('tmSlashBtn');
+  var send  = document.getElementById('tmSendBtn');
+  btn.textContent = _tmMulti ? '■' : '□';
+  btn.classList.toggle('on', _tmMulti);
+  inp.style.display   = _tmMulti ? 'none'  : '';
+  hint.style.display  = _tmMulti ? 'none'  : '';
+  slash.style.display = _tmMulti ? 'none'  : '';
+  ta.style.display    = _tmMulti ? 'block' : 'none';
+  send.style.display  = _tmMulti ? 'block' : 'none';
+  setTimeout(function () { (_tmMulti ? ta : inp).focus(); }, 50);
+}
+
+function tmSend() {
+  var ta = document.getElementById('tmTa');
+  var v = ta.value.trim(); if (!v) return;
+  _tmHist.unshift(v); _tmHIdx = -1; _tmHCur = '';
+  ta.value = '';
+  if (typeof chatHandleInput === 'function' && chatHandleInput(v)) return;
+  _tmL('ti', v); _tmRun(v);
+}
+
+// textarea keydown (multiline mode)
+(function () {
+  var ta = document.getElementById('tmTa');
+  ta.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); tmSend(); }
+    if (e.key === 'Escape') { closeTerm(); }
+  });
+})();
 
 
 function _tmL(cls, txt) {
@@ -179,6 +219,8 @@ function _tmRun(raw) {
     'მენიუ':       _tmMenu,
     'სრული':       tmToggleFull,
     'ისტორია':     _histClear,
+    'ვადა':        _tmVada,
+    'ტექსტი':      tmToggleMulti,
     'დახურვა':     closeTerm
   };
   var fn = map[cmd];
@@ -201,6 +243,8 @@ function _tmHelp() {
     ['/მენიუ',          'მენიუს toggle'],
     ['/სრული',          'სრული ↔ ნახევარი'],
     ['/ისტორია',        'ჩატის ისტორიის წაშლა'],
+    ['/ვადა [N]',       'ისტ. შენახვა N დღე'],
+    ['/ტექსტი',         'ჩატ ↔ ბრძანება mode'],
     ['/დახურვა',        'დახურვა  [Esc]'],
     ['/nick სახელი',    'ნიკნეიმის შეცვლა'],
     ['/me ტექსტი',      '* აქშნის მესიჯი'],
@@ -258,3 +302,15 @@ function _tmGo(args) {
 }
 function _tmLegend() { toggleQuest(); _tmL('tok', 'ლეგენდა: toggled'); }
 function _tmMenu() { closeTerm(); toggleMenu(); }
+function _tmVada(args) {
+  var n = parseInt(args[0]);
+  if (!args.length || isNaN(n) || n < 1 || n > 365) {
+    var cur = Math.round(_HIST_TTL / 86400000);
+    _tmL('tnf', 'ამჟამინდელი ვადა: ' + cur + ' დღე');
+    _tmL('tdm', 'გამოყენება: /ვადა [1–365]');
+    return;
+  }
+  _HIST_TTL = n * 86400000;
+  try { localStorage.setItem(_HIST_TTL_KEY, String(n)); } catch (e) {}
+  _tmL('tok', 'ისტორიის ვადა: ' + n + ' დღე');
+}
