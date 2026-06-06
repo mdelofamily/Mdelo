@@ -377,8 +377,7 @@ function openHsPopup(el, title, raw, obj) {
   document.getElementById('hsPopupBody').innerHTML = '';
   const bw = document.getElementById('hsPopupBtns');
   if (bw) bw.innerHTML = '';
-  // Clear inline display:none left by closeHsPopup, let CSS handle positioning
-  popup.style.display = '';
+  // Positioning handled entirely by CSS (left:50%,top:50%,translate(-50%,-50%))
   popup.classList.add('show');
   wrap.style.overflow = 'hidden';
   if (el) _startObjBlink(el);
