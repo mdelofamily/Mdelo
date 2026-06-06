@@ -304,7 +304,7 @@ function _dlgShowNode(nodeId) {
   const objTitle = (_dlgObj && (_dlgObj.title || _dlgObj.lb)) || '';
   const _he = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const txt = (node.text || '')
-    .replace(/\[\]/g, localStorage.getItem('mdelo_nick') || 'მოგზაური')
+    .replace(/\[\]/g, (localStorage.getItem('mdelo_nick') || 'მოგზაური') + ':')
     // new format (\x01): parseBulkDSL stores \x01name inside spk-object tag
     .replace(/\x01([^<"]*)/g, (_, name) => (name.trim() || _he(objTitle)) + ':')
     // old format: &lt;&gt; or &lt;name&gt; anywhere in text (pre-\x01 bulk-parser)
