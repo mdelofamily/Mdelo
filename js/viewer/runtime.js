@@ -320,10 +320,12 @@ function _dlgShowNode(nodeId) {
         if (btn.notify) {
           const sender = localStorage.getItem('mdelo_sender') || 'ანონიმი';
           const notifyTxt = btn.notifyText || (sender + ' — ' + btn.label);
+          const nType = btn.notifyType || 'info';
+          const nSymbol = { info: '💬', warning: '⚠️', danger: '🔴', project: '🚀', done: '✅' }[nType] || '💬';
           fetch(SUPA_URL_D + '/rest/v1/notifications', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY_D, 'Authorization': 'Bearer ' + SUPA_KEY_D, 'Prefer': 'return=minimal' },
-            body: JSON.stringify({ type: 'info', symbol: '💬', text: notifyTxt, sender: sender, linked_area: '' })
+            body: JSON.stringify({ type: nType, symbol: nSymbol, text: notifyTxt, sender: sender, linked_area: '' })
           }).catch(() => {});
         }
         if (btn.link) window.open(btn.link, '_blank');
