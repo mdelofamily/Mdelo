@@ -295,21 +295,32 @@ function _parseNodes(dialogue) {
   const first = dialogue && dialogue.length ? dialogue[0].id : null;
   return { nodes, first };
 }
+
+// Scroll #hsPopupScroll to the very bottom
+function _dlgScrollBottom() {
+  const scroll = document.getElementById('hsPopupScroll');
+  if (scroll) scroll.scrollTop = scroll.scrollHeight;
+}
+
+// Show a dialogue node — appends to history instead of replacing
 function _dlgShowNode(nodeId) {
   const node = _dlgNodes[nodeId]; if (!node) return;
   const body = document.getElementById('hsPopupBody');
   const btnWrap = document.getElementById('hsPopupBtns');
+
+  // Hide buttons while typing the new node
   if (btnWrap) { btnWrap.innerHTML = ''; btnWrap.classList.remove('visible'); }
-  body.innerHTML = '';
-  const objTitle = (_dlgObj && (_dlgObj.title || _dlgObj.lb)) || '';
-  const _he = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const txt = (node.text || '')
-    .replace(/\[\]/g, (localStorage.getItem('mdelo_nick') || 'მოგზაური') + ':')
-    // new format (\x01): parseBulkDSL stores \x01name inside spk-object tag
-    .replace(/\x01([^<"]*)/g, (_, name) => (name.trim() || _he(objTitle)) + ':')
-    // old format: &lt;&gt; or &lt;name&gt; anywhere in text (pre-\x01 bulk-parser)
-    .replace(/&lt;([^&<\n]*)&gt;/g, (_, name) => '<b>' + (name.trim() || _he(objTitle)) + ':</b>');
-  _typewriterHTML(body, parseLinks(txt), 35, () => {
+
+  // Append a new NPC entry div — preserves previous history
+  const entry = document.createElement('div');
+  entry.className = 'dlg-entry';
+  body.appendChild(entry);
+
+  const nick = localStorage.getItem('mdelo_nick') || 'მოგზაური';
+  const txt = (node.text || '').replace(/\[\]/g, nick);
+
+  _typewriterHTML(entry, parseLinks(txt), 35, () => {
+    // Typewriter done — show response buttons
     if (!btnWrap) return;
     (node.buttons || []).forEach(btn => {
       if (!btn.label) return;
@@ -317,15 +328,20 @@ function _dlgShowNode(nodeId) {
       b.textContent = btn.label;
       b.style.cssText = 'width:100%;height:40px;background:rgba(22,27,34,0.2);border:1px solid rgba(88,166,255,0.4);color:#e6edf3;font-size:13px;border-radius:8px;cursor:pointer;text-align:center;';
       b.onclick = () => {
+        // Append player choice as a history entry before moving on
+        const playerEl = document.createElement('div');
+        playerEl.className = 'dlg-player';
+        playerEl.textContent = btn.label;
+        body.appendChild(playerEl);
+        _dlgScrollBottom();
+
         if (btn.notify) {
           const sender = localStorage.getItem('mdelo_sender') || 'ანონიმი';
           const notifyTxt = btn.notifyText || (sender + ' — ' + btn.label);
-          const nType = btn.notifyType || 'info';
-          const nSymbol = { info: '💬', warning: '⚠️', danger: '🔴', project: '🚀', done: '✅' }[nType] || '💬';
           fetch(SUPA_URL_D + '/rest/v1/notifications', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY_D, 'Authorization': 'Bearer ' + SUPA_KEY_D, 'Prefer': 'return=minimal' },
-            body: JSON.stringify({ type: nType, symbol: nSymbol, text: notifyTxt, sender: sender, linked_area: '' })
+            body: JSON.stringify({ type: 'info', symbol: '💬', text: notifyTxt, sender: sender, linked_area: '' })
           }).catch(() => {});
         }
         if (btn.link) window.open(btn.link, '_blank');
@@ -336,26 +352,32 @@ function _dlgShowNode(nodeId) {
     });
     setTimeout(() => { btnWrap.classList.add('visible'); }, 50);
   }, () => {
+    // Tick callback — smooth easing scroll to bottom while text types in
     const scroll = document.getElementById('hsPopupScroll');
-    if (scroll) {
-      const target = scroll.scrollHeight - scroll.clientHeight;
-      const start = scroll.scrollTop, diff = target - start;
-      if (diff <= 0) return;
-      let t = 0; const dur = 150;
-      const step = () => { t += 16; const p = Math.min(t / dur, 1); scroll.scrollTop = start + diff * (p < 0.5 ? 2 * p * p : (1 - (2 - 2 * p) * (2 - 2 * p) / 2)); if (t < dur) requestAnimationFrame(step); };
-      requestAnimationFrame(step);
-    }
+    if (!scroll) return;
+    const target = scroll.scrollHeight - scroll.clientHeight;
+    const start = scroll.scrollTop, diff = target - start;
+    if (diff <= 0) return;
+    let t = 0; const dur = 150;
+    const step = () => {
+      t += 16;
+      const p = Math.min(t / dur, 1);
+      scroll.scrollTop = start + diff * (p < 0.5 ? 2 * p * p : (1 - (2 - 2 * p) * (2 - 2 * p) / 2));
+      if (t < dur) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
   });
 }
+
 function openHsPopup(el, title, raw, obj) {
   _dlgObj = obj || null;
   const popup = document.getElementById('hsPopup');
   document.getElementById('hsPopupTitle').textContent = title || '';
+  // Clear history on each fresh open
   document.getElementById('hsPopupBody').innerHTML = '';
   const bw = document.getElementById('hsPopupBtns');
   if (bw) bw.innerHTML = '';
-  const pw = Math.min(window.innerWidth * 0.88, 360), left = (window.innerWidth - pw) / 2, top = Math.max(60, (window.innerHeight - 200) / 2);
-  popup.style.cssText = 'display:block;left:' + left + 'px;top:' + top + 'px;max-width:' + pw + 'px;';
+  // Positioning handled entirely by CSS (left:50%,top:50%,translate(-50%,-50%))
   popup.classList.add('show');
   wrap.style.overflow = 'hidden';
   if (el) _startObjBlink(el);
@@ -364,6 +386,7 @@ function openHsPopup(el, title, raw, obj) {
     _dlgNodes = parsed.nodes;
     if (parsed.first) _dlgShowNode(parsed.first);
   } else {
+    // Plain tooltip — no dialogue
     _typewriterHTML(document.getElementById('hsPopupBody'), parseLinks(raw || ''), 35);
   }
 }
@@ -536,7 +559,7 @@ function renderNotifBar() {
 function _ncardDeleteConfirm(card, n) {
   const type = n.type || 'info';
 
-  // emergency — დაბლოკილი
+  // emergency — blocked
   if (type === 'emergency') {
     const ov = _ncardOverlay(card, '🔒', '#8b949e');
     setTimeout(() => ov.remove(), 1200);
@@ -567,7 +590,7 @@ function _ncardDeleteConfirm(card, n) {
     return;
   }
 
-  // info / done / project — პირდაპირ წაშლა
+  // info / done / project — direct delete
   const ov = _ncardOverlay(card, '🗑', '#f85149');
   ov.addEventListener('click', async e => { e.stopPropagation(); await _ncardDoDelete(ov, n); });
   setTimeout(() => {
