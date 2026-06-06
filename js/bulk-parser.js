@@ -238,7 +238,15 @@ function unparseDialogue(o) {
         .replace(/&amp;/g, '&')
         .replace(/&lt;/g,  '<')
         .replace(/&gt;/g,  '>');
-      plain.split('\n').forEach(l => { if (l.trim()) lines.push(l.trim()); });
+      plain.split('\n').forEach(l => {
+        if (!l.trim()) return;
+        const t = l.trim();
+        if (t.startsWith('✦ ')) {
+          lines.push('{' + t.slice(2) + '}');  // restore atmosphere syntax
+        } else {
+          lines.push(t);
+        }
+      });
     }
 
     // buttons
@@ -248,7 +256,7 @@ function unparseDialogue(o) {
       const next = btn.nextNode ? ' =>' + btn.nextNode.replace('node_', '') : '';
       if (btn.notify) {
         const tc = _TYPE_CHARS[btn.notifyType] || '*';
-        lines.push('->' + tc + btn.label + next);
+        lines.push('->' + tc + ' ' + btn.label + next);
       } else {
         lines.push('-> ' + btn.label + next);
       }
