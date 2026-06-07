@@ -10,7 +10,8 @@ function _tmInit() {
 
 var _tmOpen = false, _tmFull = false, _tmHist = [], _tmHIdx = -1, _tmHCur = '', _tmMulti = false;
 var _tmBooted = false;
-var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/წასვლა','/ლეგენდა','/მენიუ','/სრული','/ისტორია','/ვადა','/ტექსტი','/დახურვა','/nick','/me','/who','/color','/help'];
+var _tmEditObj = null; // title of object currently being edited in DSL mode
+var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/სრული','/ისტორია','/ვადა','/ტექსტი','/დახურვა','/nick','/me','/who','/color','/help'];
 
 function toggleTerm() { _tmOpen ? closeTerm() : _tmOpen_(); }
 function _tmOpen_() {
@@ -20,6 +21,8 @@ function _tmOpen_() {
   if (!_tmBooted) { _tmBooted = true; _tmBoot(); }
 }
 function closeTerm() {
+  // cancel edit mode silently on close
+  if (_tmEditObj) { _tmEditObj = null; document.getElementById('tmTa').value = ''; if (_tmMulti) tmToggleMulti(); }
   _tmOpen = false; _tmFull = false;
   var t = document.getElementById('mdlTerm');
   t.classList.remove('open', 'tmfull');
@@ -39,7 +42,6 @@ var _HIST_TTL = 3 * 24 * 60 * 60 * 1000;
 var _HIST_KEY = 'mdelo_chat_' + (_CFG && _CFG.title ? _CFG.title.replace(/[^a-zA-Z0-9ა-ჿ]/g, '_') : 'map');
 var _HIST_TTL_KEY = _HIST_KEY + '_ttl';
 var _HIST_MAX = 300;
-// load saved TTL
 (function () { try { var s = localStorage.getItem(_HIST_TTL_KEY); if (s) { var n = parseInt(s); if (n >= 1 && n <= 365) _HIST_TTL = n * 86400000; } } catch (e) {} })();
 
 function _histSave(html) {
@@ -74,7 +76,7 @@ function _histClear() {
   _tmL('tok', 'ისტორია წაიშალა');
 }
 
-// ── multiline (chat) mode ──
+// ── multiline (chat/edit) mode ──
 function tmToggleMulti() {
   _tmMulti = !_tmMulti;
   var btn   = document.getElementById('tmMlBtn');
@@ -93,21 +95,30 @@ function tmToggleMulti() {
   setTimeout(function () { (_tmMulti ? ta : inp).focus(); }, 50);
 }
 
+// ── send handler (shared by button and Ctrl+Enter) ──
 function tmSend() {
   var ta = document.getElementById('tmTa');
   var v = ta.value.trim(); if (!v) return;
+
+  // DSL edit mode intercept — don't treat as chat
+  if (_tmEditObj) { _tmSaveDlg(v); return; }
+
   _tmHist.unshift(v); _tmHIdx = -1; _tmHCur = '';
   ta.value = '';
   if (typeof chatHandleInput === 'function' && chatHandleInput(v)) return;
   _tmL('ti', v); _tmRun(v);
 }
 
-// textarea keydown (multiline mode)
+// textarea keydown (multiline + edit mode)
 (function () {
   var ta = document.getElementById('tmTa');
   ta.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); tmSend(); }
-    if (e.key === 'Escape') { closeTerm(); }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (_tmEditObj) { _tmEditCancel(); }
+      else { closeTerm(); }
+    }
   });
 })();
 
@@ -214,6 +225,7 @@ function _tmRun(raw) {
     'მასშტაბი':    _tmZoom,
     'ზონები':      _tmAreas,
     'ობიექტები':   _tmObjects,
+    'დიალოგი':     _tmDlgEdit,
     'წასვლა':      _tmGo,
     'ლეგენდა':     _tmLegend,
     'მენიუ':       _tmMenu,
@@ -232,29 +244,30 @@ function _tmRun(raw) {
 // ── built-in commands ──
 function _tmHelp() {
   var list = [
-    ['/დახმარება',      'ბრძანების სია'],
-    ['/გასუფთავება',    'კონსოლის გასუფთავება'],
-    ['/ინფო',           'რუკის ინფორმაცია'],
-    ['/მასშტაბი [N]',   'zoom 0.25–6'],
-    ['/ზონები',         'ზონების სია'],
-    ['/ობიექტები',      'ობიექტების სია'],
-    ['/წასვლა [N]',     'ზონაზე ნავიგაცია'],
-    ['/ლეგენდა',        'აღწერას ჩვენა/დამალვა'],
-    ['/მენიუ',          'მენიუს toggle'],
-    ['/სრული',          'სრული ↔ ნახევარი'],
-    ['/ისტორია',        'ჩატის ისტორიის წაშლა'],
-    ['/ვადა [N]',       'ისტ. შენახვა N დღე'],
-    ['/ტექსტი',         'ჩატ ↔ ბრძანება mode'],
-    ['/დახურვა',        'დახურვა  [Esc]'],
-    ['/nick სახელი',    'ნიკნეიმის შეცვლა'],
-    ['/me ტექსტი',      '* აქშნის მესიჯი'],
-    ['/who',            'ონლაინ სია'],
-    ['/color #hex',     'ნიკნეიმის ფერი']
+    ['/დახმარება',        'ბრძანების სია'],
+    ['/გასუფთავება',      'კონსოლის გასუფთავება'],
+    ['/ინფო',             'რუკის ინფორმაცია'],
+    ['/მასშტაბი [N]',     'zoom 0.25–6'],
+    ['/ზონები',           'ზონების სია'],
+    ['/ობიექტები',        'ობიექტები + dialogue სტატუსი'],
+    ['/დიალოგი [სახელი]', 'DSL რედაქტირება · Ctrl+Enter შესანახად'],
+    ['/წასვლა [N]',       'ზონაზე ნავიგაცია'],
+    ['/ლეგენდა',          'აღწერას ჩვენა/დამალვა'],
+    ['/მენიუ',            'მენიუს toggle'],
+    ['/სრული',            'სრული ↔ ნახევარი'],
+    ['/ისტორია',          'ჩატის ისტორიის წაშლა'],
+    ['/ვადა [N]',         'ისტ. შენახვა N დღე'],
+    ['/ტექსტი',           'ჩატ ↔ ბრძანება mode'],
+    ['/დახურვა',          'დახურვა  [Esc]'],
+    ['/nick სახელი',      'ნიკნეიმის შეცვლა'],
+    ['/me ტექსტი',        '* აქშნის მესიჯი'],
+    ['/who',              'ონლაინ სია'],
+    ['/color #hex',       'ნიკნეიმის ფერი']
   ];
   _tmL('tdm', _SEP); _tmL('tsy', '--- ბრძანები ---');
   for (var i = 0; i < list.length; i++) {
     var c = list[i][0], d = list[i][1];
-    var pad = c; while (pad.length < 22) pad += ' ';
+    var pad = c; while (pad.length < 24) pad += ' ';
     _tmL('tnf', pad + d);
   }
   _tmL('tdm', 'Tab — ავტოდასრულება   ↑↓ — ისტორია');
@@ -286,13 +299,25 @@ function _tmAreas() {
   els.forEach(function (el) { var t = el.dataset.title; if (t && !seen[t]) { seen[t] = 1; _tmL('tnf', '▸ ' + t); } });
   _tmL('tdm', _SEP); _tmL('tdm', 'გამოიყენე: წასვლა [სახელი]');
 }
+
 function _tmObjects() {
   var els = document.querySelectorAll('.hotspot:not(.hs-area):not(.no-interact)');
   if (!els.length) { _tmL('tdm', 'ობიექტები: ცარიელია'); return; }
   _tmL('tdm', _SEP);
-  els.forEach(function (el) { _tmL('tnf', '◆ ' + (el.dataset.title || '(უსახელო)')); });
+  _tmL('tsy', 'ობიექტები  [/დიალოგი სახელი — რედაქტირება]');
+  els.forEach(function (el) {
+    var title = el.dataset.title || '(უსახელო)';
+    var oi = el.dataset.oi;
+    var obj = (oi != null && window._OBJS && _OBJS[+oi]) ? _OBJS[+oi] : null;
+    var suffix = '';
+    if (obj && obj.dialogue && obj.dialogue.length) {
+      suffix = ' [💬 ' + obj.dialogue.length + ']';
+    }
+    _tmL('tnf', '◆ ' + title + suffix);
+  });
   _tmL('tdm', _SEP);
 }
+
 function _tmGo(args) {
   var label = args.join(' ').trim();
   if (!label) { _tmL('ter', 'გამოყენება: წასვლა [ზონის სახელი]'); return; }
@@ -313,4 +338,100 @@ function _tmVada(args) {
   _HIST_TTL = n * 86400000;
   try { localStorage.setItem(_HIST_TTL_KEY, String(n)); } catch (e) {}
   _tmL('tok', 'ისტორიის ვადა: ' + n + ' დღე');
+}
+
+// ── dialogue DSL editor ──
+
+// Open DSL edit mode for an object
+function _tmDlgEdit(args) {
+  var title = args.join(' ').trim();
+  if (!title) {
+    _tmL('ter', 'გამოყენება: /დიალოგი [ობიექტის სახელი]');
+    _tmL('tdm', 'სია: /ობიექტები');
+    return;
+  }
+
+  // verify object exists in DOM
+  var hs = document.querySelector('.hotspot[data-title="' + title.replace(/"/g, '\\"') + '"]:not(.hs-area):not(.no-interact)');
+  if (!hs) {
+    _tmL('ter', 'ობიექტი ვერ მოიძებნა: "' + title + '"');
+    _tmL('tdm', 'სია: /ობიექტები');
+    return;
+  }
+
+  // get current DSL (from override or embedded dialogue)
+  var dsl = '';
+  if (typeof dlgGetCurrentDsl === 'function') dsl = dlgGetCurrentDsl(title);
+
+  // fallback template if no dialogue exists yet
+  if (!dsl) {
+    dsl = '@0 💬 ' + title + '\n\n<> \n\n-> ';
+  }
+
+  // switch to multiline mode and load DSL
+  if (!_tmMulti) tmToggleMulti();
+  document.getElementById('tmTa').value = dsl;
+  _tmEditObj = title;
+
+  _tmL('tsy', '─── ' + title + ' — DSL ──────────────');
+  _tmL('tdm', 'Ctrl+Enter — შენახვა · Esc — გაუქმება');
+}
+
+// Cancel edit mode without saving
+function _tmEditCancel() {
+  var title = _tmEditObj;
+  _tmEditObj = null;
+  document.getElementById('tmTa').value = '';
+  if (_tmMulti) tmToggleMulti();
+  _tmL('tdm', title + ' — გაუქმდა');
+}
+
+// Save DSL to Supabase and patch _OBJS locally
+async function _tmSaveDlg(dsl) {
+  var title = _tmEditObj;
+
+  if (typeof parseBulkDSL !== 'function') {
+    _tmL('ter', '✗ bulk-parser.js არ არის ჩატვირთული');
+    return;
+  }
+
+  var result;
+  try {
+    result = parseBulkDSL(dsl);
+  } catch (e) {
+    _tmL('ter', '✗ DSL შეცდომა: ' + e.message);
+    return;
+  }
+
+  // parseBulkDSL may return array or { nodes, title, marker }
+  var nodes = Array.isArray(result) ? result : (result && result.nodes ? result.nodes : []);
+  if (!nodes.length) {
+    _tmL('ter', '✗ DSL: კვანძები ვერ მოიძებნა — შეამოწმე ფორმატი');
+    return;
+  }
+
+  _tmL('tdm', '↑ ' + title + ' — ვინახავ...');
+
+  if (typeof dlgOverrideSave !== 'function') {
+    _tmL('ter', '✗ dlgOverrideSave ვერ მოიძებნა (runtime.js?)');
+    return;
+  }
+
+  var ok = false;
+  try {
+    ok = await dlgOverrideSave(title, nodes, dsl);
+  } catch (e) {
+    _tmL('ter', '✗ Supabase: ' + e.message);
+    return;
+  }
+
+  if (ok) {
+    _tmEditObj = null;
+    document.getElementById('tmTa').value = '';
+    if (_tmMulti) tmToggleMulti();
+    _tmL('tok', title + ' — შენახულია ✓  (ყველა viewer განახლდება)');
+  } else {
+    _tmL('ter', '✗ შენახვა ვერ მოხერხდა — Supabase error');
+    _tmL('tdm', 'DSL textarea-ში რჩება, შეგიძლია კვლავ სცადო');
+  }
 }

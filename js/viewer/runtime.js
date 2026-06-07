@@ -305,9 +305,7 @@ function _dlgShowNode(nodeId) {
   const _he = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const txt = (node.text || '')
     .replace(/\[\]/g, (localStorage.getItem('mdelo_nick') || 'მოგზაური') + ':')
-    // new format (\x01): parseBulkDSL stores \x01name inside spk-object tag
     .replace(/\x01([^<"]*)/g, (_, name) => (name.trim() || _he(objTitle)) + ':')
-    // old format: &lt;&gt; or &lt;name&gt; anywhere in text (pre-\x01 bulk-parser)
     .replace(/&lt;([^&<\n]*)&gt;/g, (_, name) => '<b>' + (name.trim() || _he(objTitle)) + ':</b>');
   _typewriterHTML(body, parseLinks(txt), 35, () => {
     if (!btnWrap) return;
@@ -513,7 +511,6 @@ function renderNotifBar() {
     c.className = 'ncard' + (n.type === 'emergency' ? ' pulse' : '');
     c.dataset.type = n.type || 'info'; c.title = n.text || ''; c.textContent = n.symbol || '💬';
     c.onclick = () => openNotifPopup(n);
-    // ── long tap → delete ──
     let _lt = null;
     c.addEventListener('touchstart', e => {
       _lt = setTimeout(() => {
@@ -535,15 +532,11 @@ function renderNotifBar() {
 
 function _ncardDeleteConfirm(card, n) {
   const type = n.type || 'info';
-
-  // emergency — დაბლოკილი
   if (type === 'emergency') {
     const ov = _ncardOverlay(card, '🔒', '#8b949e');
     setTimeout(() => ov.remove(), 1200);
     return;
   }
-
-  // danger / warning — confirm dialog
   if (type === 'danger' || type === 'warning') {
     const ov = _ncardOverlay(card, '?', { danger: '#fb8f44', warning: '#f0a500' }[type]);
     ov.style.flexDirection = 'column';
@@ -566,8 +559,6 @@ function _ncardDeleteConfirm(card, n) {
     no.addEventListener('click',  e => { e.stopPropagation(); ov.remove(); });
     return;
   }
-
-  // info / done / project — პირდაპირ წაშლა
   const ov = _ncardOverlay(card, '🗑', '#f85149');
   ov.addEventListener('click', async e => { e.stopPropagation(); await _ncardDoDelete(ov, n); });
   setTimeout(() => {
@@ -596,13 +587,25 @@ async function _ncardDoDelete(ov, n) {
     else ov.remove();
   } catch (e) { ov.remove(); }
 }
+
 function _startRealtime() {
   if (typeof supabase === 'undefined') return;
   try {
     const client = supabase.createClient(SUPA_URL, SUPA_KEY);
-    client.channel('notif-live').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, () => loadNotifs()).subscribe();
+    // notifications channel
+    client.channel('notif-live')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, () => loadNotifs())
+      .subscribe();
+    // dialogue overrides channel — realtime patch for all viewers
+    const mapId = (_CFG && _CFG.title) ? _CFG.title : 'map';
+    client.channel('dlg-overrides')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dialogue_overrides' }, payload => {
+        if (payload.new && payload.new.map_id === mapId) _applyDlgOverride(payload.new);
+      })
+      .subscribe();
   } catch (e) {}
 }
+
 function openNotifPopup(n) {
   _curNotif = n;
   const p = document.getElementById('notifPopup');
@@ -651,9 +654,82 @@ function goToArea() {
   }
 }
 
+// ── dialogue overrides (Supabase) ──
+// Allows admin to edit dialogue via terminal; all viewers get updates via realtime.
+
+const _MAP_ID = (_CFG && _CFG.title) ? _CFG.title : 'map';
+
+// Find _OBJS index by hotspot data-title
+function _findOiByTitle(title) {
+  var hs = document.querySelector('.hotspot[data-title="' + title.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"]:not(.hs-area):not(.no-interact)');
+  return (hs && hs.dataset.oi != null) ? +hs.dataset.oi : -1;
+}
+
+// Patch _OBJS[oi].dialogue with data from Supabase row
+function _applyDlgOverride(row) {
+  if (!row || !row.obj_title || !row.nodes_json) return;
+  var oi = _findOiByTitle(row.obj_title);
+  if (oi < 0 || !window._OBJS || !_OBJS[oi]) return;
+  _OBJS[oi].dialogue = Array.isArray(row.nodes_json) ? row.nodes_json : [];
+}
+
+// Load all overrides for this map on startup
+async function loadDialogueOverrides() {
+  try {
+    var r = await fetch(
+      SUPA_URL + '/rest/v1/dialogue_overrides?map_id=eq.' + encodeURIComponent(_MAP_ID),
+      { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY } }
+    );
+    if (!r.ok) return;
+    var rows = await r.json();
+    rows.forEach(_applyDlgOverride);
+  } catch (e) {}
+}
+
+// Save/update a dialogue override — called from terminal.js
+window.dlgOverrideSave = async function(objTitle, nodesJson, dsl) {
+  try {
+    var body = JSON.stringify({
+      map_id: _MAP_ID,
+      obj_title: objTitle,
+      nodes_json: nodesJson,
+      dsl: dsl,
+      updated_at: new Date().toISOString()
+    });
+    var r = await fetch(SUPA_URL + '/rest/v1/dialogue_overrides', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPA_KEY,
+        'Authorization': 'Bearer ' + SUPA_KEY,
+        'Prefer': 'resolution=merge-duplicates,return=minimal'
+      },
+      body: body
+    });
+    if (r.ok) {
+      // patch locally immediately (don't wait for realtime round-trip)
+      var oi = _findOiByTitle(objTitle);
+      if (oi >= 0 && window._OBJS && _OBJS[oi]) _OBJS[oi].dialogue = nodesJson;
+    }
+    return r.ok;
+  } catch (e) { return false; }
+};
+
+// Get current DSL string for an object — called from terminal.js
+window.dlgGetCurrentDsl = function(objTitle) {
+  var oi = _findOiByTitle(objTitle);
+  if (oi < 0 || !window._OBJS || !_OBJS[oi]) return '';
+  var obj = _OBJS[oi];
+  if (obj.dialogue && obj.dialogue.length && typeof unparseDialogue === 'function') {
+    return unparseDialogue({ lb: objTitle, dialogue: obj.dialogue });
+  }
+  return '';
+};
+
 // ── init ──
 window.addEventListener('load', () => {
   loadNotifs();
+  loadDialogueOverrides();
   _startRealtime();
   applySpotHash();
   applyAreaHash();
