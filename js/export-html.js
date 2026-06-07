@@ -5,6 +5,7 @@
 //  Runtime JS:               viewer/runtime.js
 //  Terminal JS:              viewer/terminal.js
 //  Canvas renderer:          viewer/canvas-renderer.js
+//  Bulk parser:              js/bulk-parser.js
 // ============================================================
 
 // ── helpers ──
@@ -148,11 +149,12 @@ async function doExportHTML() {
     const objsData = mapData.objects.map(o => ({ title: o.title, lb: o.lb, dialogue: o.dialogue || [] }));
 
     // load viewer assets
-    const [tmpl, runtimeJS, terminalJS, canvasRendererJS] = await Promise.all([
+    const [tmpl, runtimeJS, terminalJS, canvasRendererJS, bulkParserJS] = await Promise.all([
       _fetchViewerAsset('js/viewer/viewer.html'),
       _fetchViewerAsset('js/viewer/runtime.js'),
       _fetchViewerAsset('js/viewer/terminal.js'),
       _fetchViewerAsset('js/viewer/canvas-renderer.js'),
+      _fetchViewerAsset('js/bulk-parser.js'),
     ]);
 
     // map image tag
@@ -183,6 +185,7 @@ async function doExportHTML() {
       .replace(/{{OBJS_DATA}}/g,       JSON.stringify(objsData))
       .replace(/{{TS}}/g,              String(TS))
       .replace(/{{CANVAS_RENDERER}}/g, canvasRendererBlock)
+      .replace(/{{BULK_PARSER_JS}}/g,  bulkParserJS)
       .replace(/{{RUNTIME_JS}}/g,      runtimeJS)
       .replace(/{{TERMINAL_JS}}/g,     terminalJS);
 
