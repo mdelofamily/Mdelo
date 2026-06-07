@@ -60,8 +60,13 @@ function parseLinks(t) {
     if (e < 0) { o += t.slice(s); break; }
     const inner2 = t.slice(s + 2, e);
     const p = inner2.indexOf('|');
-    if (p < 0) { o += inner2; }
-    else {
+    if (p < 0) {
+      // [[object name]] — map object link
+      const name = inner2.trim();
+      const esc  = name.replace(/"/g, '&quot;');
+      o += '<span class="obj-link" onclick="openObjByName(\'' + esc + '\')" ' +
+           'style="color:#ffd700;cursor:pointer;text-decoration:underline dotted;">' + name + '</span>';
+    } else {
       const lbl = inner2.slice(0, p), url = inner2.slice(p + 1).trim();
       const safe = (url.startsWith('http') || url.startsWith('//') || url.startsWith('/')) ? url : '#';
       o += '<a href="' + safe + '" target="_blank" style="color:#58a6ff;">' + lbl + '</a>';
@@ -71,6 +76,19 @@ function parseLinks(t) {
   return o.replace(/\n/g, '<br>');
 }
 function parseLinks2(t) { return parseLinks(t); }
+
+// open object popup by title (for [[name]] links in dialogue)
+function openObjByName(name) {
+  const all = document.querySelectorAll('.hotspot[data-oi]');
+  for (const hs of all) {
+    if ((hs.dataset.title || '') === name) {
+      const oi = +hs.dataset.oi;
+      const objData = (typeof _OBJS !== 'undefined' && _OBJS[oi]) ? _OBJS[oi] : null;
+      openHsPopup(hs, hs.dataset.title || '', hs.dataset.tooltip || '', objData);
+      return;
+    }
+  }
+}
 
 // ── hotspot click dispatcher ──
 wrap.addEventListener('click', e => {
