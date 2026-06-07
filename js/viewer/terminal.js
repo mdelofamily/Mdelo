@@ -308,7 +308,7 @@ function _tmObjects() {
   els.forEach(function (el) {
     var title = el.dataset.title || '(უსახელო)';
     var oi = el.dataset.oi;
-    var obj = (oi != null && window._OBJS && _OBJS[+oi]) ? _OBJS[+oi] : null;
+    var obj = (oi != null && typeof _OBJS !== 'undefined' && _OBJS[+oi]) ? _OBJS[+oi] : null;
     var suffix = '';
     if (obj && obj.dialogue && obj.dialogue.length) {
       suffix = ' [💬 ' + obj.dialogue.length + ']';

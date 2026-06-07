@@ -669,7 +669,7 @@ function _findOiByTitle(title) {
 function _applyDlgOverride(row) {
   if (!row || !row.obj_title || !row.nodes_json) return;
   var oi = _findOiByTitle(row.obj_title);
-  if (oi < 0 || !window._OBJS || !_OBJS[oi]) return;
+  if (oi < 0 || typeof _OBJS === 'undefined' || !_OBJS[oi]) return;
   _OBJS[oi].dialogue = Array.isArray(row.nodes_json) ? row.nodes_json : [];
 }
 
@@ -708,7 +708,7 @@ window.dlgOverrideSave = async function(objTitle, nodesJson, dsl) {
     });
     if (r.ok) {
       var oi = _findOiByTitle(objTitle);
-      if (oi >= 0 && window._OBJS && _OBJS[oi]) _OBJS[oi].dialogue = nodesJson;
+      if (oi >= 0 && typeof _OBJS !== 'undefined' && _OBJS[oi]) _OBJS[oi].dialogue = nodesJson;
       return true;
     }
     var errBody = r.text ? await r.text().catch(function(){return "";}) : "";
@@ -719,7 +719,7 @@ window.dlgOverrideSave = async function(objTitle, nodesJson, dsl) {
 // Get current DSL string for an object — called from terminal.js
 window.dlgGetCurrentDsl = function(objTitle) {
   var oi = _findOiByTitle(objTitle);
-  if (oi < 0 || !window._OBJS || !_OBJS[oi]) return '';
+  if (oi < 0 || typeof _OBJS === 'undefined' || !_OBJS[oi]) return '';
   var obj = _OBJS[oi];
   if (obj.dialogue && obj.dialogue.length && typeof unparseDialogue === 'function') {
     return unparseDialogue({ lb: objTitle, dialogue: obj.dialogue });
