@@ -420,7 +420,7 @@ async function _tmSaveDlg(dsl) {
 
   var ok = false, okResult = null;
   try {
-    okResult = await dlgOverrideSave(title, nodes, dsl, marker); ok = okResult === true;
+    okResult = await dlgOverrideSave(title, nodes, dsl); ok = okResult === true;
   } catch (e) {
     _tmL('ter', '✗ Supabase: ' + e.message);
     return;
