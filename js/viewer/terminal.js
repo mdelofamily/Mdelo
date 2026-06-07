@@ -365,7 +365,7 @@ function _tmDlgEdit(args) {
 
   // fallback template if no dialogue exists yet
   if (!dsl) {
-    dsl = '@0 💬 ' + title + '\n\n<> \n\n-> ';
+    dsl = '@0 ' + title + '\n\n<> \n\n-> ';
   }
 
   // switch to multiline mode and load DSL
@@ -404,7 +404,8 @@ async function _tmSaveDlg(dsl) {
   }
 
   // parseBulkDSL may return array or { nodes, title, marker }
-  var nodes = Array.isArray(result) ? result : (result && result.nodes ? result.nodes : []);
+  var nodes  = Array.isArray(result) ? result : (result && result.nodes ? result.nodes : []);
+  var marker = (!Array.isArray(result) && result && result.marker != null) ? result.marker : undefined;
   if (!nodes.length) {
     _tmL('ter', '✗ DSL: კვანძები ვერ მოიძებნა — შეამოწმე ფორმატი');
     return;
@@ -419,7 +420,7 @@ async function _tmSaveDlg(dsl) {
 
   var ok = false, okResult = null;
   try {
-    okResult = await dlgOverrideSave(title, nodes, dsl); ok = okResult === true;
+    okResult = await dlgOverrideSave(title, nodes, dsl, marker); ok = okResult === true;
   } catch (e) {
     _tmL('ter', '✗ Supabase: ' + e.message);
     return;

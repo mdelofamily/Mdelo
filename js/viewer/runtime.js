@@ -323,10 +323,16 @@ function _dlgShowNode(nodeId) {
           fetch(SUPA_URL_D + '/rest/v1/notifications', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY_D, 'Authorization': 'Bearer ' + SUPA_KEY_D, 'Prefer': 'return=minimal' },
-            body: JSON.stringify({ type: nType, symbol: nSymbol, text: notifyTxt, sender: sender, linked_area: '' })
+            body: JSON.stringify({ type: nType, symbol: nSymbol, text: notifyTxt, sender: sender, linked_area: btn.area || '' })
           }).catch(() => {});
         }
         if (btn.link) window.open(btn.link, '_blank');
+        if (btn.area) {
+          closeHsPopup();
+          fitAreas(btn.area);
+          blinkAreasByGroupOrTitle('', btn.area);
+          return;
+        }
         if (btn.nextNode && _dlgNodes[btn.nextNode]) { _dlgShowNode(btn.nextNode); }
         else { closeHsPopup(); }
       };
@@ -687,7 +693,8 @@ async function loadDialogueOverrides() {
 }
 
 // Save/update a dialogue override — called from terminal.js
-window.dlgOverrideSave = async function(objTitle, nodesJson, dsl) {
+// marker: DSL marker string ('!' | '?' | '...' | '') — optional
+window.dlgOverrideSave = async function(objTitle, nodesJson, dsl, marker) {
   try {
     var body = JSON.stringify({
       map_id: _MAP_ID,
@@ -708,7 +715,21 @@ window.dlgOverrideSave = async function(objTitle, nodesJson, dsl) {
     });
     if (r.ok) {
       var oi = _findOiByTitle(objTitle);
-      if (oi >= 0 && typeof _OBJS !== 'undefined' && _OBJS[oi]) _OBJS[oi].dialogue = nodesJson;
+      if (oi >= 0 && typeof _OBJS !== 'undefined' && _OBJS[oi]) {
+        _OBJS[oi].dialogue = nodesJson;
+        // apply marker locally — '...' (DSL) → '💬' (internal)
+        if (marker !== undefined && marker !== null) {
+          var mk = marker === '...' ? '💬' : marker;
+          _OBJS[oi].marker = mk;
+          var hsEl = document.querySelector(
+            '.hotspot[data-title="' + objTitle.replace(/\\/g,'\\\\').replace(/"/g,'\\"') + '"]:not(.hs-area)'
+          );
+          if (hsEl) {
+            var mkEl = hsEl.querySelector('.hs-marker');
+            if (mkEl) { mkEl.textContent = mk || ''; mkEl.style.display = mk ? '' : 'none'; }
+          }
+        }
+      }
       return true;
     }
     var errBody = r.text ? await r.text().catch(function(){return "";}) : "";
@@ -722,7 +743,7 @@ window.dlgGetCurrentDsl = function(objTitle) {
   if (oi < 0 || typeof _OBJS === 'undefined' || !_OBJS[oi]) return '';
   var obj = _OBJS[oi];
   if (obj.dialogue && obj.dialogue.length && typeof unparseDialogue === 'function') {
-    return unparseDialogue({ lb: objTitle, dialogue: obj.dialogue });
+    return unparseDialogue({ lb: objTitle, dialogue: obj.dialogue, marker: obj.marker || '' });
   }
   return '';
 };
