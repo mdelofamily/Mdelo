@@ -309,11 +309,12 @@ function _tmObjects() {
     var title = el.dataset.title || '(უსახელო)';
     var oi = el.dataset.oi;
     var obj = (oi != null && typeof _OBJS !== 'undefined' && _OBJS[+oi]) ? _OBJS[+oi] : null;
+    var displayName = (obj && obj.lb) ? obj.lb : title;
     var suffix = '';
     if (obj && obj.dialogue && obj.dialogue.length) {
       suffix = ' [💬 ' + obj.dialogue.length + ']';
     }
-    _tmL('tnf', '◆ ' + title + suffix);
+    _tmL('tnf', '◆ ' + displayName + suffix);
   });
   _tmL('tdm', _SEP);
 }

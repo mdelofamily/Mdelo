@@ -681,10 +681,11 @@ function _applyMarkerDom(hsEl, mk) {
   if (mk) {
     if (!mkEl) {
       mkEl = document.createElement('div');
-      mkEl.className = 'hs-marker';
       hsEl.appendChild(mkEl);
     }
-    mkEl.textContent  = mk;
+    // must set color class — without it the element is invisible
+    mkEl.className   = mk === '!' ? 'hs-marker exc' : mk === '?' ? 'hs-marker q' : 'hs-marker chat';
+    mkEl.textContent = mk;
     mkEl.style.display = '';
     if (dotEl) dotEl.style.display = 'none';
   } else {
