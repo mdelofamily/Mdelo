@@ -707,12 +707,13 @@ window.dlgOverrideSave = async function(objTitle, nodesJson, dsl) {
       body: body
     });
     if (r.ok) {
-      // patch locally immediately (don't wait for realtime round-trip)
       var oi = _findOiByTitle(objTitle);
       if (oi >= 0 && window._OBJS && _OBJS[oi]) _OBJS[oi].dialogue = nodesJson;
+      return true;
     }
-    return r.ok;
-  } catch (e) { return false; }
+    var errBody = r.text ? await r.text().catch(function(){return "";}) : "";
+    return { ok: false, status: r.status, msg: errBody.slice(0,150) };
+  } catch (e) { return { ok: false, status: 0, msg: e.message }; }
 };
 
 // Get current DSL string for an object — called from terminal.js

@@ -417,9 +417,9 @@ async function _tmSaveDlg(dsl) {
     return;
   }
 
-  var ok = false;
+  var ok = false, okResult = null;
   try {
-    ok = await dlgOverrideSave(title, nodes, dsl);
+    okResult = await dlgOverrideSave(title, nodes, dsl); ok = okResult === true;
   } catch (e) {
     _tmL('ter', '✗ Supabase: ' + e.message);
     return;
@@ -431,7 +431,8 @@ async function _tmSaveDlg(dsl) {
     if (_tmMulti) tmToggleMulti();
     _tmL('tok', title + ' — შენახულია ✓  (ყველა viewer განახლდება)');
   } else {
-    _tmL('ter', '✗ შენახვა ვერ მოხერხდა — Supabase error');
+    var _em = okResult && okResult.msg ? ('HTTP ' + okResult.status + ': ' + okResult.msg) : 'უცნობი';
+    _tmL('ter', '✗ Supabase ' + _em);
     _tmL('tdm', 'DSL textarea-ში რჩება, შეგიძლია კვლავ სცადო');
   }
 }
