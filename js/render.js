@@ -115,8 +115,40 @@ function render() {
   ctx.save();
   ctx.translate(viewX, viewY);
   ctx.scale(zoom, zoom);
+  
+  // ჯერ ვხატავთ ძირითად რუკას
   ctx.drawImage(offscreen, 0, 0);
 
+  // ── ბორდერების დინამიური შევსება კიდის ფილებით (Infinite Edge Extrapolating) ──
+  const startCol = Math.floor(-viewX / (TS * zoom));
+  const endCol   = Math.ceil((W - viewX) / (TS * zoom));
+  const startRow = Math.floor(-viewY / (TS * zoom));
+  const endRow   = Math.ceil((H - viewY) / (TS * zoom));
+
+  for (let r = startRow; r < endRow; r++) {
+    for (let c = startCol; c < endCol; c++) {
+      // თუ რუკის შიგნით ვართ, გამოვტოვოთ (offscreen-მა უკვე დახატა)
+      if (c >= 0 && c < COLS && r >= 0 && r < ROWS) continue;
+
+      // კოორდინატების შეზღუდვა (clamping) კიდეების მისაღებად
+      const clampedC = Math.max(0, Math.min(COLS - 1, c));
+      const clampedR = Math.max(0, Math.min(ROWS - 1, r));
+      
+      const id = map[clampedR]?.[clampedC];
+      if (!id) continue;
+
+      const t = tileMap.get(id);
+      // თუ ბაზისური ფილა აქვს (მაგ. autotile), ჯერ ის დავხატოთ ძირში
+      if (t?.autoTile && t.baseTileId) {
+        drawTile(ctx, t.baseTileId, c * TS, r * TS, TS);
+      }
+      
+      // ვხატავთ კიდის ფილას სუფთა სახით, რათა ვიზუალი ლამაზად განმეორდეს
+      drawTile(ctx, id, c * TS, r * TS, TS);
+    }
+  }
+
+  // გრიდის ხაზები
   if (showGrid && zoom >= 0.5) {
     ctx.strokeStyle = "rgba(0,0,0,0.2)"; ctx.lineWidth = 0.5;
     ctx.beginPath();
