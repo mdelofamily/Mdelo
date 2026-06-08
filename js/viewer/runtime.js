@@ -203,8 +203,8 @@ function _gotoNamedLocation(title) {
   else {
     var hs = document.querySelector('.hotspot[data-title="' + title + '"]');
     if (hs) {
-      wrap.scrollLeft = +hs.dataset.ox * scale - wrap.clientWidth / 2;
-      wrap.scrollTop  = +hs.dataset.oy * scale - wrap.clientHeight / 2;
+      wrap.scrollLeft = hs.offsetLeft + hs.offsetWidth  / 2 - wrap.clientWidth  / 2;
+      wrap.scrollTop  = hs.offsetTop  + hs.offsetHeight / 2 - wrap.clientHeight / 2;
     }
   }
 }
