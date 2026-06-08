@@ -98,6 +98,54 @@ function rebuildOff() {
   offCtx.restore(); // remove clip
 }
 
+// ── EDGE TILE FILL ──
+// Must be called inside render() after translate+scale, before drawImage(offscreen).
+// Fills the canvas border with repeating edge tiles from the offscreen buffer.
+function _drawEdgeFill(ctx) {
+  if (!offscreen) return;
+  const mw = COLS * TS, mh = ROWS * TS;
+  const W = canvas.width, H = canvas.height;
+
+  // how many tile-columns/rows extend beyond map bounds in each direction
+  const extL = Math.max(0, Math.ceil( viewX                    / zoom / TS)) + 1;
+  const extR = Math.max(0, Math.ceil((W - viewX - mw * zoom)   / zoom / TS)) + 1;
+  const extT = Math.max(0, Math.ceil( viewY                    / zoom / TS)) + 1;
+  const extB = Math.max(0, Math.ceil((H - viewY - mh * zoom)   / zoom / TS)) + 1;
+
+  ctx.imageSmoothingEnabled = false;
+
+  // Left strip — repeat column 0 of offscreen
+  for (let i = 1; i <= extL; i++)
+    ctx.drawImage(offscreen, 0, 0, TS, mh, -i * TS, 0, TS, mh);
+
+  // Right strip — repeat last column of offscreen
+  for (let i = 0; i < extR; i++)
+    ctx.drawImage(offscreen, mw - TS, 0, TS, mh, mw + i * TS, 0, TS, mh);
+
+  // Top strip — repeat row 0 of offscreen (middle section only)
+  for (let i = 1; i <= extT; i++)
+    ctx.drawImage(offscreen, 0, 0, mw, TS, 0, -i * TS, mw, TS);
+
+  // Bottom strip — repeat last row of offscreen (middle section only)
+  for (let i = 0; i < extB; i++)
+    ctx.drawImage(offscreen, 0, mh - TS, mw, TS, 0, mh + i * TS, mw, TS);
+
+  // Corners — top
+  for (let iy = 1; iy <= extT; iy++) {
+    for (let ix = 1; ix <= extL; ix++)   // top-left
+      ctx.drawImage(offscreen, 0, 0, TS, TS, -ix * TS, -iy * TS, TS, TS);
+    for (let ix = 0; ix < extR; ix++)    // top-right
+      ctx.drawImage(offscreen, mw - TS, 0, TS, TS, mw + ix * TS, -iy * TS, TS, TS);
+  }
+  // Corners — bottom
+  for (let iy = 0; iy < extB; iy++) {
+    for (let ix = 1; ix <= extL; ix++)   // bottom-left
+      ctx.drawImage(offscreen, 0, mh - TS, TS, TS, -ix * TS, mh + iy * TS, TS, TS);
+    for (let ix = 0; ix < extR; ix++)    // bottom-right
+      ctx.drawImage(offscreen, mw - TS, mh - TS, TS, TS, mw + ix * TS, mh + iy * TS, TS, TS);
+  }
+}
+
 // ── MAIN RENDER ──
 function render() {
   const W = cw.clientWidth, H = cw.clientHeight;
@@ -111,39 +159,13 @@ function render() {
   ctx.imageSmoothingEnabled = false;
   ctx.clearRect(0, 0, W, H);
 
-  // ── 1) INFINITE BORDER FILL (გლობალურ კოორდინატებში) ──
-  // ეკრანის პიქსელებს პირდაპირ ვთარგმნით რუკის ვირტუალურ უჯრებში
+  // 1) edge fill + tiles (from offscreen buffer)
   ctx.save();
   ctx.translate(viewX, viewY);
   ctx.scale(zoom, zoom);
-
-  // გამოვიანგარიშოთ ეკრანზე ხილვადი უჯრების დიაპაზონი (მათ შორის ნეგატიურიც)
-  const viewLeft   = Math.floor(-viewX / (TS * zoom));
-  const viewRight  = Math.ceil((W - viewX) / (TS * zoom));
-  const viewTop    = Math.floor(-viewY / (TS * zoom));
-  const viewBottom = Math.ceil((H - viewY) / (TS * zoom));
-
-  for (let r = viewTop; r <= viewBottom; r++) {
-    for (let c = viewLeft; c <= viewRight; c++) {
-      // კოორდინატების შეზღუდვა რეალური რუკის საზღვრებში (Clamping)
-      const clampedC = Math.max(0, Math.min(COLS - 1, c));
-      const clampedR = Math.max(0, Math.min(ROWS - 1, r));
-      
-      const id = map[clampedR]?.[clampedC];
-      if (!id) continue;
-
-      const t = tileMap.get(id);
-      if (t?.autoTile && t.baseTileId) {
-        drawTile(ctx, t.baseTileId, c * TS, r * TS, TS);
-      }
-      drawTile(ctx, id, c * TS, r * TS, TS);
-    }
-  }
-
-  // ── 2) MAIN MAP OVERLAY (ზემოდან გადახატვა სუფთა offscreen-იდან) ──
+  _drawEdgeFill(ctx);          // border filled with repeating edge tiles
   ctx.drawImage(offscreen, 0, 0);
 
-  // გრიდი
   if (showGrid && zoom >= 0.5) {
     ctx.strokeStyle = "rgba(0,0,0,0.2)"; ctx.lineWidth = 0.5;
     ctx.beginPath();
@@ -153,7 +175,7 @@ function render() {
   }
   ctx.restore();
 
-  // 3) objects layer
+  // 2) objects layer
   ctx.save();
   ctx.translate(viewX, viewY);
   ctx.scale(zoom, zoom);
@@ -286,7 +308,7 @@ function render() {
 
   ctx.restore();
 
-  // 4) satellite bg overlay
+  // 3) satellite bg overlay
   if (bgImg && bgVis && bgOp > 0) {
     if (bgLayerDirty) drawBgLayer();
     ctx.save();
@@ -298,7 +320,7 @@ function render() {
 }
 
 // ── WINDOW BINDINGS ──
-window.drawBgLayer = drawBgLayer;
-window.drawCell    = drawCell;
-window.rebuildOff  = rebuildOff;
-window.render      = render;
+window.drawBgLayer   = drawBgLayer;
+window.drawCell      = drawCell;
+window.rebuildOff    = rebuildOff;
+window.render        = render;
