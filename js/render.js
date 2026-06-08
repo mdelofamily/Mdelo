@@ -114,35 +114,43 @@ function _drawEdgeFill(ctx) {
 
   ctx.imageSmoothingEnabled = false;
 
-  // Left strip — repeat column 0 of offscreen
+  // Sample 1 tile inward from each edge — interior tiles have full autotile bitmask
+  // and don't show edge-variant artifacts when repeated.
+  const iTS = TS;                   // one-tile inset (in px)
+  const lx  = iTS;                  // left fill source x  (col 1)
+  const rx  = mw - iTS * 2;         // right fill source x (col COLS-2)
+  const ty  = iTS;                  // top fill source y   (row 1)
+  const by  = mh - iTS * 2;         // bottom fill source y (row ROWS-2)
+
+  // Left strip
   for (let i = 1; i <= extL; i++)
-    ctx.drawImage(offscreen, 0, 0, TS, mh, -i * TS, 0, TS, mh);
+    ctx.drawImage(offscreen, lx, 0, TS, mh, -i * TS, 0, TS, mh);
 
-  // Right strip — repeat last column of offscreen
+  // Right strip
   for (let i = 0; i < extR; i++)
-    ctx.drawImage(offscreen, mw - TS, 0, TS, mh, mw + i * TS, 0, TS, mh);
+    ctx.drawImage(offscreen, rx, 0, TS, mh, mw + i * TS, 0, TS, mh);
 
-  // Top strip — repeat row 0 of offscreen (middle section only)
+  // Top strip (middle section only)
   for (let i = 1; i <= extT; i++)
-    ctx.drawImage(offscreen, 0, 0, mw, TS, 0, -i * TS, mw, TS);
+    ctx.drawImage(offscreen, 0, ty, mw, TS, 0, -i * TS, mw, TS);
 
-  // Bottom strip — repeat last row of offscreen (middle section only)
+  // Bottom strip (middle section only)
   for (let i = 0; i < extB; i++)
-    ctx.drawImage(offscreen, 0, mh - TS, mw, TS, 0, mh + i * TS, mw, TS);
+    ctx.drawImage(offscreen, 0, by, mw, TS, 0, mh + i * TS, mw, TS);
 
   // Corners — top
   for (let iy = 1; iy <= extT; iy++) {
     for (let ix = 1; ix <= extL; ix++)   // top-left
-      ctx.drawImage(offscreen, 0, 0, TS, TS, -ix * TS, -iy * TS, TS, TS);
+      ctx.drawImage(offscreen, lx, ty, TS, TS, -ix * TS, -iy * TS, TS, TS);
     for (let ix = 0; ix < extR; ix++)    // top-right
-      ctx.drawImage(offscreen, mw - TS, 0, TS, TS, mw + ix * TS, -iy * TS, TS, TS);
+      ctx.drawImage(offscreen, rx, ty, TS, TS, mw + ix * TS, -iy * TS, TS, TS);
   }
   // Corners — bottom
   for (let iy = 0; iy < extB; iy++) {
     for (let ix = 1; ix <= extL; ix++)   // bottom-left
-      ctx.drawImage(offscreen, 0, mh - TS, TS, TS, -ix * TS, mh + iy * TS, TS, TS);
+      ctx.drawImage(offscreen, lx, by, TS, TS, -ix * TS, mh + iy * TS, TS, TS);
     for (let ix = 0; ix < extR; ix++)    // bottom-right
-      ctx.drawImage(offscreen, mw - TS, mh - TS, TS, TS, mw + ix * TS, mh + iy * TS, TS, TS);
+      ctx.drawImage(offscreen, rx, by, TS, TS, mw + ix * TS, mh + iy * TS, TS, TS);
   }
 }
 
