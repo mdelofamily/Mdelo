@@ -49,6 +49,11 @@ wrap.addEventListener('touchend', e => {
   if (e.touches.length < 2) wrap.style.touchAction = 'pan-x pan-y';
 }, { passive: true });
 
+// ── Supabase credentials ──
+const SUPA_URL = 'https://miqenmsgwkkmtxwwbxzo.supabase.co';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1pcWVubXNnd2trbXR4d3dieHpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzMDc0NzYsImV4cCI6MjA5NDg4MzQ3Nn0.VfJgVoPC-ZbjlcuwMriYrNXb-3E2OgC92nOR9hOPgKI';
+window.SUPABASE_URL = SUPA_URL; window.SUPABASE_ANON_KEY = SUPA_KEY; window.MDELO_ROOM_ID = 'mdelo-chat';
+
 // ── link parser ──
 function parseLinks(t) {
   let o = '', i = 0;
@@ -70,7 +75,6 @@ function parseLinks(t) {
   }
   return o.replace(/\n/g, '<br>');
 }
-function parseLinks2(t) { return parseLinks(t); }
 
 // ── hotspot click dispatcher ──
 wrap.addEventListener('click', e => {
@@ -126,6 +130,7 @@ function closeHsPopup() {
   const p = document.getElementById('hsPopup');
   p.classList.remove('show'); p.style.display = 'none';
   wrap.style.overflow = 'auto'; _stopObjBlink();
+  _dlgNodes = {}; _dlgObj = null;
 }
 function openAreaPopup(title, tip) {
   closeHsPopup();
@@ -203,8 +208,10 @@ function _gotoNamedLocation(title) {
   else {
     var hs = document.querySelector('.hotspot[data-title="' + title + '"]');
     if (hs) {
-      wrap.scrollLeft = hs.offsetLeft + hs.offsetWidth  / 2 - wrap.clientWidth  / 2;
-      wrap.scrollTop  = hs.offsetTop  + hs.offsetHeight / 2 - wrap.clientHeight / 2;
+      var ox = +(hs.dataset.ox || 0), oy = +(hs.dataset.oy || 0);
+      var ow = +(hs.dataset.ow || 64),  oh = +(hs.dataset.oh || 64);
+      wrap.scrollLeft = (ox + ow / 2) * scale - wrap.clientWidth  / 2;
+      wrap.scrollTop  = (oy + oh / 2) * scale - wrap.clientHeight / 2;
     }
   }
 }
@@ -299,8 +306,6 @@ function buildMenu(cfg) {
 }
 
 // ── dialogue engine ──
-const SUPA_URL_D = 'https://miqenmsgwkkmtxwwbxzo.supabase.co';
-const SUPA_KEY_D = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1pcWVubXNnd2trbXR4d3dieHpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzMDc0NzYsImV4cCI6MjA5NDg4MzQ3Nn0.VfJgVoPC-ZbjlcuwMriYrNXb-3E2OgC92nOR9hOPgKI';
 let _dlgNodes = {}, _dlgObj = null;
 
 function _parseNodes(dialogue) {
@@ -334,9 +339,9 @@ function _dlgShowNode(nodeId) {
           const notifyTxt = btn.notifyText || (sender + ' — ' + btn.label);
           const nType = btn.notifyType || 'info';
           const nSymbol = { info: '💬', warning: '⚠️', danger: '🔴', project: '🚀', done: '✅' }[nType] || '💬';
-          fetch(SUPA_URL_D + '/rest/v1/notifications', {
+          fetch(SUPA_URL + '/rest/v1/notifications', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY_D, 'Authorization': 'Bearer ' + SUPA_KEY_D, 'Prefer': 'return=minimal' },
+            headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Prefer': 'return=minimal' },
             body: JSON.stringify({ type: nType, symbol: nSymbol, text: notifyTxt, sender: sender, linked_area: btn.area || '' })
           }).catch(() => {});
         }
@@ -506,9 +511,6 @@ function applyAreaHash() {
 }
 
 // ── notifications ──
-const SUPA_URL = 'https://miqenmsgwkkmtxwwbxzo.supabase.co';
-const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1pcWVubXNnd2trbXR4d3dieHpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzMDc0NzYsImV4cCI6MjA5NDg4MzQ3Nn0.VfJgVoPC-ZbjlcuwMriYrNXb-3E2OgC92nOR9hOPgKI';
-window.SUPABASE_URL = SUPA_URL; window.SUPABASE_ANON_KEY = SUPA_KEY; window.MDELO_ROOM_ID = 'mdelo-chat';
 const TYPE_LABELS = { info: 'ინფო', warning: 'გაფრთხილება', danger: 'საფრთხე', emergency: 'განგაში', done: 'მზადაა', project: 'პროექტი' };
 let _notifs = [], _curNotif = null;
 
@@ -616,10 +618,9 @@ function _startRealtime() {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, () => loadNotifs())
       .subscribe();
     // dialogue overrides channel — realtime patch for all viewers
-    const mapId = (_CFG && _CFG.title) ? _CFG.title : 'map';
     client.channel('dlg-overrides')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dialogue_overrides' }, payload => {
-        if (payload.new && payload.new.map_id === mapId) _applyDlgOverride(payload.new);
+        if (payload.new && payload.new.map_id === _MAP_ID) _applyDlgOverride(payload.new);
       })
       .subscribe();
   } catch (e) {}
