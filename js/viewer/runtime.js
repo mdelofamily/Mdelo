@@ -685,7 +685,7 @@ function _applyMarkerDom(hsEl, mk) {
     }
     // must set color class — without it the element is invisible
     mkEl.className   = mk === '!' ? 'hs-marker exc' : mk === '?' ? 'hs-marker q' : 'hs-marker chat';
-    mkEl.textContent = mk;
+    mkEl.textContent = mk === '💬' ? '...' : mk;
     mkEl.style.display = '';
     if (dotEl) dotEl.style.display = 'none';
   } else {
@@ -714,9 +714,8 @@ function _applyDlgOverride(row) {
       var mk = parsed.marker === '...' ? '💬' : (parsed.marker || '');
       _OBJS[oi].marker = mk;
       if (parsed.title) _OBJS[oi].lb = parsed.title;
-      var hsEl = document.querySelector(
-        '.hotspot[data-title="' + row.obj_title.replace(/\\/g,'\\\\').replace(/"/g,'\\"') + '"]:not(.hs-area)'
-      );
+      // use data-oi for exact targeting — data-title may be shared by identical objects
+      var hsEl = document.querySelector('.hotspot[data-oi="' + oi + '"]:not(.hs-area)');
       _applyMarkerDom(hsEl, mk);
     } catch(e) {}
   }

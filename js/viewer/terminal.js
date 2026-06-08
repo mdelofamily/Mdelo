@@ -352,8 +352,16 @@ function _tmDlgEdit(args) {
     return;
   }
 
-  // verify object exists in DOM
+  // verify object exists — try data-title first, then obj.lb (renamed objects)
   var hs = document.querySelector('.hotspot[data-title="' + title.replace(/"/g, '\\"') + '"]:not(.hs-area):not(.no-interact)');
+  if (!hs && typeof _OBJS !== 'undefined') {
+    for (var _i = 0; _i < _OBJS.length; _i++) {
+      if (_OBJS[_i] && _OBJS[_i].lb === title) {
+        var _c = document.querySelector('.hotspot[data-oi="' + _i + '"]:not(.hs-area):not(.no-interact)');
+        if (_c) { hs = _c; break; }
+      }
+    }
+  }
   if (!hs) {
     _tmL('ter', 'ობიექტი ვერ მოიძებნა: "' + title + '"');
     _tmL('tdm', 'სია: /ობიექტები');
@@ -361,20 +369,22 @@ function _tmDlgEdit(args) {
   }
 
   // get current DSL (from override or embedded dialogue)
+  // always use data-title as Supabase key — not lb (which may differ after rename)
+  var objKey = hs.dataset.title;
   var dsl = '';
-  if (typeof dlgGetCurrentDsl === 'function') dsl = dlgGetCurrentDsl(title);
+  if (typeof dlgGetCurrentDsl === 'function') dsl = dlgGetCurrentDsl(objKey);
 
   // fallback template if no dialogue exists yet
   if (!dsl) {
-    dsl = '@0 ' + title + '\n\n<> \n\n-> ';
+    dsl = '@0 ' + ((_OBJS && _OBJS[+hs.dataset.oi] && _OBJS[+hs.dataset.oi].lb) || objKey) + '\n\n<> \n\n-> ';
   }
 
   // switch to multiline mode and load DSL
   if (!_tmMulti) tmToggleMulti();
   document.getElementById('tmTa').value = dsl;
-  _tmEditObj = title;
+  _tmEditObj = objKey;
 
-  _tmL('tsy', '─── ' + title + ' — DSL ──────────────');
+  _tmL('tsy', '─── ' + ((_OBJS && _OBJS[+hs.dataset.oi] && _OBJS[+hs.dataset.oi].lb) || objKey) + ' — DSL ──────────────');
   _tmL('tdm', 'Ctrl+Enter — შენახვა · Esc — გაუქმება');
 }
 
