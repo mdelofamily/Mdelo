@@ -365,7 +365,7 @@ function _dlgShowNode(nodeId, selectedLabel) {
       if (!btn.label) return;
       const b = document.createElement('button');
       b.textContent = btn.label;
-      b.style.cssText = 'width:100%;height:40px;background:rgba(22,27,34,0.2);border:1px solid rgba(88,166,255,0.4);color:#e6edf3;font-size:13px;border-radius:8px;cursor:pointer;text-align:center;';
+      b.style.cssText = 'width:100%;height:32px;background:rgba(22,27,34,0.2);border:1px solid rgba(88,166,255,0.4);color:#e6edf3;font-size:13px;border-radius:8px;cursor:pointer;text-align:center;';
       b.onclick = () => {
         if (btn.notify) {
           const sender = localStorage.getItem('mdelo_sender') || 'ანონიმი';
