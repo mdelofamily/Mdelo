@@ -10,7 +10,8 @@ let scale = 1;
 
 function applyScale(s, ox, oy) {
   const prev = scale;
-  scale = Math.max(0.2, Math.min(8, s));
+  const minS = Math.max(wrap.clientWidth / _W, wrap.clientHeight / _H);
+  scale = Math.max(minS, Math.min(8, s));
   const ratio = scale / prev;
   wrap.scrollLeft = (wrap.scrollLeft + ox) * ratio - ox;
   wrap.scrollTop  = (wrap.scrollTop  + oy) * ratio - oy;
