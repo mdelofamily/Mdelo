@@ -18,19 +18,8 @@ function applyScale(s, ox, oy) {
   inner.style.transform = 'scale(' + scale + ')';
   sizer.style.width  = (_W * scale) + 'px';
   sizer.style.height = (_H * scale) + 'px';
-      const PAD = _TS / 4;
-wrap.scrollLeft = Math.max(-PAD * scale, Math.min(wrap.scrollLeft, _W * scale - wrap.clientWidth  + PAD * scale));
-wrap.scrollTop  = Math.max(-PAD * scale, Math.min(wrap.scrollTop,  _H * scale - wrap.clientHeight + PAD * scale));
 }
-wrap.addEventListener('scroll', () => {
-  const PAD = _TS / 4 * scale;
-  const maxL = _W * scale - wrap.clientWidth  + PAD;
-  const maxT = _H * scale - wrap.clientHeight + PAD;
-  if (wrap.scrollLeft < -PAD) wrap.scrollLeft = -PAD;
-  if (wrap.scrollLeft > maxL) wrap.scrollLeft = maxL;
-  if (wrap.scrollTop  < -PAD) wrap.scrollTop  = -PAD;
-  if (wrap.scrollTop  > maxT) wrap.scrollTop  = maxT;
-});
+
 wrap.addEventListener('wheel', e => {
   e.preventDefault();
   const r = wrap.getBoundingClientRect();
