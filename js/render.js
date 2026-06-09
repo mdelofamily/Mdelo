@@ -3,6 +3,9 @@
 //  Depends on: state.js, tile-engine.js
 // ============================================================
 
+// Cached edge-fill source offsets (px in offscreen) — computed in rebuildOff()
+let _efL = TS, _efR = 0, _efT = TS, _efB = 0;
+
 // ── STATIC BG LAYER (satellite image on bgCanvas) ──
 function drawBgLayer() {
   if (!bgImg) return;
@@ -95,6 +98,27 @@ function rebuildOff() {
     }
   }
 
+  // ── CACHE EDGE FILL SOURCES ──
+  // Find first non-empty col/row from each edge, step 1 inward so autotile has a neighbor.
+  const _scan = Math.min(12, Math.floor(COLS / 3));
+  const _scanR = Math.min(12, Math.floor(ROWS / 3));
+  _efL = TS; // default: col 1
+  for (let c = 0; c < _scan; c++) {
+    if (map.some(row => row[c])) { _efL = Math.min(c + 1, COLS - 1) * TS; break; }
+  }
+  _efR = (COLS - 2) * TS; // default: col COLS-2
+  for (let c = COLS - 1; c >= COLS - 1 - _scan; c--) {
+    if (map.some(row => row[c])) { _efR = Math.max(c - 1, 0) * TS; break; }
+  }
+  _efT = TS; // default: row 1
+  for (let r = 0; r < _scanR; r++) {
+    if (map[r].some(id => id)) { _efT = Math.min(r + 1, ROWS - 1) * TS; break; }
+  }
+  _efB = (ROWS - 2) * TS; // default: row ROWS-2
+  for (let r = ROWS - 1; r >= ROWS - 1 - _scanR; r--) {
+    if (map[r].some(id => id)) { _efB = Math.max(r - 1, 0) * TS; break; }
+  }
+
   offCtx.restore(); // remove clip
 }
 
@@ -114,13 +138,8 @@ function _drawEdgeFill(ctx) {
 
   ctx.imageSmoothingEnabled = false;
 
-  // Sample 1 tile inward from each edge — interior tiles have full autotile bitmask
-  // and don't show edge-variant artifacts when repeated.
-  const iTS = TS;                   // one-tile inset (in px)
-  const lx  = iTS;                  // left fill source x  (col 1)
-  const rx  = mw - iTS * 2;         // right fill source x (col COLS-2)
-  const ty  = iTS;                  // top fill source y   (row 1)
-  const by  = mh - iTS * 2;         // bottom fill source y (row ROWS-2)
+  // Use cached edge sources — 1 step inward from first non-empty col/row
+  const lx = _efL, rx = _efR, ty = _efT, by = _efB;
 
   // Left strip
   for (let i = 1; i <= extL; i++)
