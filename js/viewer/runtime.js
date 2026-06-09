@@ -18,6 +18,9 @@ function applyScale(s, ox, oy) {
   inner.style.transform = 'scale(' + scale + ')';
   sizer.style.width  = (_W * scale) + 'px';
   sizer.style.height = (_H * scale) + 'px';
+      const PAD = _TS / 4;
+wrap.scrollLeft = Math.max(-PAD * scale, Math.min(wrap.scrollLeft, _W * scale - wrap.clientWidth  + PAD * scale));
+wrap.scrollTop  = Math.max(-PAD * scale, Math.min(wrap.scrollTop,  _H * scale - wrap.clientHeight + PAD * scale));
 }
 
 wrap.addEventListener('wheel', e => {
