@@ -3,17 +3,14 @@
 //  Depends on: state.js, tile-engine.js
 // ============================================================
 
-// Cached edge-fill source offsets (px in offscreen) — computed in rebuildOff()
-let _efL = TS, _efR = 0, _efT = TS, _efB = 0;
-
 // ── STATIC BG LAYER (satellite image on bgCanvas) ──
 function drawBgLayer() {
   if (!bgImg) return;
   bgc.width  = COLS * TS;
   bgc.height = ROWS * TS;
   const bctx = bgc.getContext("2d");
-  bctx.imageSmoothingEnabled  = true;
-  bctx.imageSmoothingQuality  = "high";
+  bctx.imageSmoothingEnabled = true;
+  bctx.imageSmoothingQuality = "high";
   bctx.drawImage(bgImg, 0, 0, COLS * TS, ROWS * TS);
   bgLayerDirty = false;
 }
@@ -40,23 +37,24 @@ function drawCell(ctx, col, row) {
 // Call whenever map data changes.
 function rebuildOff() {
   if (!offscreen) offscreen = document.createElement("canvas");
-  if (offscreen.width  !== COLS * TS) offscreen.width  = COLS * TS;
-  if (offscreen.height !== ROWS * TS) offscreen.height = ROWS * TS;
+  const mw = COLS * TS, mh = ROWS * TS;
+  if (offscreen.width  !== mw) offscreen.width  = mw;
+  if (offscreen.height !== mh) offscreen.height = mh;
 
   offCtx = offscreen.getContext("2d");
   offCtx.imageSmoothingEnabled = false;
-  offCtx.clearRect(0, 0, offscreen.width, offscreen.height);
+  offCtx.clearRect(0, 0, mw, mh);
   offCtx.fillStyle = "#3a5c2a";
-  offCtx.fillRect(0, 0, offscreen.width, offscreen.height);
+  offCtx.fillRect(0, 0, mw, mh);
 
-  // clip to exact map bounds — dual grid overflow will be cut at edges
+  // clip to exact map bounds — dual grid overflow cut at edges
   offCtx.save();
   offCtx.beginPath();
-  offCtx.rect(0, 0, COLS * TS, ROWS * TS);
+  offCtx.rect(0, 0, mw, mh);
   offCtx.clip();
 
   // ── BASE LAYER ──
-  // Pass 1: non-auto, non-dual tiles
+  // Pass 1: regular tiles
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       const id = map[r][c]; if (!id) continue;
@@ -64,7 +62,7 @@ function rebuildOff() {
       drawTile(offCtx, id, c * TS, r * TS, TS);
     }
   }
-  // Pass 2: dual grid (clipped — no overflow at edges)
+  // Pass 2: dual grid
   if (dualTiles.length > 0) renderDualGrid(offCtx, map);
   // Pass 3: autotiles
   for (let r = 0; r < ROWS; r++) {
@@ -76,101 +74,35 @@ function rebuildOff() {
     }
   }
 
-  // ── OVERLAY LAYER ──
-  if (!overlayMap.length) { offCtx.restore(); return; }
-  // Pass 4: overlay non-auto, non-dual
-  for (let r = 0; r < ROWS; r++) {
-    for (let c = 0; c < COLS; c++) {
-      const id = overlayMap[r]?.[c]; if (!id) continue;
-      const t = tileMap.get(id); if (!t || t.autoTile || t.dualTile) continue;
-      drawTile(offCtx, id, c * TS, r * TS, TS);
+  // ── OVERLAY LAYER — skip if nothing placed ──
+  let hasOverlay = false;
+  outer: for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++)
+      if (overlayMap[r]?.[c]) { hasOverlay = true; break outer; }
+
+  if (hasOverlay) {
+    // Pass 4: overlay regular tiles
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const id = overlayMap[r]?.[c]; if (!id) continue;
+        const t = tileMap.get(id); if (!t || t.autoTile || t.dualTile) continue;
+        drawTile(offCtx, id, c * TS, r * TS, TS);
+      }
+    }
+    // Pass 5: overlay dual grid
+    if (dualTiles.length > 0) renderDualGrid(offCtx, overlayMap);
+    // Pass 6: overlay autotiles
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const id = overlayMap[r]?.[c]; if (!id) continue;
+        const t = tileMap.get(id); if (!t?.autoTile) continue;
+        if (t.baseTileId) drawTile(offCtx, t.baseTileId, c * TS, r * TS, TS);
+        drawTile(offCtx, id, c * TS, r * TS, TS, getBitmask(c, r, id, overlayMap));
+      }
     }
   }
-  // Pass 5: overlay dual grid (clipped)
-  if (dualTiles.length > 0) renderDualGrid(offCtx, overlayMap);
-  // Pass 6: overlay autotiles
-  for (let r = 0; r < ROWS; r++) {
-    for (let c = 0; c < COLS; c++) {
-      const id = overlayMap[r]?.[c]; if (!id) continue;
-      const t = tileMap.get(id); if (!t?.autoTile) continue;
-      if (t.baseTileId) drawTile(offCtx, t.baseTileId, c * TS, r * TS, TS);
-      drawTile(offCtx, id, c * TS, r * TS, TS, getBitmask(c, r, id, overlayMap));
-    }
-  }
 
-  // ── CACHE EDGE FILL SOURCES ──
-  // Find first non-empty col/row from each edge, step 1 inward so autotile has a neighbor.
-  const _scan = Math.min(12, Math.floor(COLS / 3));
-  const _scanR = Math.min(12, Math.floor(ROWS / 3));
-  _efL = TS; // default: col 1
-  for (let c = 0; c < _scan; c++) {
-    if (map.some(row => row[c])) { _efL = Math.min(c + 1, COLS - 1) * TS; break; }
-  }
-  _efR = (COLS - 2) * TS; // default: col COLS-2
-  for (let c = COLS - 1; c >= COLS - 1 - _scan; c--) {
-    if (map.some(row => row[c])) { _efR = Math.max(c - 1, 0) * TS; break; }
-  }
-  _efT = TS; // default: row 1
-  for (let r = 0; r < _scanR; r++) {
-    if (map[r].some(id => id)) { _efT = Math.min(r + 1, ROWS - 1) * TS; break; }
-  }
-  _efB = (ROWS - 2) * TS; // default: row ROWS-2
-  for (let r = ROWS - 1; r >= ROWS - 1 - _scanR; r--) {
-    if (map[r].some(id => id)) { _efB = Math.max(r - 1, 0) * TS; break; }
-  }
-
-  offCtx.restore(); // remove clip
-}
-
-// ── EDGE TILE FILL ──
-// Must be called inside render() after translate+scale, before drawImage(offscreen).
-// Fills the canvas border with repeating edge tiles from the offscreen buffer.
-function _drawEdgeFill(ctx) {
-  if (!offscreen) return;
-  const mw = COLS * TS, mh = ROWS * TS;
-  const W = canvas.width, H = canvas.height;
-
-  // how many tile-columns/rows extend beyond map bounds in each direction
-  const extL = Math.max(0, Math.ceil( viewX                    / zoom / TS)) + 1;
-  const extR = Math.max(0, Math.ceil((W - viewX - mw * zoom)   / zoom / TS)) + 1;
-  const extT = Math.max(0, Math.ceil( viewY                    / zoom / TS)) + 1;
-  const extB = Math.max(0, Math.ceil((H - viewY - mh * zoom)   / zoom / TS)) + 1;
-
-  ctx.imageSmoothingEnabled = false;
-
-  // Use cached edge sources — 1 step inward from first non-empty col/row
-  const lx = _efL, rx = _efR, ty = _efT, by = _efB;
-
-  // Left strip
-  for (let i = 1; i <= extL; i++)
-    ctx.drawImage(offscreen, lx, 0, TS, mh, -i * TS, 0, TS, mh);
-
-  // Right strip
-  for (let i = 0; i < extR; i++)
-    ctx.drawImage(offscreen, rx, 0, TS, mh, mw + i * TS, 0, TS, mh);
-
-  // Top strip (middle section only)
-  for (let i = 1; i <= extT; i++)
-    ctx.drawImage(offscreen, 0, ty, mw, TS, 0, -i * TS, mw, TS);
-
-  // Bottom strip (middle section only)
-  for (let i = 0; i < extB; i++)
-    ctx.drawImage(offscreen, 0, by, mw, TS, 0, mh + i * TS, mw, TS);
-
-  // Corners — top
-  for (let iy = 1; iy <= extT; iy++) {
-    for (let ix = 1; ix <= extL; ix++)   // top-left
-      ctx.drawImage(offscreen, lx, ty, TS, TS, -ix * TS, -iy * TS, TS, TS);
-    for (let ix = 0; ix < extR; ix++)    // top-right
-      ctx.drawImage(offscreen, rx, ty, TS, TS, mw + ix * TS, -iy * TS, TS, TS);
-  }
-  // Corners — bottom
-  for (let iy = 0; iy < extB; iy++) {
-    for (let ix = 1; ix <= extL; ix++)   // bottom-left
-      ctx.drawImage(offscreen, lx, by, TS, TS, -ix * TS, mh + iy * TS, TS, TS);
-    for (let ix = 0; ix < extR; ix++)    // bottom-right
-      ctx.drawImage(offscreen, rx, by, TS, TS, mw + ix * TS, mh + iy * TS, TS, TS);
-  }
+  offCtx.restore();
 }
 
 // ── MAIN RENDER ──
@@ -186,56 +118,51 @@ function render() {
   ctx.imageSmoothingEnabled = false;
   ctx.clearRect(0, 0, W, H);
 
-  // 1) edge fill + tiles (from offscreen buffer)
+  // ── single transform block for tiles + objects + areas ──
   ctx.save();
   ctx.translate(viewX, viewY);
   ctx.scale(zoom, zoom);
-  _drawEdgeFill(ctx);          // border filled with repeating edge tiles
+
+  // 1) tiles
   ctx.drawImage(offscreen, 0, 0);
 
+  // grid
   if (showGrid && zoom >= 0.5) {
+    const mw = COLS * TS, mh = ROWS * TS;
     ctx.strokeStyle = "rgba(0,0,0,0.2)"; ctx.lineWidth = 0.5;
     ctx.beginPath();
-    for (let c = 0; c <= COLS; c++) { ctx.moveTo(c * TS, 0); ctx.lineTo(c * TS, ROWS * TS); }
-    for (let r = 0; r <= ROWS; r++) { ctx.moveTo(0, r * TS); ctx.lineTo(COLS * TS, r * TS); }
+    for (let c = 0; c <= COLS; c++) { ctx.moveTo(c * TS, 0); ctx.lineTo(c * TS, mh); }
+    for (let r = 0; r <= ROWS; r++) { ctx.moveTo(0, r * TS); ctx.lineTo(mw, r * TS); }
     ctx.stroke();
   }
-  ctx.restore();
 
-  // 2) objects layer
-  ctx.save();
-  ctx.translate(viewX, viewY);
-  ctx.scale(zoom, zoom);
-
-  objects.forEach(obj => {
+  // 2) objects — image + marker in one pass
+  ctx.imageSmoothingEnabled = false;
+  for (let i = 0; i < objects.length; i++) {
+    const obj = objects[i];
     const src = getImg(obj.id) || obj.img;
-    if (src) {
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(src, obj.x * TS, obj.y * TS, obj.cols * TS, obj.rows * TS);
-    }
-  });
-
-  // object markers
-  objects.forEach(obj => {
-    if (!obj.marker) return;
+    if (src) ctx.drawImage(src, obj.x * TS, obj.y * TS, obj.cols * TS, obj.rows * TS);
+  }
+  for (let i = 0; i < objects.length; i++) {
+    const obj = objects[i];
+    if (!obj.marker) continue;
     const cx = (obj.x + obj.cols / 2) * TS;
     const cy = (obj.y + obj.rows / 2) * TS;
     const fs = Math.max(12, Math.round(18 / zoom));
     ctx.save();
     ctx.font = "bold " + fs + "px sans-serif";
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    const col = obj.marker === "!" ? "#f0a500" : obj.marker === "?" ? "#e0e0e0" : "#58a6ff";
-    const markerTxt = obj.marker
+    const mcol = obj.marker === "!" ? "#f0a500" : obj.marker === "?" ? "#e0e0e0" : "#58a6ff";
     ctx.strokeStyle = "rgba(0,0,0,0.95)";
     ctx.lineWidth = fs * 0.3; ctx.lineJoin = "round";
-    ctx.strokeText(markerTxt, cx, cy);
-    ctx.fillStyle = col;
-    ctx.fillText(markerTxt, cx, cy);
+    ctx.strokeText(obj.marker, cx, cy);
+    ctx.fillStyle = mcol;
+    ctx.fillText(obj.marker, cx, cy);
     ctx.restore();
-  });
+  }
 
   // obj_place preview
-  if ((curTool === "obj_place") && (lockedPos || hoverCell)) {
+  if (curTool === "obj_place" && (lockedPos || hoverCell)) {
     const obj = getObjDef(curTile);
     if (obj) {
       const refCell = lockedPos || hoverCell;
@@ -243,7 +170,7 @@ function render() {
       const ok = inB(x, y) && inB(x + obj.cols - 1, y + obj.rows - 1);
       const tileImg = getImg(curTile);
       if (tileImg) {
-        ctx.globalAlpha = 0.65; ctx.imageSmoothingEnabled = false;
+        ctx.globalAlpha = 0.65;
         ctx.drawImage(tileImg, x * TS, y * TS, obj.cols * TS, obj.rows * TS);
         ctx.globalAlpha = 1;
         ctx.strokeStyle = ok ? "#4ade80" : "#f85149"; ctx.lineWidth = 1.5 / zoom;
@@ -272,7 +199,7 @@ function render() {
     ctx.setLineDash([]);
   }
 
-  // 2b) area hotspots
+  // 3) area hotspots — direct iteration, no intermediate arrays
   const previewArea =
     _pendingArea && hoverCell
       ? { x1: Math.min(_pendingArea.x1, hoverCell.col),
@@ -286,16 +213,18 @@ function render() {
             y2: Math.max(touchState._areaStart.y1, touchState._areaEnd.row) + 1 }
         : null;
 
-  const allAreas = [...hotAreas, ...(previewArea ? [{ ...previewArea, _preview: true }] : [])];
-
-  // grouped areas (union fill)
+  // grouped areas
   const drawnGroups = new Set();
-  allAreas.filter(a => a.groupId && !a._preview).forEach(a => {
-    if (drawnGroups.has(a.groupId)) return;
+  for (let i = 0; i < hotAreas.length; i++) {
+    const a = hotAreas[i];
+    if (!a.groupId || drawnGroups.has(a.groupId)) continue;
     drawnGroups.add(a.groupId);
     const members = hotAreas.filter(x => x.groupId === a.groupId);
     ctx.beginPath();
-    members.forEach(m => ctx.rect(m.x1 * TS, m.y1 * TS, (m.x2 - m.x1) * TS, (m.y2 - m.y1) * TS));
+    for (let m = 0; m < members.length; m++) {
+      const mm = members[m];
+      ctx.rect(mm.x1 * TS, mm.y1 * TS, (mm.x2 - mm.x1) * TS, (mm.y2 - mm.y1) * TS);
+    }
     ctx.fillStyle = "rgba(240,165,0,0.08)"; ctx.fill();
     ctx.strokeStyle = "#f0a500"; ctx.lineWidth = 1.5 / zoom;
     ctx.setLineDash([6 / zoom, 4 / zoom]); ctx.stroke(); ctx.setLineDash([]);
@@ -310,32 +239,45 @@ function render() {
       ctx.fillText(a.label, ax + aw / 2, ay + ah / 2);
       ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
     }
-  });
+  }
 
   // non-grouped areas
-  allAreas.filter(a => !a.groupId || a._preview).forEach(a => {
+  for (let i = 0; i < hotAreas.length; i++) {
+    const a = hotAreas[i];
+    if (a.groupId) continue;
     const ax = a.x1 * TS, ay = a.y1 * TS, aw = (a.x2 - a.x1) * TS, ah = (a.y2 - a.y1) * TS;
-    const col = a._preview ? "#facc15" : "#58a6ff";
-    ctx.strokeStyle = col; ctx.lineWidth = (a._preview ? 2 : 1.5) / zoom;
+    ctx.strokeStyle = "#58a6ff"; ctx.lineWidth = 1.5 / zoom;
     ctx.setLineDash([6 / zoom, 4 / zoom]);
     ctx.strokeRect(ax, ay, aw, ah);
-    ctx.fillStyle = a._preview ? "rgba(250,204,21,0.12)" : "rgba(88,166,255,0.07)";
+    ctx.fillStyle = "rgba(88,166,255,0.07)";
     ctx.fillRect(ax, ay, aw, ah);
     ctx.setLineDash([]);
-    if (a.label && !a._preview) {
+    if (a.label) {
       const fs = Math.max(8, 11 / zoom);
       ctx.font = "bold " + fs + "px sans-serif";
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillStyle = col; ctx.strokeStyle = "rgba(0,0,0,0.85)"; ctx.lineWidth = 2 / zoom;
+      ctx.fillStyle = "#58a6ff"; ctx.strokeStyle = "rgba(0,0,0,0.85)"; ctx.lineWidth = 2 / zoom;
       ctx.strokeText(a.label, ax + aw / 2, ay + ah / 2);
       ctx.fillText(a.label, ax + aw / 2, ay + ah / 2);
       ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
     }
-  });
+  }
+
+  // preview area
+  if (previewArea) {
+    const ax = previewArea.x1 * TS, ay = previewArea.y1 * TS;
+    const aw = (previewArea.x2 - previewArea.x1) * TS, ah = (previewArea.y2 - previewArea.y1) * TS;
+    ctx.strokeStyle = "#facc15"; ctx.lineWidth = 2 / zoom;
+    ctx.setLineDash([6 / zoom, 4 / zoom]);
+    ctx.strokeRect(ax, ay, aw, ah);
+    ctx.fillStyle = "rgba(250,204,21,0.12)";
+    ctx.fillRect(ax, ay, aw, ah);
+    ctx.setLineDash([]);
+  }
 
   ctx.restore();
 
-  // 3) satellite bg overlay
+  // 4) satellite bg overlay
   if (bgImg && bgVis && bgOp > 0) {
     if (bgLayerDirty) drawBgLayer();
     ctx.save();
@@ -347,7 +289,7 @@ function render() {
 }
 
 // ── WINDOW BINDINGS ──
-window.drawBgLayer   = drawBgLayer;
-window.drawCell      = drawCell;
-window.rebuildOff    = rebuildOff;
-window.render        = render;
+window.drawBgLayer = drawBgLayer;
+window.drawCell    = drawCell;
+window.rebuildOff  = rebuildOff;
+window.render      = render;
