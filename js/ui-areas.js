@@ -14,7 +14,7 @@ function _areaAtCell(col, row) {
   });
 }
 
-// ── AREA BUTTON ──
+// ── AREA BUTTON HANDLER ──
 function onAreaBtn() {
   setTool('area');
   toast('🔗 გადაიტანე არეალის დასახაზად');
@@ -126,6 +126,29 @@ function copyAreaViewerLink() {
     done();
   }
 }
+
+// ── INIT: wire up button touch listener (covers onclick + mobile tap) ──
+(function initAreaBtn() {
+  function _setup() {
+    var btn = document.getElementById('tl-area');
+    if (!btn) return;
+    // Remove any stale onclick to avoid double-fire
+    btn.onclick = null;
+    btn.addEventListener('touchstart', function(e) {
+      e.preventDefault();
+      onAreaBtn();
+    }, { passive: false });
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      onAreaBtn();
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _setup);
+  } else {
+    _setup();
+  }
+})();
 
 // ── WINDOW BINDINGS ──
 window._areaAtCell        = _areaAtCell;
