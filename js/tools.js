@@ -200,7 +200,50 @@ if (typeof _areaAtCell === 'undefined') {
   };
 }
 if (typeof openAreaProps === 'undefined') {
-  window.openAreaProps = function(idx) { toast('area ' + idx); };
+  window.openAreaProps = function(idx) {
+    window._editingAreaIdx = idx;
+    var a = hotAreas[idx];
+    document.getElementById('areaLabelInp').value   = a.label   || '';
+    document.getElementById('areaTooltipInp').value = a.tooltip || '';
+    var mr = document.getElementById('areaMergeInfo');
+    if (mr) mr.style.display = 'none';
+    var lr = document.getElementById('areaLinkRow');
+    if (lr) {
+      var lbl = a.label || '';
+      lr.style.display = lbl ? 'flex' : 'none';
+      if (lbl) document.getElementById('areaLinkOut').value = '#area=' + encodeURIComponent(lbl);
+    }
+    document.getElementById('areaPropsModal').style.display = 'flex';
+  };
+}
+if (typeof closeAreaProps === 'undefined') {
+  window.closeAreaProps = function() {
+    document.getElementById('areaPropsModal').style.display = 'none';
+    window._editingAreaIdx = -1;
+  };
+}
+if (typeof saveAreaProps === 'undefined') {
+  window.saveAreaProps = function() {
+    var idx = window._editingAreaIdx;
+    if (idx >= 0 && idx < hotAreas.length) {
+      hotAreas[idx].label   = document.getElementById('areaLabelInp').value.trim();
+      hotAreas[idx].tooltip = document.getElementById('areaTooltipInp').value.trim();
+    }
+    closeAreaProps();
+    scheduleRender();
+    toast('ok shenahuliao');
+  };
+}
+if (typeof deleteArea === 'undefined') {
+  window.deleteArea = function() {
+    var idx = window._editingAreaIdx;
+    if (idx < 0) return;
+    hotAreas.splice(idx, 1);
+    document.getElementById('areaPropsModal').style.display = 'none';
+    window._editingAreaIdx = -1;
+    scheduleRender();
+    toast('ok washlesao');
+  };
 }
 function tp(t) {
   const r = canvas.getBoundingClientRect();
@@ -330,8 +373,8 @@ canvas.addEventListener("touchend", e => {
             const id = "area_" + Date.now();
             hotAreas.push({ id, x1, y1, x2, y2, label: "", tooltip: "" });
             _lastAreaId = id;
-            toast("🔗 არეალი შეინახა");
-            setTool("draw");
+            document.getElementById("areaCursor").style.display = "none";
+            openAreaProps(hotAreas.length - 1);
           }
         }
       }
