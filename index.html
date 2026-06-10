@@ -386,6 +386,11 @@ body{display:flex;flex-direction:column;}
     <div style="display:flex;gap:6px;align-items:center;">
       <button onclick="insertAreaLink()" style="background:var(--bg);border:1px solid var(--blue);color:var(--blue);font-size:11px;padding:3px 10px;border-radius:10px;cursor:pointer;">+ ლინკი</button>
     </div>
+    <div id="areaGroupRow" style="display:none;align-items:center;gap:6px;padding:4px 0;flex-wrap:wrap;">
+      <span id="areaGroupInfo" style="font-size:11px;color:var(--accent);flex:1;"></span>
+      <button onclick="copyAreaFitLink()" style="background:var(--bg);border:1px solid var(--accent);color:var(--accent);font-size:11px;padding:3px 8px;border-radius:10px;cursor:pointer;">📐 fit link</button>
+      <button onclick="ungroupArea()" style="background:var(--bg);border:1px solid var(--muted);color:var(--muted);font-size:11px;padding:3px 8px;border-radius:10px;cursor:pointer;">✦ გამოყოფა</button>
+    </div>
     <div id="areaMergeInfo" style="display:none;font-size:11px;color:var(--accent);padding:4px 0;">✦ tap სხვა არეალზე გასაერთიანებლად</div>
     <div id="areaLinkRow" style="display:none;flex-direction:column;gap:4px;">
       <div style="font-size:10px;color:var(--muted);">📋 Viewer ლინკი:</div>
@@ -462,7 +467,7 @@ body{display:flex;flex-direction:column;}
 <script src="js/export-png.js"></script>
 <script src="js/export-html.js"></script>
 <script src="js/ui-panels.js"></script>
-<script src="js/ui-areas.js?v=2"></script>
+<script src="js/ui-areas.js?v=3"></script>
 <script src="js/menu-builder.js"></script>
 <script src="js/projects.js"></script>
 
