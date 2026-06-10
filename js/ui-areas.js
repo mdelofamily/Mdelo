@@ -17,6 +17,7 @@ function onAreaBtn() {
 }
 
 function openAreaProps(idx) {
+  // Merge mode: second tap = merge into group
   if (_mergeMode && _editingAreaIdx >= 0 && idx !== _editingAreaIdx) {
     var src = hotAreas[_editingAreaIdx];
     var dst = hotAreas[idx];
@@ -24,16 +25,33 @@ function openAreaProps(idx) {
     src.groupId = gid;
     dst.groupId = gid;
     _mergeMode      = false;
-    _editingAreaIdx = -1;
+    var mergedIdx   = _editingAreaIdx;
+    _editingAreaIdx = idx;
     scheduleRender();
-    toast('ok gaertianda');
+    toast('✦ გაერთიანდა');
+    _showAreaModal(mergedIdx);
     return;
   }
-  _editingAreaIdx = idx;
   _mergeMode      = false;
+  _editingAreaIdx = idx;
+  _showAreaModal(idx);
+}
+
+function _showAreaModal(idx) {
   var a = hotAreas[idx];
   document.getElementById('areaLabelInp').value   = a.label   || '';
   document.getElementById('areaTooltipInp').value = a.tooltip || '';
+
+  // Group row
+  var gRow = document.getElementById('areaGroupRow');
+  if (a.groupId) {
+    var cnt = hotAreas.filter(function(x) { return x.groupId === a.groupId; }).length;
+    document.getElementById('areaGroupInfo').textContent = '✦ ჯგუფი: ' + cnt + ' არეალი';
+    gRow.style.display = 'flex';
+  } else {
+    gRow.style.display = 'none';
+  }
+
   document.getElementById('areaMergeInfo').style.display = 'none';
   _updateAreaLinkRow();
   document.getElementById('areaPropsModal').style.display = 'flex';
@@ -59,10 +77,15 @@ function saveAreaProps() {
 
 function deleteArea() {
   if (_editingAreaIdx < 0) return;
+  var a   = hotAreas[_editingAreaIdx];
+  var gid = a.groupId;
   hotAreas.splice(_editingAreaIdx, 1);
+  if (gid) {
+    var rem = hotAreas.filter(function(x) { return x.groupId === gid; });
+    if (rem.length === 1) delete rem[0].groupId;
+  }
   document.getElementById('areaPropsModal').style.display = 'none';
   _editingAreaIdx = -1;
-  _mergeMode      = false;
   scheduleRender();
   toast('ok washlesao');
 }
@@ -70,10 +93,23 @@ function deleteArea() {
 function startMergeMode() {
   if (_editingAreaIdx < 0) return;
   _mergeMode = true;
-  document.getElementById('areaMergeInfo').style.display = 'block';
   document.getElementById('areaPropsModal').style.display = 'none';
+  document.getElementById('areaMergeInfo').style.display = 'block';
   setTool('area');
-  toast('tap meore arealze');
+  toast('tap sxva arealze gasaertianebladl');
+}
+
+function ungroupArea() {
+  if (_editingAreaIdx < 0) return;
+  var a   = hotAreas[_editingAreaIdx];
+  var gid = a.groupId;
+  if (!gid) return;
+  delete a.groupId;
+  var rem = hotAreas.filter(function(x) { return x.groupId === gid; });
+  if (rem.length === 1) delete rem[0].groupId;
+  scheduleRender();
+  _showAreaModal(_editingAreaIdx);
+  toast('ok jgufidan gamovida');
 }
 
 function _updateAreaLinkRow() {
@@ -87,6 +123,29 @@ function _updateAreaLinkRow() {
   }
 }
 
+function copyAreaViewerLink() {
+  var val  = document.getElementById('areaLinkOut').value;
+  if (!val) return;
+  var base = (typeof spotBaseUrl !== 'undefined' ? spotBaseUrl : '') || '';
+  _doCopy(base ? base + val : val, 'ok dakopirda');
+}
+
+function copyAreaFitLink() {
+  if (_editingAreaIdx < 0) return;
+  var a     = hotAreas[_editingAreaIdx];
+  var group = a.groupId
+    ? hotAreas.filter(function(x) { return x.groupId === a.groupId; })
+    : [a];
+  var x1 = Math.min.apply(null, group.map(function(r) { return r.x1; }));
+  var y1 = Math.min.apply(null, group.map(function(r) { return r.y1; }));
+  var x2 = Math.max.apply(null, group.map(function(r) { return r.x2; }));
+  var y2 = Math.max.apply(null, group.map(function(r) { return r.y2; }));
+  var base = (typeof spotBaseUrl !== 'undefined' ? spotBaseUrl : '') || '';
+  var link = base + '#fit=' + x1 + ',' + y1 + ',' + x2 + ',' + y2;
+  if (a.groupId) link += '&group=' + encodeURIComponent(a.groupId);
+  _doCopy(link, 'ok fit link dakopirda');
+}
+
 function insertAreaLink() {
   var ta  = document.getElementById('areaTooltipInp');
   var val = ta.value;
@@ -94,19 +153,15 @@ function insertAreaLink() {
   ta.focus();
 }
 
-function copyAreaViewerLink() {
-  var val  = document.getElementById('areaLinkOut').value;
-  if (!val) return;
-  var base = (typeof spotBaseUrl !== 'undefined' ? spotBaseUrl : '') || '';
-  var full = base ? base + val : val;
-  var done = function() { toast('ok dakopirda'); };
+function _doCopy(text, msg) {
+  var done = function() { toast(msg); };
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(full).then(done).catch(function() {
-      if (typeof _copyFallback === 'function') _copyFallback(full);
+    navigator.clipboard.writeText(text).then(done).catch(function() {
+      if (typeof _copyFallback === 'function') _copyFallback(text);
       done();
     });
   } else {
-    if (typeof _copyFallback === 'function') _copyFallback(full);
+    if (typeof _copyFallback === 'function') _copyFallback(text);
     done();
   }
 }
@@ -118,6 +173,8 @@ window.closeAreaProps     = closeAreaProps;
 window.saveAreaProps      = saveAreaProps;
 window.deleteArea         = deleteArea;
 window.startMergeMode     = startMergeMode;
+window.ungroupArea        = ungroupArea;
 window._updateAreaLinkRow = _updateAreaLinkRow;
 window.insertAreaLink     = insertAreaLink;
 window.copyAreaViewerLink = copyAreaViewerLink;
+window.copyAreaFitLink    = copyAreaFitLink;
