@@ -191,6 +191,17 @@ function copySpotLink() {
 }
 
 // ── TOUCH HANDLERS ──
+// Safety: define _areaAtCell here in case ui-areas.js fails to load
+if (typeof _areaAtCell === 'undefined') {
+  window._areaAtCell = function(col, row) {
+    return hotAreas.findIndex(function(a) {
+      return col >= a.x1 && col < a.x2 && row >= a.y1 && row < a.y2;
+    });
+  };
+}
+if (typeof openAreaProps === 'undefined') {
+  window.openAreaProps = function(idx) { toast('area ' + idx); };
+}
 function tp(t) {
   const r = canvas.getBoundingClientRect();
   return { x: t.clientX - r.left, y: t.clientY - r.top };
