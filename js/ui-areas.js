@@ -14,7 +14,7 @@ function _areaAtCell(col, row) {
   });
 }
 
-// ── AREA BUTTON HANDLER ──
+// ── AREA BUTTON ──
 function onAreaBtn() {
   setTool('area');
   toast('🔗 გადაიტანე არეალის დასახაზად');
@@ -22,7 +22,6 @@ function onAreaBtn() {
 
 // ── OPEN PROPS MODAL ──
 function openAreaProps(idx) {
-  // Merge mode: user tapped another area to merge with
   if (_mergeMode && _editingAreaIdx >= 0 && idx !== _editingAreaIdx) {
     var src = hotAreas[_editingAreaIdx];
     var dst = hotAreas[idx];
@@ -35,16 +34,13 @@ function openAreaProps(idx) {
     toast('✦ გაერთიანდა');
     return;
   }
-
   _editingAreaIdx = idx;
   _mergeMode      = false;
-
   var a = hotAreas[idx];
   document.getElementById('areaLabelInp').value   = a.label   || '';
   document.getElementById('areaTooltipInp').value = a.tooltip || '';
   document.getElementById('areaMergeInfo').style.display = 'none';
   _updateAreaLinkRow();
-
   document.getElementById('areaPropsModal').style.display = 'flex';
 }
 
@@ -60,7 +56,7 @@ function saveAreaProps() {
   if (_editingAreaIdx < 0 || _editingAreaIdx >= hotAreas.length) {
     closeAreaProps(); return;
   }
-  var a    = hotAreas[_editingAreaIdx];
+  var a     = hotAreas[_editingAreaIdx];
   a.label   = document.getElementById('areaLabelInp').value.trim();
   a.tooltip = document.getElementById('areaTooltipInp').value.trim();
   closeAreaProps();
@@ -126,29 +122,6 @@ function copyAreaViewerLink() {
     done();
   }
 }
-
-// ── INIT: wire up button touch listener (covers onclick + mobile tap) ──
-(function initAreaBtn() {
-  function _setup() {
-    var btn = document.getElementById('tl-area');
-    if (!btn) return;
-    // Remove any stale onclick to avoid double-fire
-    btn.onclick = null;
-    btn.addEventListener('touchstart', function(e) {
-      e.preventDefault();
-      onAreaBtn();
-    }, { passive: false });
-    btn.addEventListener('click', function(e) {
-      e.preventDefault();
-      onAreaBtn();
-    });
-  }
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', _setup);
-  } else {
-    _setup();
-  }
-})();
 
 // ── WINDOW BINDINGS ──
 window._areaAtCell        = _areaAtCell;
