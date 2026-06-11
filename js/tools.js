@@ -201,18 +201,36 @@ if (typeof _areaAtCell === 'undefined') {
 }
 if (typeof openAreaProps === 'undefined') {
   window.openAreaProps = function(idx) {
+    // merge mode: second tap merges areas into group
+    if (window._mergeMode && window._editingAreaIdx >= 0 && idx !== window._editingAreaIdx) {
+      var src = hotAreas[window._editingAreaIdx];
+      var dst = hotAreas[idx];
+      var gid = src.groupId || ('g_' + Date.now());
+      src.groupId = gid;
+      dst.groupId = gid;
+      window._mergeMode      = false;
+      window._editingAreaIdx = -1;
+      scheduleRender();
+      toast('✦ გაერთიანდა');
+      return;
+    }
+    window._mergeMode      = false;
     window._editingAreaIdx = idx;
     var a = hotAreas[idx];
     document.getElementById('areaLabelInp').value   = a.label   || '';
     document.getElementById('areaTooltipInp').value = a.tooltip || '';
     var mr = document.getElementById('areaMergeInfo');
     if (mr) mr.style.display = 'none';
-    var lr = document.getElementById('areaLinkRow');
-    if (lr) {
-      var lbl = a.label || '';
-      lr.style.display = lbl ? 'flex' : 'none';
-      if (lbl) document.getElementById('areaLinkOut').value = '#area=' + encodeURIComponent(lbl);
+    var gr = document.getElementById('areaGroupRow');
+    if (gr) {
+      if (a.groupId) {
+        var cnt = hotAreas.filter(function(x){ return x.groupId===a.groupId; }).length;
+        var gi  = document.getElementById('areaGroupInfo');
+        if (gi) gi.textContent = '❖ ჯგუფი: ' + cnt + ' არეალი';
+        gr.style.display = 'flex';
+      } else { gr.style.display = 'none'; }
     }
+    if (typeof _updateAreaLinkRow === 'function') _updateAreaLinkRow();
     document.getElementById('areaPropsModal').style.display = 'flex';
   };
 }
@@ -231,7 +249,7 @@ if (typeof saveAreaProps === 'undefined') {
     }
     closeAreaProps();
     scheduleRender();
-    toast('ok shenahuliao');
+    toast('✓ შენახულია');
   };
 }
 if (typeof deleteArea === 'undefined') {
@@ -242,7 +260,7 @@ if (typeof deleteArea === 'undefined') {
     document.getElementById('areaPropsModal').style.display = 'none';
     window._editingAreaIdx = -1;
     scheduleRender();
-    toast('ok washlesao');
+    toast('წაიშალა');
   };
 }
 if (typeof startMergeMode === 'undefined') {
@@ -251,7 +269,7 @@ if (typeof startMergeMode === 'undefined') {
     window._mergeMode = true;
     document.getElementById('areaPropsModal').style.display = 'none';
     setTool('area');
-    toast('tap sxva arealze');
+    toast('❖ tap სხვა არეალზე');
   };
 }
 if (typeof ungroupArea === 'undefined') {
@@ -264,7 +282,7 @@ if (typeof ungroupArea === 'undefined') {
     var rem = hotAreas.filter(function(x){ return x.groupId === gid; });
     if (rem.length === 1) delete rem[0].groupId;
     scheduleRender();
-    toast('ok jgufidan gamovida');
+    toast('❖ ჯგუფიდან გამოვიდა');
     closeAreaProps();
   };
 }
@@ -282,7 +300,7 @@ if (typeof copyAreaFitLink === 'undefined') {
     var link=base+'#fit='+x1+','+y1+','+x2+','+y2;
     if(a.groupId) link+='&group='+encodeURIComponent(a.groupId);
     if(navigator.clipboard&&navigator.clipboard.writeText)
-      navigator.clipboard.writeText(link).then(function(){toast('ok fit link dakopirda');});
+      navigator.clipboard.writeText(link).then(function(){toast('✓ fit link დაკოპირდა');});
     else toast('ok fit link: '+link);
   };
 }
@@ -308,7 +326,7 @@ if (typeof copyAreaViewerLink === 'undefined') {
     var base=(typeof spotBaseUrl!=='undefined'?spotBaseUrl:'')||'';
     var full=base?base+val:val;
     if(navigator.clipboard&&navigator.clipboard.writeText)
-      navigator.clipboard.writeText(full).then(function(){toast('ok dakopirda');});
+      navigator.clipboard.writeText(full).then(function(){toast('✓ დაკოპირდა');});
   };
 }
 window._mergeMode = window._mergeMode || false;

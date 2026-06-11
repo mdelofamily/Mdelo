@@ -72,7 +72,7 @@ function saveAreaProps() {
   a.tooltip = document.getElementById('areaTooltipInp').value.trim();
   closeAreaProps();
   scheduleRender();
-  toast('ok shenahuliao');
+  toast('✓ შენახულია');
 }
 
 function deleteArea() {
@@ -87,7 +87,7 @@ function deleteArea() {
   document.getElementById('areaPropsModal').style.display = 'none';
   _editingAreaIdx = -1;
   scheduleRender();
-  toast('ok washlesao');
+  toast('🗑 წაიშალა');
 }
 
 function startMergeMode() {
@@ -96,7 +96,7 @@ function startMergeMode() {
   document.getElementById('areaPropsModal').style.display = 'none';
   document.getElementById('areaMergeInfo').style.display = 'block';
   setTool('area');
-  toast('tap sxva arealze gasaertianebladl');
+  toast('✦ tap სხვა არეალზე');
 }
 
 function ungroupArea() {
@@ -109,7 +109,7 @@ function ungroupArea() {
   if (rem.length === 1) delete rem[0].groupId;
   scheduleRender();
   _showAreaModal(_editingAreaIdx);
-  toast('ok jgufidan gamovida');
+  toast('✦ ჯგუფიდან გამოვიდა');
 }
 
 function _updateAreaLinkRow() {
