@@ -390,7 +390,7 @@ function _dlgShowNode(nodeId, selectedLabel) {
   if (selectedLabel) {
     const nick = localStorage.getItem('mdelo_nick') || 'მოგზაური';
     const ans = document.createElement('div');
-    ans.style.cssText = 'font-style:italic;opacity:0.55;font-size:12px;margin:6px 0 2px;';
+    ans.style.cssText = 'font-style:italic;opacity:0.55;font-size:12px;margin:6px 0 2px; display:flex; justify-content:flex-end; text-align:right;';
     ans.textContent = nick + ': ' + selectedLabel;
     body.appendChild(ans);
   }
