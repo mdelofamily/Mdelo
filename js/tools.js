@@ -245,6 +245,73 @@ if (typeof deleteArea === 'undefined') {
     toast('ok washlesao');
   };
 }
+if (typeof startMergeMode === 'undefined') {
+  window.startMergeMode = function() {
+    if (window._editingAreaIdx < 0) return;
+    window._mergeMode = true;
+    document.getElementById('areaPropsModal').style.display = 'none';
+    setTool('area');
+    toast('tap sxva arealze');
+  };
+}
+if (typeof ungroupArea === 'undefined') {
+  window.ungroupArea = function() {
+    var idx = window._editingAreaIdx;
+    if (idx < 0) return;
+    var gid = hotAreas[idx].groupId;
+    if (!gid) return;
+    delete hotAreas[idx].groupId;
+    var rem = hotAreas.filter(function(x){ return x.groupId === gid; });
+    if (rem.length === 1) delete rem[0].groupId;
+    scheduleRender();
+    toast('ok jgufidan gamovida');
+    closeAreaProps();
+  };
+}
+if (typeof copyAreaFitLink === 'undefined') {
+  window.copyAreaFitLink = function() {
+    var idx = window._editingAreaIdx;
+    if (idx < 0) return;
+    var a = hotAreas[idx];
+    var group = a.groupId ? hotAreas.filter(function(x){ return x.groupId===a.groupId; }) : [a];
+    var x1=Math.min.apply(null,group.map(function(r){return r.x1;}));
+    var y1=Math.min.apply(null,group.map(function(r){return r.y1;}));
+    var x2=Math.max.apply(null,group.map(function(r){return r.x2;}));
+    var y2=Math.max.apply(null,group.map(function(r){return r.y2;}));
+    var base=(typeof spotBaseUrl!=='undefined'?spotBaseUrl:'')||'';
+    var link=base+'#fit='+x1+','+y1+','+x2+','+y2;
+    if(a.groupId) link+='&group='+encodeURIComponent(a.groupId);
+    if(navigator.clipboard&&navigator.clipboard.writeText)
+      navigator.clipboard.writeText(link).then(function(){toast('ok fit link dakopirda');});
+    else toast('ok fit link: '+link);
+  };
+}
+if (typeof _updateAreaLinkRow === 'undefined') {
+  window._updateAreaLinkRow = function() {
+    var label=(document.getElementById('areaLabelInp').value||'').trim();
+    var row=document.getElementById('areaLinkRow');
+    if(label){row.style.display='flex';document.getElementById('areaLinkOut').value='#area='+encodeURIComponent(label);}
+    else row.style.display='none';
+  };
+}
+if (typeof insertAreaLink === 'undefined') {
+  window.insertAreaLink = function() {
+    var ta=document.getElementById('areaTooltipInp');
+    ta.value+=((ta.value&&!ta.value.endsWith('\n'))?'\n':'')+'[[saxeli|https://example.com]]';
+    ta.focus();
+  };
+}
+if (typeof copyAreaViewerLink === 'undefined') {
+  window.copyAreaViewerLink = function() {
+    var val=document.getElementById('areaLinkOut').value;
+    if(!val)return;
+    var base=(typeof spotBaseUrl!=='undefined'?spotBaseUrl:'')||'';
+    var full=base?base+val:val;
+    if(navigator.clipboard&&navigator.clipboard.writeText)
+      navigator.clipboard.writeText(full).then(function(){toast('ok dakopirda');});
+  };
+}
+window._mergeMode = window._mergeMode || false;
 function tp(t) {
   const r = canvas.getBoundingClientRect();
   return { x: t.clientX - r.left, y: t.clientY - r.top };
