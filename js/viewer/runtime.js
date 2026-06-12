@@ -1,7 +1,6 @@
 // runtime.js — viewer zoom, pan, hotspots, popups, menu, dialogue, notifications
 // injected inline by export-html.js assembler
 // depends on: _CFG, _OBJS, _W, _H, _TS (set in viewer.html data block)
-// depends on: unlock.js (canTrigger, completeDialog) — loaded before this script
 
 // ── zoom / pan ──
 const wrap = document.getElementById('mapWrap'),
@@ -11,7 +10,8 @@ let scale = 1;
 
 function applyScale(s, ox, oy) {
   const prev = scale;
-  scale = Math.max(0.2, Math.min(8, s));
+  const minS = Math.max(wrap.clientWidth / _W, wrap.clientHeight / _H);
+  scale = Math.max(minS, Math.min(8, s));
   const ratio = scale / prev;
   wrap.scrollLeft = (wrap.scrollLeft + ox) * ratio - ox;
   wrap.scrollTop  = (wrap.scrollTop  + oy) * ratio - oy;
@@ -50,6 +50,11 @@ wrap.addEventListener('touchend', e => {
   if (e.touches.length < 2) wrap.style.touchAction = 'pan-x pan-y';
 }, { passive: true });
 
+// ── Supabase credentials ──
+const SUPA_URL = 'https://miqenmsgwkkmtxwwbxzo.supabase.co';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1pcWVubXNnd2trbXR4d3dieHpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzMDc0NzYsImV4cCI6MjA5NDg4MzQ3Nn0.VfJgVoPC-ZbjlcuwMriYrNXb-3E2OgC92nOR9hOPgKI';
+window.SUPABASE_URL = SUPA_URL; window.SUPABASE_ANON_KEY = SUPA_KEY; window.MDELO_ROOM_ID = 'mdelo-chat';
+
 // ── link parser ──
 function parseLinks(t) {
   let o = '', i = 0;
@@ -71,7 +76,6 @@ function parseLinks(t) {
   }
   return o.replace(/\n/g, '<br>');
 }
-function parseLinks2(t) { return parseLinks(t); }
 
 // ── hotspot click dispatcher ──
 wrap.addEventListener('click', e => {
@@ -86,24 +90,8 @@ wrap.addEventListener('click', e => {
     } else {
       const oi = hs.dataset.oi;
       const objData = (oi != null && _OBJS[+oi]) ? _OBJS[+oi] : null;
-
-      // ── unlock check ───────────────────────────────────────────────────
-      // If this hotspot has a linked dialog in window.DIALOGS, run it
-      // through canTrigger() before opening. Blocked dialogs are silently
-      // skipped (the hotspot still opens with raw tooltip if present).
-      const dialogId = hs.dataset.dialogId;
-      const dialog   = (dialogId && window.DIALOGS) ? (window.DIALOGS[dialogId] || null) : null;
-
-      if (dialog && typeof canTrigger === 'function' && !canTrigger(dialog)) {
-        // Requirements not met — show nothing, or show raw tooltip only
-        if (hs.dataset.tooltip) {
-          openHsPopup(hs, hs.dataset.title || '', hs.dataset.tooltip || '', null, null);
-        }
-        return;
-      }
-
-      // Pass dialog reference so openHsPopup can call completeDialog on finish
-      openHsPopup(hs, hs.dataset.title || '', hs.dataset.tooltip || '', objData, dialog);
+      const displayTitle = (objData && (objData.title || objData.lb)) || hs.dataset.title || '';
+      openHsPopup(hs, displayTitle, hs.dataset.tooltip || '', objData);
     }
     return;
   }
@@ -143,6 +131,7 @@ function closeHsPopup() {
   const p = document.getElementById('hsPopup');
   p.classList.remove('show'); p.style.display = 'none';
   wrap.style.overflow = 'auto'; _stopObjBlink();
+  _dlgNodes = {}; _dlgObj = null;
 }
 function openAreaPopup(title, tip) {
   closeHsPopup();
@@ -152,59 +141,105 @@ function openAreaPopup(title, tip) {
   const pop = document.getElementById('areaPopup');
   const pw = Math.min(window.innerWidth * 0.88, 320);
   pop.style.cssText = 'left:' + ((window.innerWidth - pw) / 2) + 'px;top:' + Math.max(60, (window.innerHeight - 180) / 2) + 'px;max-width:' + pw + 'px;';
-  pop.classList.add('show'); wrap.style.overflow = 'hidden';
+  pop.classList.add('show');
 }
 function closeAreaPopup() {
   document.getElementById('areaPopup').classList.remove('show');
-  wrap.style.overflow = 'auto';
+  if (_areaHlCanvas) { _areaHlCanvas.remove(); _areaHlCanvas = null; }
 }
 
 // ── area blink outline ──
+var _areaHlCanvas = null;
+function _tracePoly(cells, TS) {
+  const edgeSet = new Set();
+  const norm = (x1,y1,x2,y2) => x1<x2||(x1===x2&&y1<y2)?x1+','+y1+','+x2+','+y2:x2+','+y2+','+x1+','+y1;
+  cells.forEach(key => {
+    const [r,cc] = key.split(',').map(Number);
+    const px=cc*TS, py=r*TS;
+    if (!cells.has(r+','+(cc-1))) edgeSet.add(norm(px,py,px,py+TS));
+    if (!cells.has(r+','+(cc+1))) edgeSet.add(norm(px+TS,py,px+TS,py+TS));
+    if (!cells.has((r-1)+','+cc)) edgeSet.add(norm(px,py,px+TS,py));
+    if (!cells.has((r+1)+','+cc)) edgeSet.add(norm(px,py+TS,px+TS,py+TS));
+  });
+  const edges = [...edgeSet].map(s=>s.split(',').map(Number));
+  const adj = new Map();
+  edges.forEach(([x1,y1,x2,y2],i) => {
+    const k1=x1+','+y1, k2=x2+','+y2;
+    if (!adj.has(k1)) adj.set(k1,[]);
+    if (!adj.has(k2)) adj.set(k2,[]);
+    adj.get(k1).push(i); adj.get(k2).push(i);
+  });
+  const used = new Set(), polys = [];
+  for (let si=0; si<edges.length; si++) {
+    if (used.has(si)) continue;
+    const [sx,sy] = [edges[si][0],edges[si][1]];
+    let cx=sx, cy=sy, ci=si;
+    const poly = [];
+    do {
+      used.add(ci);
+      const [x1,y1,x2,y2]=edges[ci];
+      poly.push([cx,cy]);
+      [cx,cy] = (x1===cx&&y1===cy)?[x2,y2]:[x1,y1];
+      const nb=(adj.get(cx+','+cy)||[]).find(i=>!used.has(i));
+      if (nb===undefined) break;
+      ci=nb;
+    } while (cx!==sx||cy!==sy);
+    if (poly.length>=3) polys.push(poly);
+  }
+  return polys;
+}
+function _drawRounded(ctx, poly, R) {
+  ctx.beginPath();
+  const n=poly.length;
+  for (let i=0; i<n; i++) {
+    const prev=poly[(i-1+n)%n], curr=poly[i], next=poly[(i+1)%n];
+    const dx1=curr[0]-prev[0], dy1=curr[1]-prev[1];
+    const dx2=next[0]-curr[0], dy2=next[1]-curr[1];
+    const l1=Math.sqrt(dx1*dx1+dy1*dy1)||1, l2=Math.sqrt(dx2*dx2+dy2*dy2)||1;
+    const r=Math.min(R,l1/2,l2/2);
+    const p1x=curr[0]-r*dx1/l1, p1y=curr[1]-r*dy1/l1;
+    if (i===0) ctx.moveTo(p1x,p1y); else ctx.lineTo(p1x,p1y);
+    ctx.arcTo(curr[0],curr[1],curr[0]+r*dx2/l2,curr[1]+r*dy2/l2,r);
+  }
+  ctx.closePath(); ctx.stroke();
+}
 function _doBlink(els) {
   if (!els.length) return;
-  const TS = _TS;
-  const cells = new Set();
+  const TS=_TS;
+  const cells=new Set();
   els.forEach(el => {
-    const ox = +el.dataset.ox, oy = +el.dataset.oy, ow = +el.dataset.ow, oh = +el.dataset.oh;
-    for (let r = 0; r < Math.round(oh / TS); r++)
-      for (let cc = 0; cc < Math.round(ow / TS); cc++)
-        cells.add((Math.round(oy / TS) + r) + ',' + (Math.round(ox / TS) + cc));
+    const ox=+el.dataset.ox,oy=+el.dataset.oy,ow=+el.dataset.ow,oh=+el.dataset.oh;
+    for (let r=0;r<Math.round(oh/TS);r++)
+      for (let cc=0;cc<Math.round(ow/TS);cc++)
+        cells.add((Math.round(oy/TS)+r)+','+(Math.round(ox/TS)+cc));
   });
-  const edges = [];
-  cells.forEach(key => {
-    const [r, cc] = key.split(',').map(Number);
-    const px = cc * TS, py = r * TS;
-    if (!cells.has(r + ',' + (cc - 1))) edges.push([px, py, px, py + TS]);
-    if (!cells.has(r + ',' + (cc + 1))) edges.push([px + TS, py, px + TS, py + TS]);
-    if (!cells.has((r - 1) + ',' + cc)) edges.push([px, py, px + TS, py]);
-    if (!cells.has((r + 1) + ',' + cc)) edges.push([px, py + TS, px + TS, py + TS]);
-  });
-  if (!edges.length) return;
-  const ov = document.createElement('canvas');
-  ov.width = _W; ov.height = _H;
-  ov.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:15;';
+  const polys=_tracePoly(cells,TS);
+  if (!polys.length) return;
+  if (_areaHlCanvas) { _areaHlCanvas.remove(); _areaHlCanvas=null; }
+  const ov=document.createElement('canvas');
+  ov.width=_W; ov.height=_H;
+  ov.style.cssText='position:absolute;top:0;left:0;pointer-events:none;z-index:15;';
   inner.appendChild(ov);
-  const ctx = ov.getContext('2d');
-  ctx.lineWidth = 2; ctx.lineCap = 'square';
+  const ctx=ov.getContext('2d');
+  const R=Math.max(4,TS*0.25);
+  ctx.lineWidth=2.5; ctx.lineCap='round'; ctx.lineJoin='round';
   function draw(alpha) {
-    ctx.clearRect(0, 0, ov.width, ov.height);
-    if (alpha <= 0) return;
-    ctx.strokeStyle = 'rgba(255,220,80,' + alpha.toFixed(2) + ')';
-    ctx.beginPath();
-    edges.forEach(([x1, y1, x2, y2]) => { ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); });
-    ctx.stroke();
+    ctx.clearRect(0,0,ov.width,ov.height);
+    if (alpha<=0) return;
+    ctx.strokeStyle='rgba(255,220,80,'+alpha.toFixed(2)+')';
+    polys.forEach(p=>_drawRounded(ctx,p,R));
   }
-  const PULSE_MS = 550; let start = null, phase = 0;
+  const PULSE=550; let start=null, phase=0;
   function frame(ts) {
-    if (!start) start = ts;
-    const t = Math.min((ts - start) / PULSE_MS, 1);
-    draw(phase % 2 === 0 ? t : 1 - t);
-    if (t < 1) { requestAnimationFrame(frame); }
-    else {
-      phase++;
-      if (phase < 6) { start = null; requestAnimationFrame(frame); }
-      else { let fo = 1; (function fade() { fo -= 0.08; if (fo > 0) { draw(fo * 0.9); requestAnimationFrame(fade); } else { draw(0); ov.remove(); } })(); }
-    }
+    if (!start) start=ts;
+    const t=Math.min((ts-start)/PULSE,1);
+    draw(phase%2===0?t:1-t);
+    if (t<1) { requestAnimationFrame(frame); return; }
+    phase++;
+    if (phase<6) { start=null; requestAnimationFrame(frame); return; }
+    // blink done — keep persistent at low alpha
+    draw(0.45);
+    _areaHlCanvas=ov;
   }
   requestAnimationFrame(frame);
 }
@@ -213,6 +248,40 @@ function blinkAreasByGroupOrTitle(grp, title) {
   if (!els.length && title) els = [...document.querySelectorAll('.hs-area[data-title="' + title + '"]')];
   _doBlink(els);
 }
+// Navigate to a named area or hotspot — shared by btn.area and goToArea
+function _gotoNamedLocation(title) {
+  var aEls = document.querySelectorAll('.hs-area[data-title="' + title + '"]');
+  if (aEls.length) { fitAreas(title); blinkAreasByGroupOrTitle('', title); return; }
+
+  // try exact data-title match — prefer instance with dialogue
+  var _cands = document.querySelectorAll('.hotspot[data-title="' + title + '"]');
+  var hs = null;
+  for (var _j = 0; _j < _cands.length; _j++) {
+    var _cOi = +(_cands[_j].dataset.oi);
+    if (typeof _OBJS !== 'undefined' && _OBJS[_cOi] && _OBJS[_cOi].dialogue && _OBJS[_cOi].dialogue.length) {
+      hs = _cands[_j]; break;
+    }
+  }
+  if (!hs && _cands.length) hs = _cands[0];
+
+  // fallback: search by obj.lb or obj.title (renamed objects)
+  if (!hs && typeof _OBJS !== 'undefined') {
+    for (var _i = 0; _i < _OBJS.length; _i++) {
+      if (_OBJS[_i] && (_OBJS[_i].lb === title || _OBJS[_i].title === title)) {
+        hs = document.querySelector('.hotspot[data-oi="' + _i + '"]');
+        if (hs) break;
+      }
+    }
+  }
+
+  if (hs) {
+    var ox = +(hs.dataset.ox || 0), oy = +(hs.dataset.oy || 0);
+    var ow = +(hs.dataset.ow || 64),  oh = +(hs.dataset.oh || 64);
+    wrap.scrollLeft = (ox + ow / 2) * scale - wrap.clientWidth  / 2;
+    wrap.scrollTop  = (oy + oh / 2) * scale - wrap.clientHeight / 2;
+  }
+}
+
 function fitAreas(title) {
   const els = [...document.querySelectorAll('.hs-area[data-title="' + title + '"]')];
   if (!els.length) return;
@@ -303,11 +372,7 @@ function buildMenu(cfg) {
 }
 
 // ── dialogue engine ──
-const SUPA_URL_D = 'https://miqenmsgwkkmtxwwbxzo.supabase.co';
-const SUPA_KEY_D = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1pcWVubXNnd2trbXR4d3dieHpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzMDc0NzYsImV4cCI6MjA5NDg4MzQ3Nn0.VfJgVoPC-ZbjlcuwMriYrNXb-3E2OgC92nOR9hOPgKI';
-
-// _dlgActive = the window.DIALOGS entry currently open (for completeDialog on finish)
-let _dlgNodes = {}, _dlgObj = null, _dlgActive = null;
+let _dlgNodes = {}, _dlgObj = null;
 
 function _parseNodes(dialogue) {
   const nodes = {};
@@ -315,42 +380,55 @@ function _parseNodes(dialogue) {
   const first = dialogue && dialogue.length ? dialogue[0].id : null;
   return { nodes, first };
 }
-
-function _dlgShowNode(nodeId) {
+function _dlgShowNode(nodeId, selectedLabel) {
   const node = _dlgNodes[nodeId]; if (!node) return;
   const body = document.getElementById('hsPopupBody');
   const btnWrap = document.getElementById('hsPopupBtns');
   if (btnWrap) { btnWrap.innerHTML = ''; btnWrap.classList.remove('visible'); }
-  body.innerHTML = '';
-  const txt = (node.text || '').replace(/\[\]/g, localStorage.getItem('mdelo_nick') || 'მოგზაური');
-  _typewriterHTML(body, parseLinks(txt), 35, () => {
+
+  // append selected answer to history (no typewriter, italic)
+  if (selectedLabel) {
+    const nick = localStorage.getItem('mdelo_nick') || 'მოგზაური';
+    const ans = document.createElement('div');
+    ans.style.cssText = 'font-style:italic;opacity:0.55;font-size:12px;margin:6px 0 2px; display:flex; justify-content:flex-end; text-align:right;';
+    ans.textContent = nick + ': ' + selectedLabel;
+    body.appendChild(ans);
+  }
+
+  const objTitle = (_dlgObj && (_dlgObj.title || _dlgObj.lb)) || '';
+  const _he = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const txt = (node.text || '')
+    .replace(/\[\]/g, (localStorage.getItem('mdelo_nick') || 'მოგზაური') + ':')
+    .replace(/__OBJ__([^<"]*)/g, (_, name) => (name.trim() || _he(objTitle)) + ':')
+    .replace(/&lt;([^&<\n]*)&gt;/g, (_, name) => '<b>' + (name.trim() || _he(objTitle)) + ':</b>');
+
+  // new node appended into fresh div — history above stays intact
+  const nodeEl = document.createElement('div');
+  body.appendChild(nodeEl);
+
+  _typewriterHTML(nodeEl, parseLinks(txt), 35, () => {
     if (!btnWrap) return;
     (node.buttons || []).forEach(btn => {
       if (!btn.label) return;
       const b = document.createElement('button');
       b.textContent = btn.label;
-      b.style.cssText = 'width:100%;height:40px;background:rgba(22,27,34,0.2);border:1px solid rgba(88,166,255,0.4);color:#e6edf3;font-size:13px;border-radius:8px;cursor:pointer;text-align:center;';
+      b.style.cssText = 'width:100%;height:32px;background:rgba(22,27,34,0.2);border:1px solid rgba(88,166,255,0.4);color:#e6edf3;font-size:13px;border-radius:8px;cursor:pointer;text-align:center;';
       b.onclick = () => {
         if (btn.notify) {
           const sender = localStorage.getItem('mdelo_sender') || 'ანონიმი';
           const notifyTxt = btn.notifyText || (sender + ' — ' + btn.label);
-          fetch(SUPA_URL_D + '/rest/v1/notifications', {
+          const nType = btn.notifyType || 'info';
+          const nSymbol = { info: '💬', warning: '⚠️', danger: '🔴', project: '🚀', done: '✅' }[nType] || '💬';
+          fetch(SUPA_URL + '/rest/v1/notifications', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY_D, 'Authorization': 'Bearer ' + SUPA_KEY_D, 'Prefer': 'return=minimal' },
-            body: JSON.stringify({ type: 'info', symbol: '💬', text: notifyTxt, sender: sender, linked_area: '' })
+            headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Prefer': 'return=minimal' },
+            body: JSON.stringify({ type: nType, symbol: nSymbol, text: notifyTxt, sender: sender, linked_area: btn.area || '' })
           }).catch(() => {});
         }
         if (btn.link) window.open(btn.link, '_blank');
-        if (btn.nextNode && _dlgNodes[btn.nextNode]) {
-          _dlgShowNode(btn.nextNode);
-        } else {
-          // ── dialog finished: apply unlock effects ──────────────────────
-          if (_dlgActive && typeof completeDialog === 'function') {
-            completeDialog(_dlgActive);
-          }
-          _dlgActive = null;
-          closeHsPopup();
-        }
+        if (btn.area) { closeHsPopup(); _gotoNamedLocation(btn.area); return; }
+        if (btn.nextNode && _dlgNodes[btn.nextNode]) { _dlgShowNode(btn.nextNode, btn.label); }
+        else { closeHsPopup(); }
       };
       btnWrap.appendChild(b);
     });
@@ -367,18 +445,14 @@ function _dlgShowNode(nodeId) {
     }
   });
 }
-
-// openHsPopup — dialog param (optional) is the window.DIALOGS entry
-function openHsPopup(el, title, raw, obj, dialog) {
-  _dlgObj    = obj    || null;
-  _dlgActive = dialog || null;   // remember for completeDialog on finish
-
+function openHsPopup(el, title, raw, obj) {
+  _dlgObj = obj || null;
   const popup = document.getElementById('hsPopup');
   document.getElementById('hsPopupTitle').textContent = title || '';
   document.getElementById('hsPopupBody').innerHTML = '';
   const bw = document.getElementById('hsPopupBtns');
   if (bw) bw.innerHTML = '';
-  const pw = Math.min(window.innerWidth * 0.88, 360), left = (window.innerWidth - pw) / 2, top = Math.max(60, (window.innerHeight - 200) / 2);
+  const pw = Math.min(window.innerWidth * 0.95), left = (window.innerWidth - pw) / 2, top = Math.max(60, (window.innerHeight - 200) / 2);
   popup.style.cssText = 'display:block;left:' + left + 'px;top:' + top + 'px;max-width:' + pw + 'px;';
   popup.classList.add('show');
   wrap.style.overflow = 'hidden';
@@ -513,9 +587,6 @@ function applyAreaHash() {
 }
 
 // ── notifications ──
-const SUPA_URL = 'https://miqenmsgwkkmtxwwbxzo.supabase.co';
-const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1pcWVubXNnd2trbXR4d3dieHpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzMDc0NzYsImV4cCI6MjA5NDg4MzQ3Nn0.VfJgVoPC-ZbjlcuwMriYrNXb-3E2OgC92nOR9hOPgKI';
-window.SUPABASE_URL = SUPA_URL; window.SUPABASE_ANON_KEY = SUPA_KEY; window.MDELO_ROOM_ID = 'mdelo-chat';
 const TYPE_LABELS = { info: 'ინფო', warning: 'გაფრთხილება', danger: 'საფრთხე', emergency: 'განგაში', done: 'მზადაა', project: 'პროექტი' };
 let _notifs = [], _curNotif = null;
 
@@ -565,15 +636,22 @@ function _ncardDeleteConfirm(card, n) {
   }
   if (type === 'danger' || type === 'warning') {
     const ov = _ncardOverlay(card, '?', { danger: '#fb8f44', warning: '#f0a500' }[type]);
-    ov.style.flexDirection = 'column'; ov.style.gap = '4px'; ov.innerHTML = '';
+    ov.style.flexDirection = 'column';
+    ov.style.gap = '4px';
+    ov.innerHTML = '';
     const msg = document.createElement('div');
-    msg.style.cssText = 'font-size:10px;color:#fff;text-align:center;'; msg.textContent = 'წაიშალოს?';
+    msg.style.cssText = 'font-size:10px;color:#fff;text-align:center;';
+    msg.textContent = 'წაიშალოს?';
     const yes = document.createElement('button');
-    yes.style.cssText = 'background:#f85149;border:none;color:#fff;border-radius:5px;padding:2px 8px;font-size:11px;cursor:pointer;'; yes.textContent = 'კი';
+    yes.style.cssText = 'background:#f85149;border:none;color:#fff;border-radius:5px;padding:2px 8px;font-size:11px;cursor:pointer;';
+    yes.textContent = 'კი';
     const no = document.createElement('button');
-    no.style.cssText = 'background:#30363d;border:none;color:#ccc;border-radius:5px;padding:2px 8px;font-size:11px;cursor:pointer;'; no.textContent = 'არა';
-    const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:4px;';
-    row.appendChild(yes); row.appendChild(no); ov.appendChild(msg); ov.appendChild(row);
+    no.style.cssText = 'background:#30363d;border:none;color:#ccc;border-radius:5px;padding:2px 8px;font-size:11px;cursor:pointer;';
+    no.textContent = 'არა';
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:4px;';
+    row.appendChild(yes); row.appendChild(no);
+    ov.appendChild(msg); ov.appendChild(row);
     yes.addEventListener('click', async e => { e.stopPropagation(); await _ncardDoDelete(ov, n); });
     no.addEventListener('click',  e => { e.stopPropagation(); ov.remove(); });
     return;
@@ -589,9 +667,12 @@ function _ncardDeleteConfirm(card, n) {
 function _ncardOverlay(card, icon, color) {
   const ov = document.createElement('div');
   ov.style.cssText = 'position:absolute;inset:0;border-radius:10px;background:' + color + 'dd;display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;z-index:2;';
-  ov.textContent = icon; card.style.position = 'relative'; card.appendChild(ov);
+  ov.textContent = icon;
+  card.style.position = 'relative';
+  card.appendChild(ov);
   return ov;
 }
+
 async function _ncardDoDelete(ov, n) {
   ov.textContent = '…';
   try {
@@ -599,16 +680,28 @@ async function _ncardDoDelete(ov, n) {
       method: 'DELETE',
       headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
     });
-    if (r.ok) await loadNotifs(); else ov.remove();
+    if (r.ok) await loadNotifs();
+    else ov.remove();
   } catch (e) { ov.remove(); }
 }
+
 function _startRealtime() {
   if (typeof supabase === 'undefined') return;
   try {
     const client = supabase.createClient(SUPA_URL, SUPA_KEY);
-    client.channel('notif-live').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, () => loadNotifs()).subscribe();
+    // notifications channel
+    client.channel('notif-live')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, () => loadNotifs())
+      .subscribe();
+    // dialogue overrides channel — realtime patch for all viewers
+    client.channel('dlg-overrides')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dialogue_overrides' }, payload => {
+        if (payload.new && payload.new.map_id === _MAP_ID) _applyDlgOverride(payload.new);
+      })
+      .subscribe();
   } catch (e) {}
 }
+
 function openNotifPopup(n) {
   _curNotif = n;
   const p = document.getElementById('notifPopup');
@@ -648,18 +741,128 @@ function closeNotifPopup() { const p = document.getElementById('notifPopup'); p.
 function goToArea() {
   if (!_curNotif || !_curNotif.linked_area) return;
   closeNotifPopup();
-  const title = _curNotif.linked_area;
-  const els = document.querySelectorAll('.hs-area[data-title="' + title + '"]');
-  if (els.length) { fitAreas(title); blinkAreasByGroupOrTitle('', title); }
-  else {
-    const hs = document.querySelector('.hotspot[data-title="' + title + '"]');
-    if (hs) { const ox = +hs.dataset.ox, oy = +hs.dataset.oy; wrap.scrollLeft = ox * scale - wrap.clientWidth / 2; wrap.scrollTop = oy * scale - wrap.clientHeight / 2; }
+  _gotoNamedLocation(_curNotif.linked_area);
+}
+
+// ── dialogue overrides (Supabase) ──
+// Allows admin to edit dialogue via terminal; all viewers get updates via realtime.
+
+const _MAP_ID = (_CFG && _CFG.title) ? _CFG.title : 'map';
+
+// Find _OBJS index by hotspot data-title
+function _findOiByTitle(title) {
+  var hs = document.querySelector('.hotspot[data-title="' + title.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"]:not(.hs-area):not(.no-interact)');
+  return (hs && hs.dataset.oi != null) ? +hs.dataset.oi : -1;
+}
+
+// Update hotspot DOM marker element.
+// mk = internal marker string: '!' | '?' | '💬' | ''
+// Creates .hs-marker if missing; hides/shows .hs-dot accordingly.
+function _applyMarkerDom(hsEl, mk) {
+  if (!hsEl) return;
+  var dotEl = hsEl.querySelector('.hs-dot');
+  var mkEl  = hsEl.querySelector('.hs-marker');
+  if (mk) {
+    if (!mkEl) {
+      mkEl = document.createElement('div');
+      hsEl.appendChild(mkEl);
+    }
+    // must set color class — without it the element is invisible
+    mkEl.className   = mk === '!' ? 'hs-marker exc' : mk === '?' ? 'hs-marker q' : 'hs-marker chat';
+    mkEl.textContent = mk === '💬' ? '...' : mk;
+    mkEl.style.display = '';
+    if (dotEl) dotEl.style.display = 'none';
+  } else {
+    if (mkEl)  mkEl.style.display  = 'none';
+    if (dotEl) dotEl.style.display = '';
   }
 }
+
+// Patch _OBJS[oi].dialogue with data from Supabase row
+function _applyDlgOverride(row) {
+  if (!row || !row.obj_title || !row.nodes_json) return;
+  var oi = _findOiByTitle(row.obj_title);
+  if (oi < 0 || typeof _OBJS === 'undefined' || !_OBJS[oi]) return;
+
+  // migrate legacy __OBJ___OBJ__ bug (pre-fix bulk-parser saves)
+  var nodes = (Array.isArray(row.nodes_json) ? row.nodes_json : []).map(function(node) {
+    if (!node || !node.text) return node;
+    return Object.assign({}, node, { text: node.text.replace(/__OBJ___OBJ__/g, '__OBJ__') });
+  });
+  _OBJS[oi].dialogue = nodes;
+
+  // extract marker from saved DSL (no extra DB column needed)
+  if (row.dsl && typeof parseBulkDSL === 'function') {
+    try {
+      var parsed = parseBulkDSL(row.dsl);
+      var mk = parsed.marker === '...' ? '💬' : (parsed.marker || '');
+      _OBJS[oi].marker = mk;
+      if (parsed.title) { _OBJS[oi].lb = parsed.title; _OBJS[oi].title = parsed.title; }
+      // use data-oi for exact targeting — data-title may be shared by identical objects
+      var hsEl = document.querySelector('.hotspot[data-oi="' + oi + '"]:not(.hs-area)');
+      _applyMarkerDom(hsEl, mk);
+    } catch(e) {}
+  }
+}
+
+// Load all overrides for this map on startup
+async function loadDialogueOverrides() {
+  try {
+    var r = await fetch(
+      SUPA_URL + '/rest/v1/dialogue_overrides?map_id=eq.' + encodeURIComponent(_MAP_ID),
+      { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY } }
+    );
+    if (!r.ok) return;
+    var rows = await r.json();
+    rows.forEach(_applyDlgOverride);
+  } catch (e) {}
+}
+
+// Save/update a dialogue override — called from terminal.js
+window.dlgOverrideSave = async function(objTitle, nodesJson, dsl) {
+  try {
+    var body = JSON.stringify({
+      map_id: _MAP_ID,
+      obj_title: objTitle,
+      nodes_json: nodesJson,
+      dsl: dsl,
+      updated_at: new Date().toISOString()
+    });
+    var r = await fetch(SUPA_URL + '/rest/v1/dialogue_overrides', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPA_KEY,
+        'Authorization': 'Bearer ' + SUPA_KEY,
+        'Prefer': 'resolution=merge-duplicates,return=minimal'
+      },
+      body: body
+    });
+    if (r.ok) {
+      // reuse _applyDlgOverride for nodes + marker + lb — single source of truth
+      _applyDlgOverride({ obj_title: objTitle, nodes_json: nodesJson, dsl: dsl });
+      return true;
+    }
+    var errBody = r.text ? await r.text().catch(function(){return "";}) : "";
+    return { ok: false, status: r.status, msg: errBody.slice(0,150) };
+  } catch (e) { return { ok: false, status: 0, msg: e.message }; }
+};
+
+// Get current DSL string for an object — called from terminal.js
+window.dlgGetCurrentDsl = function(objTitle) {
+  var oi = _findOiByTitle(objTitle);
+  if (oi < 0 || typeof _OBJS === 'undefined' || !_OBJS[oi]) return '';
+  var obj = _OBJS[oi];
+  if (obj.dialogue && obj.dialogue.length && typeof unparseDialogue === 'function') {
+    return unparseDialogue({ lb: obj.lb || objTitle, dialogue: obj.dialogue, marker: obj.marker || '' });
+  }
+  return '';
+};
 
 // ── init ──
 window.addEventListener('load', () => {
   loadNotifs();
+  loadDialogueOverrides();
   _startRealtime();
   applySpotHash();
   applyAreaHash();
