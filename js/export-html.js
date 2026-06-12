@@ -5,7 +5,7 @@
 //  Runtime JS:               viewer/runtime.js
 //  Terminal JS:              viewer/terminal.js
 //  Canvas renderer:          viewer/canvas-renderer.js
-//  Unlock engine:            viewer/unlock.js
+//  Bulk parser:              js/bulk-parser.js
 // ============================================================
 
 // ── helpers ──
@@ -85,21 +85,18 @@ async function doExportHTML() {
       custom: mapData.custom, autoTiles: mapData.autoTiles, dualTiles: mapData.dualTiles
     };
 
-    // ── build hotspot HTML ──────────────────────────────────────────────
+    // build hotspot HTML
     const TS_ = TS;
     const embeddedHotspots = objects.map((o, oi) => {
       const ox = o.x * TS_, oy = o.y * TS_, ow = o.cols * TS_, oh = o.rows * TS_;
       const title   = ((o.title || o.lb) || "").replace(/'/g, "&#39;").replace(/"/g, "&quot;");
       const tooltip = (o.tooltip || "").replace(/'/g, "&#39;").replace(/"/g, "&quot;");
       const hasInteraction = !!(o.title || o.marker || (o.dialogue && o.dialogue.length && o.dialogue[0].text));
-      const hasDialogue    = !!(o.dialogue && o.dialogue.length);
-      const markerCls  = o.marker === "!" ? "exc" : o.marker === "?" ? "q" : o.marker === "..." ? "chat" : "";
+      const markerCls = o.marker === "!" ? "exc" : o.marker === "?" ? "q" : o.marker === "..." ? "chat" : "";
       const markerHtml = hasInteraction
         ? (markerCls ? `<div class="hs-marker ${markerCls}">${o.marker}</div>` : `<div class="hs-dot"></div>`)
         : "";
-      // data-dialog-id links hotspot to window.DIALOGS entry
-      const dialogAttr = hasDialogue ? ` data-dialog-id="dlg_${oi}"` : "";
-      return `<div class="hotspot${hasInteraction ? "" : " no-interact"}" data-ox="${ox}" data-oy="${oy}" data-ow="${ow}" data-oh="${oh}" data-title="${title}" data-tooltip="${tooltip}" data-oi="${oi}"${dialogAttr} style="left:${ox}px;top:${oy}px;width:${ow}px;height:${oh}px;">${markerHtml}</div>`;
+      return `<div class="hotspot${hasInteraction ? "" : " no-interact"}" data-ox="${ox}" data-oy="${oy}" data-ow="${ow}" data-oh="${oh}" data-title="${title}" data-tooltip="${tooltip}" data-oi="${oi}" style="left:${ox}px;top:${oy}px;width:${ow}px;height:${oh}px;">${markerHtml}</div>`;
     });
 
     const embeddedAreas = hotAreas.map(a => {
@@ -118,7 +115,7 @@ async function doExportHTML() {
 
     const allHotspots = [...embeddedHotspots, ...embeddedAreas].join("\n    ");
 
-    // ── draw full map to canvas ─────────────────────────────────────────
+    // draw full map to canvas
     const _full = document.createElement("canvas");
     _full.width = offscreen.width; _full.height = offscreen.height;
     const _fctx = _full.getContext("2d"); _fctx.imageSmoothingEnabled = false;
@@ -149,42 +146,15 @@ async function doExportHTML() {
 
     const w = exp.width, h = exp.height;
     const cfgJSLiteral = JSON.stringify(embeddedCfg);
+    const objsData = mapData.objects.map(o => ({ title: o.title, lb: o.lb, dialogue: o.dialogue || [] }));
 
-    // ── _OBJS: include requires + on_complete for unlock engine ─────────
-    const objsData = mapData.objects.map(o => ({
-      title:       o.title,
-      lb:          o.lb,
-      dialogue:    o.dialogue    || [],
-      requires:    o.requires    || null,
-      on_complete: o.on_complete || null
-    }));
-
-    // ── build window.DIALOGS ────────────────────────────────────────────
-    // Every object with dialogue becomes a dialog entry.
-    // id = "dlg_<oi>", trigger = "<oi>" (matches data-dialog-id).
-    // requires / on_complete come straight from the object.
-    const dialogsMap = {};
-    mapData.objects.forEach((o, oi) => {
-      if (o.dialogue && o.dialogue.length) {
-        dialogsMap['dlg_' + oi] = {
-          id:          'dlg_' + oi,
-          trigger:     String(oi),
-          requires:    o.requires    || null,
-          nodes:       o.dialogue,
-          on_complete: o.on_complete || null
-        };
-      }
-    });
-    // Injected as a plain assignment inside the data <script> block.
-    const dialogsJS = 'window.DIALOGS = ' + JSON.stringify(dialogsMap) + ';';
-
-    // ── load viewer assets ──────────────────────────────────────────────
-    const [tmpl, runtimeJS, terminalJS, canvasRendererJS, unlockJS] = await Promise.all([
+    // load viewer assets
+    const [tmpl, runtimeJS, terminalJS, canvasRendererJS, bulkParserJS] = await Promise.all([
       _fetchViewerAsset('js/viewer/viewer.html'),
       _fetchViewerAsset('js/viewer/runtime.js'),
       _fetchViewerAsset('js/viewer/terminal.js'),
       _fetchViewerAsset('js/viewer/canvas-renderer.js'),
-      _fetchViewerAsset('js/viewer/unlock.js'),
+      _fetchViewerAsset('js/bulk-parser.js'),
     ]);
 
     // map image tag
@@ -200,7 +170,7 @@ async function doExportHTML() {
     // canvas renderer is only injected when needed
     const canvasRendererBlock = useCanvasRenderer ? canvasRendererJS : "";
 
-    // ── assemble final HTML ─────────────────────────────────────────────
+    // assemble final HTML by replacing placeholders
     const title = currentProjectName || "RPG Map";
     const html = tmpl
       .replace(/{{TITLE}}/g,          title)
@@ -215,8 +185,7 @@ async function doExportHTML() {
       .replace(/{{OBJS_DATA}}/g,       JSON.stringify(objsData))
       .replace(/{{TS}}/g,              String(TS))
       .replace(/{{CANVAS_RENDERER}}/g, canvasRendererBlock)
-      .replace(/{{DIALOGS_JS}}/g,      dialogsJS)
-      .replace(/{{UNLOCK_JS}}/g,       unlockJS)
+      .replace(/{{BULK_PARSER_JS}}/g,  bulkParserJS)
       .replace(/{{RUNTIME_JS}}/g,      runtimeJS)
       .replace(/{{TERMINAL_JS}}/g,     terminalJS);
 
