@@ -91,6 +91,11 @@ wrap.addEventListener('click', e => {
       const oi = hs.dataset.oi;
       const objData = (oi != null && _OBJS[+oi]) ? _OBJS[+oi] : null;
       const displayTitle = (objData && (objData.title || objData.lb)) || hs.dataset.title || '';
+      // unlock check — if dialog has requires, verify flags before opening
+      const _dlgId = hs.dataset.dialogId;
+      const _dlgEntry = (_dlgId && window.DIALOGS) ? window.DIALOGS[_dlgId] : null;
+      if (_dlgEntry && typeof canTrigger === 'function' && !canTrigger(_dlgEntry)) return;
+      _dlgActive = _dlgEntry || null;
       openHsPopup(hs, displayTitle, hs.dataset.tooltip || '', objData);
     }
     return;
@@ -372,7 +377,7 @@ function buildMenu(cfg) {
 }
 
 // ── dialogue engine ──
-let _dlgNodes = {}, _dlgObj = null;
+let _dlgNodes = {}, _dlgObj = null, _dlgActive = null;
 
 function _parseNodes(dialogue) {
   const nodes = {};
@@ -428,7 +433,11 @@ function _dlgShowNode(nodeId, selectedLabel) {
         if (btn.link) window.open(btn.link, '_blank');
         if (btn.area) { closeHsPopup(); _gotoNamedLocation(btn.area); return; }
         if (btn.nextNode && _dlgNodes[btn.nextNode]) { _dlgShowNode(btn.nextNode, btn.label); }
-        else { closeHsPopup(); }
+        else {
+          if (_dlgActive && typeof completeDialog === 'function') completeDialog(_dlgActive);
+          _dlgActive = null;
+          closeHsPopup();
+        }
       };
       btnWrap.appendChild(b);
     });
@@ -791,14 +800,33 @@ function _applyDlgOverride(row) {
   });
   _OBJS[oi].dialogue = nodes;
 
-  // extract marker from saved DSL (no extra DB column needed)
   if (row.dsl && typeof parseBulkDSL === 'function') {
     try {
-      var parsed = parseBulkDSL(row.dsl);
+      // strip #? / #! headers before passing to parseBulkDSL
+      var dslRaw = row.dsl;
+      var unlockData = null;
+      if (typeof parseUnlockHeaders === 'function') {
+        unlockData = parseUnlockHeaders(dslRaw);
+        dslRaw = unlockData.dsl;
+        // store requires/on_complete on _OBJS entry
+        _OBJS[oi].requires    = unlockData.requires;
+        _OBJS[oi].on_complete = unlockData.on_complete;
+        // apply set_markers immediately (console edit triggers marker change)
+        if (unlockData.on_complete && unlockData.on_complete.set_markers) {
+          unlockData.on_complete.set_markers.forEach(function(m) {
+            var el = document.querySelector('.hotspot[data-title="' + m.title + '"]:not(.hs-area)');
+            if (el) _applyMarkerDom(el, m.mk);
+            // also update _OBJS for the target object
+            var tOi = el ? el.dataset.oi : null;
+            if (tOi != null && _OBJS[+tOi]) _OBJS[+tOi].marker = m.mk === '~' ? '...' : m.mk;
+          });
+        }
+      }
+
+      var parsed = parseBulkDSL(dslRaw.trim() || '@0\n');
       var mk = parsed.marker === '...' ? '💬' : (parsed.marker || '');
       _OBJS[oi].marker = mk;
       if (parsed.title) { _OBJS[oi].lb = parsed.title; _OBJS[oi].title = parsed.title; }
-      // use data-oi for exact targeting — data-title may be shared by identical objects
       var hsEl = document.querySelector('.hotspot[data-oi="' + oi + '"]:not(.hs-area)');
       _applyMarkerDom(hsEl, mk);
     } catch(e) {}
@@ -853,10 +881,16 @@ window.dlgGetCurrentDsl = function(objTitle) {
   var oi = _findOiByTitle(objTitle);
   if (oi < 0 || typeof _OBJS === 'undefined' || !_OBJS[oi]) return '';
   var obj = _OBJS[oi];
+  var dsl = '';
   if (obj.dialogue && obj.dialogue.length && typeof unparseDialogue === 'function') {
-    return unparseDialogue({ lb: obj.lb || objTitle, dialogue: obj.dialogue, marker: obj.marker || '' });
+    dsl = unparseDialogue({ lb: obj.lb || objTitle, dialogue: obj.dialogue, marker: obj.marker || '' });
   }
-  return '';
+  // prepend #? / #! headers so /dlg shows full picture
+  if (typeof unparseUnlockHeaders === 'function') {
+    var headers = unparseUnlockHeaders(obj);
+    if (headers) dsl = headers + '\n' + dsl;
+  }
+  return dsl;
 };
 
 // ── init ──

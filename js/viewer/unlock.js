@@ -57,7 +57,57 @@
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // canTrigger(dialog)
+  // parseUnlockHeaders(raw)
+  // Shared parser for #? / #! header lines in DSL text.
+  // Used by runtime.js (_applyDlgOverride) so console /dlg saves also
+  // trigger marker changes and flag effects.
+  // Returns { dsl, requires, on_complete }
+  // ─────────────────────────────────────────────────────────────────────────
+  // object → #? / #! header lines string
+  function unparseUnlockHeaders(o) {
+    var lines = [];
+    if (o.requires && o.requires.flags && o.requires.flags.length)
+      lines.push('#? ' + o.requires.flags.join(' '));
+    if (o.on_complete) {
+      var oc = o.on_complete, tokens = [];
+      (oc.set_flags      || []).forEach(function(f){ tokens.push(f); });
+      (oc.unlock_dialogs || []).forEach(function(f){ tokens.push('>'+f); });
+      (oc.unlock_areas   || []).forEach(function(f){ tokens.push('*'+f); });
+      (oc.set_markers    || []).forEach(function(m){ tokens.push((m.mk||'-')+m.title); });
+      if (tokens.length) lines.push('#! ' + tokens.join(' '));
+    }
+    return lines.join('\n');
+  }
+
+  function parseUnlockHeaders(raw) {
+    var lines = raw.split('\n'), dslLines = [], requires = null, on_complete = null;
+    lines.forEach(function(line) {
+      var m;
+      if ((m = line.match(/^#\?\s*(.+)/))) {
+        var flags = m[1].split(/\s+/).map(function(s){ return s.trim(); }).filter(Boolean);
+        if (flags.length) requires = { flags: flags };
+      } else if ((m = line.match(/^#!\s*(.+)/))) {
+        var tokens = m[1].split(/\s+/).filter(Boolean);
+        var oc = { set_flags: [], unlock_dialogs: [], unlock_areas: [], set_markers: [] };
+        tokens.forEach(function(t) {
+          var ch = t.charAt(0);
+          if      (ch === '>') oc.unlock_dialogs.push(t.slice(1));
+          else if (ch === '*') oc.unlock_areas.push(t.slice(1));
+          else if (ch === '!' || ch === '?' || ch === '~' || ch === '-')
+            oc.set_markers.push({ mk: ch === '-' ? '' : ch, title: t.slice(1) });
+          else oc.set_flags.push(t);
+        });
+        if (!oc.set_flags.length)      delete oc.set_flags;
+        if (!oc.unlock_dialogs.length) delete oc.unlock_dialogs;
+        if (!oc.unlock_areas.length)   delete oc.unlock_areas;
+        if (!oc.set_markers.length)    delete oc.set_markers;
+        if (Object.keys(oc).length)    on_complete = oc;
+      } else { dslLines.push(line); }
+    });
+    return { dsl: dslLines.join('\n'), requires: requires, on_complete: on_complete };
+  }
+
+
   // Returns true if all dialog.requires.flags are set.
   // An unlocked dialog also needs flag "dialog_unlocked:<id>" if it was
   // originally locked (i.e. it appears in another dialog's unlock_dialogs).
@@ -92,24 +142,27 @@
     if (!dialog || !dialog.on_complete) return;
     var oc = dialog.on_complete;
 
-    // 1. Set flags
     (oc.set_flags || []).forEach(function (f) { flagSet(f); });
+    (oc.unlock_areas || []).forEach(function (areaId) { _unlockArea(areaId); });
+    (oc.unlock_dialogs || []).forEach(function (dialogId) { flagSet('dialog_unlocked:' + dialogId); });
 
-    // 2. Unlock areas (activates hotspot + stores flag)
-    (oc.unlock_areas || []).forEach(function (areaId) {
-      _unlockArea(areaId);
+    // marker changes: !სახელი ?სახელი ~სახელი -სახელი
+    (oc.set_markers || []).forEach(function (m) {
+      var hsEl = document.querySelector('.hotspot[data-title="' + m.title + '"]:not(.hs-area)');
+      if (!hsEl) return;
+      // update DOM marker
+      if (typeof _applyMarkerDom === 'function') {
+        _applyMarkerDom(hsEl, m.mk);
+      }
+      // update _OBJS so re-open shows correct marker
+      var oi = hsEl.dataset.oi;
+      if (oi != null && typeof _OBJS !== 'undefined' && _OBJS[+oi]) {
+        _OBJS[+oi].marker = m.mk === '~' ? '...' : m.mk;
+      }
     });
 
-    // 3. Unlock dialogs (stored as a special flag)
-    (oc.unlock_dialogs || []).forEach(function (dialogId) {
-      flagSet('dialog_unlocked:' + dialogId);
-    });
-
-    // 4. Dispatch event so external systems can react
     try {
-      document.dispatchEvent(
-        new CustomEvent('mdelo:dialog_complete', { detail: { dialog: dialog } })
-      );
+      document.dispatchEvent(new CustomEvent('mdelo:dialog_complete', { detail: { dialog: dialog } }));
     } catch (e) {}
   }
 
@@ -276,16 +329,18 @@
   // ─────────────────────────────────────────────────────────────────────────
   // Public API
   // ─────────────────────────────────────────────────────────────────────────
-  global.canTrigger       = canTrigger;
-  global.completeDialog   = completeDialog;
-  global.isDialogUnlocked = isDialogUnlocked;
-  global.isAreaUnlocked   = isAreaUnlocked;
-  global.flagSet          = flagSet;
-  global.flagClear        = flagClear;
-  global.flagHas          = flagHas;
-  global.flagList         = flagList;
-  global.flagReset        = flagReset;
-  global.unlockHandleCmd  = unlockHandleCmd;
-  global.unlockInit       = unlockInit;
+  global.canTrigger        = canTrigger;
+  global.completeDialog    = completeDialog;
+  global.isDialogUnlocked  = isDialogUnlocked;
+  global.isAreaUnlocked    = isAreaUnlocked;
+  global.flagSet           = flagSet;
+  global.flagClear         = flagClear;
+  global.flagHas           = flagHas;
+  global.flagList          = flagList;
+  global.flagReset         = flagReset;
+  global.unlockHandleCmd   = unlockHandleCmd;
+  global.unlockInit        = unlockInit;
+  global.parseUnlockHeaders  = parseUnlockHeaders;
+  global.unparseUnlockHeaders = unparseUnlockHeaders;
 
 }(window));

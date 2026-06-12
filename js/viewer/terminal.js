@@ -423,7 +423,9 @@ async function _tmSaveDlg(dsl) {
 
   var result;
   try {
-    result = parseBulkDSL(dsl);
+    // strip #? / #! headers before passing to parseBulkDSL
+    var _dslClean = (typeof parseUnlockHeaders === 'function') ? parseUnlockHeaders(dsl).dsl.trim() : dsl;
+    result = parseBulkDSL(_dslClean || '@0\n');
   } catch (e) {
     _tmL('ter', '✗ DSL შეცდომა: ' + e.message);
     return;
