@@ -40,11 +40,64 @@ function doPlaceObject(col, row) {
   toast("⊞ " + (def.lb || def.id));
 }
 
+// ── UNLOCK HEADER PARSING ─────────────────────────────────────────────────
+// DSL textarea-ს დასაწყისში სპეციალური ხაზები:
+//   #? flag1 flag2              → requires
+//   #! flag >dlg_N *area !obj ?obj ~obj -obj  → on_complete
+
+function _parseUnlockHeaders(raw) {
+  var lines = raw.split('\n'), dslLines = [], requires = null, on_complete = null;
+  lines.forEach(function(line) {
+    var m;
+    if ((m = line.match(/^#\?\s*(.+)/))) {
+      var flags = m[1].split(/\s+/).map(function(s){return s.trim();}).filter(Boolean);
+      if (flags.length) requires = { flags: flags };
+    } else if ((m = line.match(/^#!\s*(.+)/))) {
+      var tokens = m[1].split(/\s+/).filter(Boolean);
+      var oc = { set_flags: [], unlock_dialogs: [], unlock_areas: [], set_markers: [] };
+      tokens.forEach(function(t) {
+        var ch = t.charAt(0);
+        if      (ch === '>') oc.unlock_dialogs.push(t.slice(1));
+        else if (ch === '*') oc.unlock_areas.push(t.slice(1));
+        // marker tokens: !სახელი ?სახელი ~სახელი -სახელი
+        else if (ch === '!' || ch === '?' || ch === '~' || ch === '-')
+          oc.set_markers.push({ mk: ch === '-' ? '' : ch, title: t.slice(1) });
+        else oc.set_flags.push(t);
+      });
+      if (!oc.set_flags.length)      delete oc.set_flags;
+      if (!oc.unlock_dialogs.length) delete oc.unlock_dialogs;
+      if (!oc.unlock_areas.length)   delete oc.unlock_areas;
+      if (!oc.set_markers.length)    delete oc.set_markers;
+      if (Object.keys(oc).length)    on_complete = oc;
+    } else { dslLines.push(line); }
+  });
+  return { dsl: dslLines.join('\n'), requires: requires, on_complete: on_complete };
+}
+
+function _unparseUnlockHeaders(o) {
+  var lines = [];
+  if (o.requires && o.requires.flags && o.requires.flags.length)
+    lines.push('#? ' + o.requires.flags.join(' '));
+  if (o.on_complete) {
+    var oc = o.on_complete, tokens = [];
+    (oc.set_flags      || []).forEach(function(f){ tokens.push(f); });
+    (oc.unlock_dialogs || []).forEach(function(f){ tokens.push('>'+f); });
+    (oc.unlock_areas   || []).forEach(function(f){ tokens.push('*'+f); });
+    (oc.set_markers    || []).forEach(function(m){
+      tokens.push((m.mk || '-') + m.title);
+    });
+    if (tokens.length) lines.push('#! ' + tokens.join(' '));
+  }
+  return lines.join('\n');
+}
+
 // ── OBJECT PROPERTIES MODAL ──
 function openObjProps(idx) {
   _editingObjIdx = idx;
   const o = objects[idx];
-  document.getElementById("objDslInp").value = o.dsl || unparseDialogue(o) || "";
+  var headers = _unparseUnlockHeaders(o);
+  var dsl     = o.dsl || unparseDialogue(o) || "";
+  document.getElementById("objDslInp").value = headers ? (headers + '\n' + dsl) : dsl;
   document.getElementById("objPropsModal").classList.add("show");
   setTimeout(function() {
     var inp = document.getElementById("objDslInp");
@@ -71,15 +124,24 @@ function saveObjProps() {
 
   o.dsl = raw;
 
-  try {
-    var result  = parseBulkDSL(raw);
-    o.title    = result.title;
-    o.marker   = result.marker;
-    o.dialogue = result.nodes;
-  } catch (e) {
-    console.error("DSL parse error:", e);
-    toast("⚠ DSL შეცდომა: " + e.message);
-    return;
+  var parsed = _parseUnlockHeaders(raw);
+  o.requires    = parsed.requires;
+  o.on_complete = parsed.on_complete;
+  var cleanDsl  = parsed.dsl.trim();
+
+  if (cleanDsl) {
+    try {
+      var result  = parseBulkDSL(cleanDsl);
+      o.title    = result.title;
+      o.marker   = result.marker;
+      o.dialogue = result.nodes;
+    } catch (e) {
+      console.error("DSL parse error:", e);
+      toast("⚠ DSL შეცდომა: " + e.message);
+      return;
+    }
+  } else {
+    o.title = o.lb || ""; o.marker = null; o.dialogue = [];
   }
 
   closeObjProps();

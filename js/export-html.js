@@ -96,7 +96,8 @@ async function doExportHTML() {
       const markerHtml = hasInteraction
         ? (markerCls ? `<div class="hs-marker ${markerCls}">${o.marker}</div>` : `<div class="hs-dot"></div>`)
         : "";
-      return `<div class="hotspot${hasInteraction ? "" : " no-interact"}" data-ox="${ox}" data-oy="${oy}" data-ow="${ow}" data-oh="${oh}" data-title="${title}" data-tooltip="${tooltip}" data-oi="${oi}" style="left:${ox}px;top:${oy}px;width:${ow}px;height:${oh}px;">${markerHtml}</div>`;
+      const dlgAttr = (o.dialogue && o.dialogue.length) ? ` data-dialog-id="dlg_${oi}"` : "";
+      return `<div class="hotspot${hasInteraction ? "" : " no-interact"}" data-ox="${ox}" data-oy="${oy}" data-ow="${ow}" data-oh="${oh}" data-title="${title}" data-tooltip="${tooltip}" data-oi="${oi}"${dlgAttr} style="left:${ox}px;top:${oy}px;width:${ow}px;height:${oh}px;">${markerHtml}</div>`;
     });
 
     const embeddedAreas = hotAreas.map(a => {
@@ -146,15 +147,31 @@ async function doExportHTML() {
 
     const w = exp.width, h = exp.height;
     const cfgJSLiteral = JSON.stringify(embeddedCfg);
-    const objsData = mapData.objects.map(o => ({ title: o.title, lb: o.lb, dialogue: o.dialogue || [] }));
+    const objsData = mapData.objects.map(o => ({
+      title: o.title, lb: o.lb, dialogue: o.dialogue || [],
+      requires: o.requires || null, on_complete: o.on_complete || null
+    }));
+
+    // build window.DIALOGS — every object with dialogue becomes a dialog entry
+    const _dialogsMap = {};
+    mapData.objects.forEach((o, oi) => {
+      if (o.dialogue && o.dialogue.length) {
+        _dialogsMap['dlg_' + oi] = {
+          id: 'dlg_' + oi, trigger: String(oi),
+          requires: o.requires || null, nodes: o.dialogue, on_complete: o.on_complete || null
+        };
+      }
+    });
+    const dialogsJS = 'window.DIALOGS = ' + JSON.stringify(_dialogsMap) + ';';
 
     // load viewer assets
-    const [tmpl, runtimeJS, terminalJS, canvasRendererJS, bulkParserJS] = await Promise.all([
+    const [tmpl, runtimeJS, terminalJS, canvasRendererJS, bulkParserJS, unlockJS] = await Promise.all([
       _fetchViewerAsset('js/viewer/viewer.html'),
       _fetchViewerAsset('js/viewer/runtime.js'),
       _fetchViewerAsset('js/viewer/terminal.js'),
       _fetchViewerAsset('js/viewer/canvas-renderer.js'),
       _fetchViewerAsset('js/bulk-parser.js'),
+      _fetchViewerAsset('js/viewer/unlock.js'),
     ]);
 
     // map image tag
@@ -185,6 +202,8 @@ async function doExportHTML() {
       .replace(/{{OBJS_DATA}}/g,       JSON.stringify(objsData))
       .replace(/{{TS}}/g,              String(TS))
       .replace(/{{CANVAS_RENDERER}}/g, canvasRendererBlock)
+      .replace(/{{DIALOGS_JS}}/g,      dialogsJS)
+      .replace(/{{UNLOCK_JS}}/g,       unlockJS)
       .replace(/{{BULK_PARSER_JS}}/g,  bulkParserJS)
       .replace(/{{RUNTIME_JS}}/g,      runtimeJS)
       .replace(/{{TERMINAL_JS}}/g,     terminalJS);
