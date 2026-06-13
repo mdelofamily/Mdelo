@@ -41,9 +41,8 @@ function doPlaceObject(col, row) {
 }
 
 // ── UNLOCK HEADER PARSING ─────────────────────────────────────────────────
-// DSL textarea-ს დასაწყისში სპეციალური ხაზები:
-//   #? flag1 flag2              → requires
-//   #! flag >dlg_N *area !obj ?obj ~obj -obj  → on_complete
+// #? flag1 flag2       → requires
+// #! flag >dlg *area !obj ?obj ~obj -obj  → on_complete
 
 function _parseUnlockHeaders(raw) {
   var lines = raw.split('\n'), dslLines = [], requires = null, on_complete = null;
@@ -59,7 +58,6 @@ function _parseUnlockHeaders(raw) {
         var ch = t.charAt(0);
         if      (ch === '>') oc.unlock_dialogs.push(t.slice(1));
         else if (ch === '*') oc.unlock_areas.push(t.slice(1));
-        // marker tokens: !სახელი ?სახელი ~სახელი -სახელი
         else if (ch === '!' || ch === '?' || ch === '~' || ch === '-')
           oc.set_markers.push({ mk: ch === '-' ? '' : ch, title: t.slice(1) });
         else oc.set_flags.push(t);
@@ -83,9 +81,7 @@ function _unparseUnlockHeaders(o) {
     (oc.set_flags      || []).forEach(function(f){ tokens.push(f); });
     (oc.unlock_dialogs || []).forEach(function(f){ tokens.push('>'+f); });
     (oc.unlock_areas   || []).forEach(function(f){ tokens.push('*'+f); });
-    (oc.set_markers    || []).forEach(function(m){
-      tokens.push((m.mk || '-') + m.title);
-    });
+    (oc.set_markers    || []).forEach(function(m){ tokens.push((m.mk||'-')+m.title); });
     if (tokens.length) lines.push('#! ' + tokens.join(' '));
   }
   return lines.join('\n');
@@ -123,25 +119,20 @@ function saveObjProps() {
   }
 
   o.dsl = raw;
-
   var parsed = _parseUnlockHeaders(raw);
   o.requires    = parsed.requires;
   o.on_complete = parsed.on_complete;
   var cleanDsl  = parsed.dsl.trim();
 
-  if (cleanDsl) {
-    try {
-      var result  = parseBulkDSL(cleanDsl);
-      o.title    = result.title;
-      o.marker   = result.marker;
-      o.dialogue = result.nodes;
-    } catch (e) {
-      console.error("DSL parse error:", e);
-      toast("⚠ DSL შეცდომა: " + e.message);
-      return;
-    }
-  } else {
-    o.title = o.lb || ""; o.marker = null; o.dialogue = [];
+  try {
+    var result  = parseBulkDSL(cleanDsl || '@0\n');
+    o.title    = result.title;
+    o.marker   = result.marker;
+    o.dialogue = result.nodes;
+  } catch (e) {
+    console.error("DSL parse error:", e);
+    toast("⚠ DSL შეცდომა: " + e.message);
+    return;
   }
 
   closeObjProps();
