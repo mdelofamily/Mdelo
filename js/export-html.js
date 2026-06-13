@@ -10,7 +10,7 @@
 
 // ── helpers ──
 async function _fetchViewerAsset(path) {
-  const r = await fetch(path);
+  const r = await fetch(path + '?v=' + Date.now());
   if (!r.ok) throw new Error('Cannot load ' + path + ' (' + r.status + ')');
   return r.text();
 }
