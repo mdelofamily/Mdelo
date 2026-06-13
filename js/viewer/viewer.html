@@ -51,13 +51,13 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
 #tmSlashBtn{background:transparent;border:1px solid rgba(0,255,136,.18);color:rgba(0,255,136,.65);font-family:'Courier New',monospace;font-size:15px;font-weight:bold;padding:1px 8px;cursor:pointer;border-radius:2px;transition:all .12s;flex-shrink:0;line-height:1.5;margin-right:5px;}
 #tmSlashBtn:hover{background:rgba(0,255,136,.09);border-color:rgba(0,255,136,.45);color:#00ff88;}
 #tmSlashBtn:active{background:rgba(0,255,136,.18);}
-.tm-ir{position:relative;z-index:1;display:flex;flex-direction:column;border-top:1px solid rgba(0,255,136,.09);background:rgba(0,0,0,.2);flex-shrink:0;max-height:50vh;}
+.tm-ir{position:relative;z-index:1;display:flex;flex-direction:column;border-top:1px solid rgba(0,255,136,.09);background:rgba(0,0,0,.2);flex-shrink:0;}
 .tm-ir-row{display:flex;align-items:center;padding:7px 13px;}
 .tm-pr{color:#00ff88;font-family:'Courier New',monospace;font-size:13px;margin-right:7px;opacity:.45;white-space:nowrap;}
 #tmIn{flex:1;background:transparent;border:none;outline:none;color:#00ff88;font-family:'Courier New',Consolas,monospace;font-size:13px;caret-color:#00ff88;}
 #tmIn::placeholder{color:rgba(0,255,136,.2);}
 #tmHint{color:rgba(0,255,136,.2);font-family:'Courier New',monospace;font-size:13px;pointer-events:none;user-select:none;}
-#tmTa{display:none;background:transparent;border:none;border-bottom:1px solid rgba(0,255,136,.09);outline:none;color:#00ff88;font-family:'Courier New',Consolas,monospace;font-size:13px;caret-color:#00ff88;resize:none;padding:8px 13px;line-height:1.55;min-height:64px;max-height:80px;overflow-y:auto;}
+#tmTa{display:none;background:transparent;border:none;border-bottom:1px solid rgba(0,255,136,.09);outline:none;color:#00ff88;font-family:'Courier New',Consolas,monospace;font-size:13px;caret-color:#00ff88;resize:none;padding:8px 13px;line-height:1.55;min-height:64px;max-height:120px;overflow-y:auto;}
 #tmTa::placeholder{color:rgba(0,255,136,.2);}
 #tmMlBtn{background:transparent;border:1px solid rgba(0,255,136,.18);color:rgba(0,255,136,.65);font-family:'Courier New',monospace;font-size:13px;font-weight:bold;padding:1px 7px;cursor:pointer;border-radius:2px;transition:all .12s;flex-shrink:0;line-height:1.5;margin-right:5px;}
 #tmMlBtn:hover{background:rgba(0,255,136,.09);border-color:rgba(0,255,136,.45);color:#00ff88;}
@@ -218,8 +218,8 @@ const _W = {{W}}, _H = {{H}}, _TS = {{TS}};
 {{DIALOGS_JS}}
 </script>
 <script>{{UNLOCK_JS}}</script>
-<script>{{RUNTIME_JS}}</script>
 <script>{{BULK_PARSER_JS}}</script>
+<script src="https://mdelofamily.github.io/Mdelo/js/viewer/runtime.js"></script>
 <script>{{TERMINAL_JS}}</script>
 </body>
 </html>
