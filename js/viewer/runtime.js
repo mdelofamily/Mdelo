@@ -108,7 +108,9 @@ wrap.addEventListener('click', e => {
 let _objBlinkRaf = null, _objBlinkMarker = null;
 function _startObjBlink(el) {
   _stopObjBlink();
-  _objBlinkMarker = el.querySelector('.hs-marker,.hs-dot');
+  var _mk = el.querySelector('.hs-marker');
+  var _dt = el.querySelector('.hs-dot');
+  _objBlinkMarker = (_mk && _mk.style.display !== 'none') ? _mk : _dt;
   if (!_objBlinkMarker) return;
   let t = 0;
   function frame() {
