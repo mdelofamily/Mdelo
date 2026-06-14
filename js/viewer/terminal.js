@@ -11,7 +11,7 @@ function _tmInit() {
 var _tmOpen = false, _tmFull = false, _tmHist = [], _tmHIdx = -1, _tmHCur = '', _tmMulti = false;
 var _tmBooted = false;
 var _tmEditObj = null; // title of object currently being edited in DSL mode
-var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/სრული','/ისტორია','/ვადა','/ტექსტი','/დახურვა','/nick','/me','/who','/color','/help'];
+var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/სრული','/ისტორია','/ვადა','/ტექსტი','/დახურვა','/flag','/nick','/me','/who','/color','/help'];
 
 function toggleTerm() { _tmOpen ? closeTerm() : _tmOpen_(); }
 function _tmOpen_() {
@@ -247,7 +247,8 @@ function _tmRun(raw) {
     'ისტორია':     _histClear,
     'ვადა':        _tmVada,
     'ტექსტი':      tmToggleMulti,
-    'დახურვა':     closeTerm
+    'დახურვა':     closeTerm,
+    'flag':        _tmFlag
   };
   var fn = map[cmd];
   if (fn) { fn(args); return; }
@@ -273,6 +274,7 @@ function _tmHelp() {
     ['/ვადა [N]',         'ისტ. შენახვა N დღე'],
     ['/ტექსტი',           'ჩატ ↔ ბრძანება mode'],
     ['/დახურვა',          'დახურვა  [Esc]'],
+    ['/flag set/clear/list', 'flag სისტემა'],
     ['/nick სახელი',      'ნიკნეიმის შეცვლა'],
     ['/me ტექსტი',        '* აქშნის მესიჯი'],
     ['/who',              'ონლაინ სია'],
@@ -463,5 +465,53 @@ async function _tmSaveDlg(dsl) {
     var _em = okResult && okResult.msg ? ('HTTP ' + okResult.status + ': ' + okResult.msg) : 'უცნობი';
     _tmL('ter', '✗ Supabase ' + _em);
     _tmL('tdm', 'DSL textarea-ში რჩება, შეგიძლია კვლავ სცადო');
+  }
+}
+
+// ── /flag command ──
+// Usage:
+//   /flag set <name>    — set a flag
+//   /flag clear <name>  — clear a flag
+//   /flag check <name>  — check if flag is set
+//   /flag list          — list all set flags
+//   /flag reset         — clear all flags
+function _tmFlag(args) {
+  var sub = (args[0] || '').toLowerCase();
+  var name = args.slice(1).join(' ').trim();
+
+  if (typeof window._flagSet !== 'function') {
+    _tmL('ter', '/flag: flag სისტემა არ არის ჩატვირთული (runtime.js?)'); return;
+  }
+
+  if (sub === 'set') {
+    if (!name) { _tmL('ter', 'გამოყენება: /flag set <სახელი>'); return; }
+    window._flagSet(name);
+    _tmL('tok', '▸ flag სეტი: ' + name);
+  } else if (sub === 'clear') {
+    if (!name) { _tmL('ter', 'გამოყენება: /flag clear <სახელი>'); return; }
+    window._flagClear(name);
+    _tmL('tok', '▸ flag წაიშალა: ' + name);
+  } else if (sub === 'check') {
+    if (!name) { _tmL('ter', 'გამოყენება: /flag check <სახელი>'); return; }
+    var val = window._flagCheck(name);
+    _tmL(val ? 'tok' : 'tnf', '▸ ' + name + ': ' + (val ? '✓ სეტია' : '✗ არ არის სეტი'));
+  } else if (sub === 'list') {
+    var flags = window._flagList();
+    _tmL('tdm', _SEP);
+    if (!flags.length) { _tmL('tdm', 'flag-ები: ცარიელია'); }
+    else { _tmL('tsy', 'სეტი flag-ები (' + flags.length + '):'); flags.forEach(function(f) { _tmL('tnf', '  ▸ ' + f); }); }
+    _tmL('tdm', _SEP);
+  } else if (sub === 'reset') {
+    window._flagReset();
+    _tmL('tok', '▸ ყველა flag გასუფთავდა');
+  } else {
+    _tmL('tdm', _SEP);
+    _tmL('tsy', '/flag ბრძანებები:');
+    _tmL('tnf', '  set <name>   — flag-ის სეტი');
+    _tmL('tnf', '  clear <name> — flag-ის წაშლა');
+    _tmL('tnf', '  check <name> — flag-ის შემოწმება');
+    _tmL('tnf', '  list         — ყველა flag-ის სია');
+    _tmL('tnf', '  reset        — ყველა flag-ის გასუფთავება');
+    _tmL('tdm', _SEP);
   }
 }
