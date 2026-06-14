@@ -108,9 +108,7 @@ wrap.addEventListener('click', e => {
 let _objBlinkRaf = null, _objBlinkMarker = null;
 function _startObjBlink(el) {
   _stopObjBlink();
-  var _mk = el.querySelector('.hs-marker');
-  var _dt = el.querySelector('.hs-dot');
-  _objBlinkMarker = (_mk && _mk.style.display !== 'none') ? _mk : _dt;
+  _objBlinkMarker = el.querySelector('.hs-marker,.hs-dot');
   if (!_objBlinkMarker) return;
   let t = 0;
   function frame() {
@@ -388,6 +386,10 @@ function _parseNodes(dialogue) {
 }
 function _dlgShowNode(nodeId, selectedLabel) {
   const node = _dlgNodes[nodeId]; if (!node) return;
+  // #if flag =>N — redirect if flag is set
+  if (node.condition && typeof flagHas === 'function' && flagHas(node.condition.flag)) {
+    _dlgShowNode(node.condition.target, selectedLabel); return;
+  }
   const body = document.getElementById('hsPopupBody');
   const btnWrap = document.getElementById('hsPopupBtns');
   if (btnWrap) { btnWrap.innerHTML = ''; btnWrap.classList.remove('visible'); }
@@ -833,6 +835,15 @@ function _applyDlgOverride(row) {
       if (parsed.title) { _OBJS[oi].lb = parsed.title; _OBJS[oi].title = parsed.title; }
       var hsEl = document.querySelector('.hotspot[data-oi="' + oi + '"]:not(.hs-area)');
       _applyMarkerDom(hsEl, mk);
+      // sync window.DIALOGS so completeDialog sees updated requires/on_complete
+      if (window.DIALOGS) {
+        var _dlgKey = 'dlg_' + oi;
+        if (window.DIALOGS[_dlgKey]) {
+          window.DIALOGS[_dlgKey].requires    = _OBJS[oi].requires;
+          window.DIALOGS[_dlgKey].on_complete = _OBJS[oi].on_complete;
+          window.DIALOGS[_dlgKey].dialogue    = _OBJS[oi].dialogue;
+        }
+      }
     } catch(e) {}
   }
 }
