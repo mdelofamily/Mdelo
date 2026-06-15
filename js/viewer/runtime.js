@@ -108,7 +108,9 @@ wrap.addEventListener('click', e => {
 let _objBlinkRaf = null, _objBlinkMarker = null;
 function _startObjBlink(el) {
   _stopObjBlink();
-  _objBlinkMarker = el.querySelector('.hs-marker,.hs-dot');
+  var _mk = el.querySelector('.hs-marker');
+  var _dt = el.querySelector('.hs-dot');
+  _objBlinkMarker = (_mk && _mk.style.display !== 'none') ? _mk : _dt;
   if (!_objBlinkMarker) return;
   let t = 0;
   function frame() {
@@ -444,6 +446,10 @@ function _dlgShowNode(nodeId, selectedLabel) {
             var _oi = el.dataset.oi;
             if (_oi != null && _OBJS && _OBJS[+_oi]) _OBJS[+_oi].marker = m.mk === '~' ? '...' : m.mk;
           });
+        }
+        // [+flag_name] button-level flag set
+        if (btn.flags && btn.flags.length) {
+          btn.flags.forEach(function(f) { if (typeof flagSet === 'function') flagSet(f); });
         }
         if (btn.nextNode && _dlgNodes[btn.nextNode]) { _dlgShowNode(btn.nextNode, btn.label); }
         else {
@@ -789,6 +795,7 @@ function _applyMarkerDom(hsEl, mk) {
       mkEl = document.createElement('div');
       hsEl.appendChild(mkEl);
     }
+    // must set color class — without it the element is invisible
     mkEl.className   = mk === '!' ? 'hs-marker exc' : mk === '?' ? 'hs-marker q' : 'hs-marker chat';
     mkEl.textContent = mk === '💬' ? '...' : mk;
     mkEl.style.display = '';
@@ -797,28 +804,33 @@ function _applyMarkerDom(hsEl, mk) {
     if (mkEl)  mkEl.style.display  = 'none';
     if (dotEl) dotEl.style.display = '';
   }
-  // persist marker state
-  var title = hsEl.dataset.title;
-  if (title) _markerSave(title, mk || '');
+  // persist by oi (unique per object, avoids title collisions)
+  if (!_mkRestoring) {
+    var _oi = hsEl.dataset.oi;
+    if (_oi != null) _markerSave(_oi, mk || '');
+  }
 }
 
-// ── marker persistence ───────────────────────────────────────
-var _MK_KEY = 'mdelo_markers_' + (typeof _CFG !== 'undefined' ? (_CFG.title || 'map') : 'map').replace(/[^a-zA-Z0-9ა-ჿ_-]/g, '_');
-function _markerSave(title, mk) {
+// ── marker persistence (keyed by oi, not title) ──────────────
+var _MK_KEY = 'mdelo_mk_' + ((_CFG && _CFG.title) ? _CFG.title : 'map').replace(/[^a-zA-Z0-9ა-ჿ_-]/g, '_');
+var _mkRestoring = false;
+function _markerSave(oi, mk) {
   try {
     var s = JSON.parse(localStorage.getItem(_MK_KEY) || '{}');
-    if (mk === '') delete s[title]; else s[title] = mk;
+    if (mk === '') delete s[oi]; else s[oi] = mk;
     localStorage.setItem(_MK_KEY, JSON.stringify(s));
   } catch(e) {}
 }
 function _markerRestore() {
   try {
     var s = JSON.parse(localStorage.getItem(_MK_KEY) || '{}');
-    Object.keys(s).forEach(function(title) {
-      var el = document.querySelector('.hotspot[data-title="' + title + '"]:not(.hs-area)');
-      if (el) _applyMarkerDom(el, s[title]);
+    _mkRestoring = true;
+    Object.keys(s).forEach(function(oi) {
+      var el = document.querySelector('.hotspot[data-oi="' + oi + '"]:not(.hs-area)');
+      if (el) _applyMarkerDom(el, s[oi]);
     });
-  } catch(e) {}
+    _mkRestoring = false;
+  } catch(e) { _mkRestoring = false; }
 }
 
 // Patch _OBJS[oi].dialogue with data from Supabase row
@@ -931,12 +943,11 @@ window.dlgGetCurrentDsl = function(objTitle) {
 // ── init ──
 window.addEventListener('load', () => {
   loadNotifs();
-  loadDialogueOverrides();
+  loadDialogueOverrides().then(_markerRestore);
   _startRealtime();
   applySpotHash();
   applyAreaHash();
   _tmInit();
-  _markerRestore();
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').then(reg => {
       if ('periodicSync' in reg) { reg.periodicSync.register('notif-check', { minInterval: 5 * 60 * 1000 }).catch(() => {}); }
