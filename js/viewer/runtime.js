@@ -867,7 +867,11 @@ function _applyDlgOverride(row) {
       _OBJS[oi].marker = mk;
       if (parsed.title) { _OBJS[oi].lb = parsed.title; _OBJS[oi].title = parsed.title; }
       var hsEl = document.querySelector('.hotspot[data-oi="' + oi + '"]:not(.hs-area)');
-      _applyMarkerDom(hsEl, mk);
+      // only apply Supabase marker if user has no local override for this object
+      var _mkStored = JSON.parse(localStorage.getItem(_MK_KEY) || '{}');
+      if (!(_mkStored.hasOwnProperty(String(oi)))) {
+        _applyMarkerDom(hsEl, mk);
+      }
       // sync window.DIALOGS so completeDialog sees updated requires/on_complete
       if (window.DIALOGS) {
         var _dlgKey = 'dlg_' + oi;
