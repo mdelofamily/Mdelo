@@ -445,10 +445,6 @@ function _dlgShowNode(nodeId, selectedLabel) {
             if (_oi != null && _OBJS && _OBJS[+_oi]) _OBJS[+_oi].marker = m.mk === '~' ? '...' : m.mk;
           });
         }
-        // [+flag_name] button-level flag set
-        if (btn.flags && btn.flags.length) {
-          btn.flags.forEach(function(f) { if (typeof flagSet === 'function') flagSet(f); });
-        }
         if (btn.nextNode && _dlgNodes[btn.nextNode]) { _dlgShowNode(btn.nextNode, btn.label); }
         else {
           if (_dlgActive && typeof completeDialog === 'function') completeDialog(_dlgActive);
@@ -793,7 +789,6 @@ function _applyMarkerDom(hsEl, mk) {
       mkEl = document.createElement('div');
       hsEl.appendChild(mkEl);
     }
-    // must set color class — without it the element is invisible
     mkEl.className   = mk === '!' ? 'hs-marker exc' : mk === '?' ? 'hs-marker q' : 'hs-marker chat';
     mkEl.textContent = mk === '💬' ? '...' : mk;
     mkEl.style.display = '';
@@ -802,6 +797,28 @@ function _applyMarkerDom(hsEl, mk) {
     if (mkEl)  mkEl.style.display  = 'none';
     if (dotEl) dotEl.style.display = '';
   }
+  // persist marker state
+  var title = hsEl.dataset.title;
+  if (title) _markerSave(title, mk || '');
+}
+
+// ── marker persistence ───────────────────────────────────────
+var _MK_KEY = 'mdelo_markers_' + (typeof _CFG !== 'undefined' ? (_CFG.title || 'map') : 'map').replace(/[^a-zA-Z0-9ა-ჿ_-]/g, '_');
+function _markerSave(title, mk) {
+  try {
+    var s = JSON.parse(localStorage.getItem(_MK_KEY) || '{}');
+    if (mk === '') delete s[title]; else s[title] = mk;
+    localStorage.setItem(_MK_KEY, JSON.stringify(s));
+  } catch(e) {}
+}
+function _markerRestore() {
+  try {
+    var s = JSON.parse(localStorage.getItem(_MK_KEY) || '{}');
+    Object.keys(s).forEach(function(title) {
+      var el = document.querySelector('.hotspot[data-title="' + title + '"]:not(.hs-area)');
+      if (el) _applyMarkerDom(el, s[title]);
+    });
+  } catch(e) {}
 }
 
 // Patch _OBJS[oi].dialogue with data from Supabase row
@@ -919,6 +936,7 @@ window.addEventListener('load', () => {
   applySpotHash();
   applyAreaHash();
   _tmInit();
+  _markerRestore();
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').then(reg => {
       if ('periodicSync' in reg) { reg.periodicSync.register('notif-check', { minInterval: 5 * 60 * 1000 }).catch(() => {}); }
