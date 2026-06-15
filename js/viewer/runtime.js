@@ -445,6 +445,10 @@ function _dlgShowNode(nodeId, selectedLabel) {
             if (_oi != null && _OBJS && _OBJS[+_oi]) _OBJS[+_oi].marker = m.mk === '~' ? '...' : m.mk;
           });
         }
+        // [+flag_name] button-level flag set
+        if (btn.flags && btn.flags.length) {
+          btn.flags.forEach(function(f) { if (typeof flagSet === 'function') flagSet(f); });
+        }
         if (btn.nextNode && _dlgNodes[btn.nextNode]) { _dlgShowNode(btn.nextNode, btn.label); }
         else {
           if (_dlgActive && typeof completeDialog === 'function') completeDialog(_dlgActive);
