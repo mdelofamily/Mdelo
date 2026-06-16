@@ -34,8 +34,9 @@ function exportConfig() {
     description: (document.getElementById("legTabDesc")?.value || "").trim(),
     menu:        getMenuData()
   };
-  downloadFile(JSON.stringify(config, null, 2), "config.json", "application/json");
-  toast("📋 config.json გადმოიწერა");
+  const js = "window._CFG = " + JSON.stringify(config, null, 2) + ";";
+  downloadFile(js, "config.js", "application/javascript");
+  toast("📋 config.js გადმოიწერა");
 }
 
 async function doExportHTML() {
