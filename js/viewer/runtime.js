@@ -864,12 +864,12 @@ function _applyDlgOverride(row) {
       }
       var parsed = parseBulkDSL(dslRaw.trim() || '@0\n');
       var mk = parsed.marker === '...' ? '💬' : (parsed.marker || '');
-      _OBJS[oi].marker = mk;
+      if (mk) _OBJS[oi].marker = mk;
       if (parsed.title) { _OBJS[oi].lb = parsed.title; _OBJS[oi].title = parsed.title; }
       var hsEl = document.querySelector('.hotspot[data-oi="' + oi + '"]:not(.hs-area)');
-      // only apply Supabase marker if user has no local override for this object
+      // only apply Supabase marker if: has marker AND user has no local override
       var _mkStored = JSON.parse(localStorage.getItem(_MK_KEY) || '{}');
-      if (!(_mkStored.hasOwnProperty(String(oi)))) {
+      if (mk && !(_mkStored.hasOwnProperty(String(oi)))) {
         _applyMarkerDom(hsEl, mk);
       }
       // sync window.DIALOGS so completeDialog sees updated requires/on_complete
