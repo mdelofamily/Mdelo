@@ -319,7 +319,8 @@ function toggleMenu() {
   }
 }
 
-/* path = [{title, nodes}] — nodes is the siblings array shown at that level (for breadcrumb jump-back) */
+/* path = [{title, nodes}] — each entry is a node already entered; `nodes` = its children array (siblings shown at that level).
+   Root level is path = []. */
 function _gmShowPanel(nodes, path) {
   const panel = document.getElementById('gmPanel');
   panel.innerHTML = '';
@@ -344,6 +345,7 @@ function _gmShowPanel(nodes, path) {
       if (!isLast) part.onclick = () => _gmShowPanel(p.nodes, path.slice(0, i + 1));
       bc.appendChild(part);
     });
+    requestAnimationFrame(() => { bc.scrollLeft = bc.scrollWidth; });
   }
   nodes.forEach(node => {
     const hasChildren = node.children && node.children.length > 0;
@@ -356,11 +358,11 @@ function _gmShowPanel(nodes, path) {
     if (hasChildren) {
       const arr = document.createElement('span'); arr.className = 'gm-pi-arrow'; arr.textContent = '›';
       el.appendChild(arr);
-      el.onclick = () => _gmShowPanel(node.children, [...path, {title: node.title, nodes: nodes}]);
+      el.onclick = () => _gmShowPanel(node.children, [...path, {title: node.title, nodes: node.children}]);
     } else if (hasItems) {
       const arr = document.createElement('span'); arr.className = 'gm-pi-arrow'; arr.textContent = '↗';
       el.appendChild(arr);
-      el.onclick = () => _gmOpenOverlay(node, [...path, {title: node.title, nodes: nodes}]);
+      el.onclick = () => _gmOpenOverlay(node, nodes, path);
     } else {
       el.style.opacity = '0.5';
       el.style.cursor = 'default';
@@ -369,26 +371,14 @@ function _gmShowPanel(nodes, path) {
   });
 }
 
-/* Open full-screen overlay for leaf node items.
-   path = path TO the parent panel (not including this leaf node). */
-function _gmOpenOverlay(node, path) {
+/* Open full-screen overlay for a leaf node's items.
+   parentNodes = the siblings array the leaf lives in (so "back" can return to the exact same panel).
+   parentPath  = breadcrumb path TO that panel (not including the leaf itself). */
+function _gmOpenOverlay(node, parentNodes, parentPath) {
   const ov   = document.getElementById('gmOverlay');
   const body = document.getElementById('gmOverlayBody');
-  const bcEl = document.getElementById('gmOverlayBc');
-  const fullPath = [...path, {title: node.title}];
-  bcEl.innerHTML = '';
-  fullPath.forEach((p, i) => {
-    if (i > 0) { const sep = document.createElement('span'); sep.className = 'gm-ov-bc-sep'; sep.textContent = '/'; bcEl.appendChild(sep); }
-    const part = document.createElement('span');
-    const isLast = (i === fullPath.length - 1);
-    if (isLast) {
-      part.className = 'gm-ov-bc-cur'; part.textContent = p.title;
-    } else {
-      part.className = 'gm-ov-bc-part'; part.textContent = p.title;
-      part.onclick = () => { ov.classList.remove('open'); _gmShowPanel(path[i].nodes, path.slice(0, i)); };
-    }
-    bcEl.appendChild(part);
-  });
+  const titleEl = document.getElementById('gmOverlayTitle');
+  titleEl.textContent = (node.icon ? node.icon + ' ' : '') + (node.title || '');
   body.innerHTML = '';
   (node.items || []).forEach(item => {
     const itObj = typeof item === 'string' ? { type: 'text', emoji: '•', label: item } : item;
@@ -406,22 +396,10 @@ function _gmOpenOverlay(node, path) {
     }
   });
   ov.classList.add('open');
-  // back goes to the panel this leaf lives in: that's the `nodes` array used when _gmOpenOverlay was called
-  document.getElementById('gmOverlayBack').onclick = () => {
+  document.getElementById('gmOverlayClose').onclick = () => {
     ov.classList.remove('open');
-    _gmShowPanel(_gmSiblingsForPath(path), path);
+    _gmShowPanel(parentNodes, parentPath);
   };
-}
-
-/* Re-derive the siblings array a leaf node lives in, by walking from root through path titles. */
-function _gmSiblingsForPath(path) {
-  let nodes = (_gmCfg.menu || []);
-  for (let i = 0; i < path.length; i++) {
-    const match = nodes.find(n => n.title === path[i].title);
-    if (!match) return nodes;
-    nodes = match.children || [];
-  }
-  return nodes;
 }
 
 /* Legacy stubs */

@@ -72,10 +72,12 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
 .gmClose{position:fixed;top:10px;right:12px;z-index:41;background:none;border:none;color:rgba(139,148,158,0.8);font-size:22px;cursor:pointer;}
 /* ── drill-down menu ── */
 #gmContent{width:100%;max-width:420px;display:flex;flex-direction:column;gap:0;}
-#gmBreadcrumb{display:none;align-items:center;gap:6px;padding:0 0 10px;flex-wrap:wrap;}
+/* breadcrumb: single line, horizontally scrollable, right edge clears the fixed ✕ button */
+#gmBreadcrumb{display:none;align-items:center;gap:6px;padding:0 40px 10px 0;flex-wrap:nowrap;overflow-x:auto;white-space:nowrap;scrollbar-width:none;-ms-overflow-style:none;}
+#gmBreadcrumb::-webkit-scrollbar{display:none;}
 #gmBreadcrumb.visible{display:flex;}
-.gm-bc-sep{color:#444c56;font-size:11px;}
-.gm-bc-part{font:12px sans-serif;color:#58a6ff;cursor:pointer;padding:2px 4px;border-radius:4px;transition:background .15s;}
+.gm-bc-sep{color:#444c56;font-size:11px;flex-shrink:0;}
+.gm-bc-part{font:12px sans-serif;color:#58a6ff;cursor:pointer;padding:2px 4px;border-radius:4px;transition:background .15s;flex-shrink:0;}
 .gm-bc-part:hover{background:rgba(88,166,255,0.12);}
 .gm-bc-part.current{color:rgba(180,190,200,0.6);cursor:default;pointer-events:none;}
 .gm-panel-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;cursor:pointer;transition:background .15s;user-select:none;}
@@ -87,19 +89,15 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
 #gmOverlay{display:none;position:absolute;inset:0;background:rgba(13,17,23,0.97);flex-direction:column;z-index:2;border-radius:inherit;}
 #gmOverlay.open{display:flex;}
 #gmOverlayHdr{display:flex;align-items:center;gap:8px;padding:0 0 12px;border-bottom:1px solid rgba(48,54,61,0.5);flex-shrink:0;}
-#gmOverlayBack{background:none;border:none;color:#58a6ff;font-size:20px;cursor:pointer;padding:0 4px;line-height:1;}
-#gmOverlayBc{font:12px sans-serif;color:rgba(139,148,158,0.8);flex:1;flex-wrap:wrap;}
-.gm-ov-bc-part{color:#58a6ff;cursor:pointer;}
-.gm-ov-bc-part:hover{text-decoration:underline;}
-.gm-ov-bc-sep{color:#444c56;margin:0 3px;}
-.gm-ov-bc-cur{color:rgba(139,148,158,0.6);}
+#gmOverlayTitle{font:14px sans-serif;color:rgba(220,228,236,0.92);flex:1;}
+#gmOverlayClose{background:none;border:none;color:rgba(139,148,158,0.8);font-size:20px;cursor:pointer;padding:0 4px;line-height:1;}
 #gmOverlayBody{flex:1;overflow-y:auto;padding-top:12px;}
 .gm-progress-row{display:flex;align-items:center;gap:8px;padding:4px 0;}
 .gm-progress-label{font:13px sans-serif;color:rgba(180,190,200,0.85);min-width:100px;}
 .gm-bar{flex:1;height:8px;background:rgba(48,54,61,0.6);border-radius:4px;overflow:hidden;}
 .gm-bar-fill{height:100%;border-radius:4px;background:#4ade80;transition:width .3s;}
 .gm-bar-pct{font:11px monospace;color:#8b949e;min-width:30px;text-align:right;}
-.gm-item{font:14px/1.8 sans-serif;color:rgba(180,190,200,0.88);padding:2px 0;}
+.gm-item{font:14px/1.4 sans-serif;color:rgba(180,190,200,0.88);padding:1px 0;}
 .info{position:fixed;bottom:7px;right:10px;font:10px monospace;color:rgba(72,79,88,0.6);pointer-events:none;}
 .hotspot{position:absolute;cursor:pointer;z-index:5;overflow:visible;background:none!important;border:none!important;}
 .hs-dot{position:absolute;top:-18px;left:50%;transform:translateX(-50%);width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,0.6);box-shadow:0 0 4px rgba(255,255,255,0.8);pointer-events:none;}
@@ -197,7 +195,7 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
   <div class="np-area" id="npArea" style="display:none" onclick="goToArea()">🗺 რუკაზე ნახვა →</div>
 </div>
 <button id="menuBtn" onclick="toggleMenu()">☰</button>
-<div id="gameMenu"><button class="gmClose" onclick="toggleMenu()">✕</button><div id="gmContent"><div id="gmBreadcrumb"></div><div id="gmPanel"></div></div><div id="gmOverlay"><div id="gmOverlayHdr"><button id="gmOverlayBack">←</button><div id="gmOverlayBc"></div></div><div id="gmOverlayBody"></div></div></div>
+<div id="gameMenu"><button class="gmClose" onclick="toggleMenu()">✕</button><div id="gmContent"><div id="gmBreadcrumb"></div><div id="gmPanel"></div></div><div id="gmOverlay"><div id="gmOverlayHdr"><span id="gmOverlayTitle"></span><button id="gmOverlayClose">✕</button></div><div id="gmOverlayBody"></div></div></div>
 <div id="hsPopup">
   <button id="hsClose" onclick="closeHsPopup()">✕</button>
   <div id="hsPopupTitle"></div>
