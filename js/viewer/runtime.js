@@ -305,16 +305,92 @@ function fitAreas(title) {
   (function go() { wrap.scrollLeft = cx - wrap.clientWidth / 2; wrap.scrollTop = cy - wrap.clientHeight / 2; if (++n < 6) setTimeout(go, 120); })();
 }
 
-// ── game menu ──
+// ── game menu (drill-down) ──
+var _gmCfg = null;
+
 function toggleMenu() {
   const gm = document.getElementById('gameMenu');
   const open = gm.classList.toggle('open');
   wrap.style.overflow = open ? 'hidden' : 'auto';
-  if (open && !window._cfgLoaded) { window._cfgLoaded = true; buildMenu(_CFG); }
+  if (open && !window._cfgLoaded) {
+    window._cfgLoaded = true;
+    _gmCfg = _CFG;
+    _gmShowPanel((_CFG.menu || []), []);
+  }
 }
-function toggleSection(el) { el.classList.toggle('open'); el.nextElementSibling.classList.toggle('open'); }
-function buildItems(parent, items) {
-  (items || []).forEach(item => {
+
+/* path = [{title, nodes}] — nodes is the siblings array shown at that level (for breadcrumb jump-back) */
+function _gmShowPanel(nodes, path) {
+  const panel = document.getElementById('gmPanel');
+  panel.innerHTML = '';
+  const bc = document.getElementById('gmBreadcrumb');
+  if (path.length === 0) {
+    bc.innerHTML = '';
+    bc.classList.remove('visible');
+  } else {
+    bc.classList.add('visible');
+    bc.innerHTML = '';
+    const root = document.createElement('span');
+    root.className = 'gm-bc-part';
+    root.textContent = (_gmCfg && _gmCfg.title) || '☰';
+    root.onclick = () => _gmShowPanel((_gmCfg.menu || []), []);
+    bc.appendChild(root);
+    path.forEach((p, i) => {
+      const sep = document.createElement('span'); sep.className = 'gm-bc-sep'; sep.textContent = '/'; bc.appendChild(sep);
+      const part = document.createElement('span');
+      const isLast = (i === path.length - 1);
+      part.className = 'gm-bc-part' + (isLast ? ' current' : '');
+      part.textContent = p.title;
+      if (!isLast) part.onclick = () => _gmShowPanel(p.nodes, path.slice(0, i + 1));
+      bc.appendChild(part);
+    });
+  }
+  nodes.forEach(node => {
+    const hasChildren = node.children && node.children.length > 0;
+    const hasItems    = node.items && node.items.length > 0;
+    const el = document.createElement('div');
+    el.className = 'gm-panel-item' + (hasItems && !hasChildren ? ' has-items' : '');
+    const icon  = document.createElement('span'); icon.className = 'gm-pi-icon'; icon.textContent = node.icon || '📁';
+    const title = document.createElement('span'); title.className = 'gm-pi-title'; title.textContent = node.title || '';
+    el.appendChild(icon); el.appendChild(title);
+    if (hasChildren) {
+      const arr = document.createElement('span'); arr.className = 'gm-pi-arrow'; arr.textContent = '›';
+      el.appendChild(arr);
+      el.onclick = () => _gmShowPanel(node.children, [...path, {title: node.title, nodes: nodes}]);
+    } else if (hasItems) {
+      const arr = document.createElement('span'); arr.className = 'gm-pi-arrow'; arr.textContent = '↗';
+      el.appendChild(arr);
+      el.onclick = () => _gmOpenOverlay(node, [...path, {title: node.title, nodes: nodes}]);
+    } else {
+      el.style.opacity = '0.5';
+      el.style.cursor = 'default';
+    }
+    panel.appendChild(el);
+  });
+}
+
+/* Open full-screen overlay for leaf node items.
+   path = path TO the parent panel (not including this leaf node). */
+function _gmOpenOverlay(node, path) {
+  const ov   = document.getElementById('gmOverlay');
+  const body = document.getElementById('gmOverlayBody');
+  const bcEl = document.getElementById('gmOverlayBc');
+  const fullPath = [...path, {title: node.title}];
+  bcEl.innerHTML = '';
+  fullPath.forEach((p, i) => {
+    if (i > 0) { const sep = document.createElement('span'); sep.className = 'gm-ov-bc-sep'; sep.textContent = '/'; bcEl.appendChild(sep); }
+    const part = document.createElement('span');
+    const isLast = (i === fullPath.length - 1);
+    if (isLast) {
+      part.className = 'gm-ov-bc-cur'; part.textContent = p.title;
+    } else {
+      part.className = 'gm-ov-bc-part'; part.textContent = p.title;
+      part.onclick = () => { ov.classList.remove('open'); _gmShowPanel(path[i].nodes, path.slice(0, i)); };
+    }
+    bcEl.appendChild(part);
+  });
+  body.innerHTML = '';
+  (node.items || []).forEach(item => {
     const itObj = typeof item === 'string' ? { type: 'text', emoji: '•', label: item } : item;
     if (itObj.type === 'progress') {
       const v = Math.max(0, Math.min(100, itObj.value || 0));
@@ -322,60 +398,37 @@ function buildItems(parent, items) {
       const row = document.createElement('div'); row.className = 'gm-progress-row';
       const pfx = itObj.emoji ? itObj.emoji + ' ' : '';
       row.innerHTML = '<span class="gm-progress-label">' + pfx + itObj.label + '</span><div class="gm-bar"><div class="gm-bar-fill" style="width:' + v + '%;background:' + color + ';"></div></div><span class="gm-bar-pct">' + v + '%</span>';
-      parent.appendChild(row);
+      body.appendChild(row);
     } else {
       const d = document.createElement('div'); d.className = 'gm-item';
       d.innerHTML = (itObj.emoji || '•') + ' ' + parseLinks(itObj.label || '');
-      parent.appendChild(d);
+      body.appendChild(d);
     }
   });
+  ov.classList.add('open');
+  // back goes to the panel this leaf lives in: that's the `nodes` array used when _gmOpenOverlay was called
+  document.getElementById('gmOverlayBack').onclick = () => {
+    ov.classList.remove('open');
+    _gmShowPanel(_gmSiblingsForPath(path), path);
+  };
 }
-function buildSubs(parent, children, depth) {
-  (children || []).forEach(sub => {
-    const hasChildren = (sub.children && sub.children.length > 0);
-    if (!hasChildren) {
-      const row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 4px;';
-      const ic = document.createElement('span'); ic.textContent = sub.icon || '📁'; ic.style.cssText = 'font-size:13px;';
-      const ti = document.createElement('span'); ti.textContent = sub.title || ''; ti.style.cssText = 'font:12px/1.4 sans-serif;color:rgba(180,200,220,0.85);';
-      row.appendChild(ic); row.appendChild(ti); parent.appendChild(row);
-      if (sub.items && sub.items.length) {
-        const il = document.createElement('div'); il.style.cssText = 'padding:0 4px 4px 22px;';
-        buildItems(il, sub.items); parent.appendChild(il);
-      }
-      return;
-    }
-    const sw = document.createElement('div'); sw.className = 'gm-section';
-    sw.style.marginTop = '6px'; sw.style.marginLeft = (depth * 8) + 'px';
-    const sh2 = document.createElement('div'); sh2.className = 'gm-section-hdr';
-    sh2.style.fontSize = (depth === 0 ? '13px' : '12px');
-    sh2.innerHTML = '<span>' + (sub.icon || '📁') + '</span><span>' + sub.title + '</span><span class="arrow">▼</span>';
-    sh2.onclick = () => toggleSection(sh2);
-    const sb = document.createElement('div'); sb.className = 'gm-section-body';
-    buildItems(sb, sub.items); buildSubs(sb, sub.children, depth + 1);
-    sw.appendChild(sh2); sw.appendChild(sb); parent.appendChild(sw);
-  });
-}
-function buildMenu(cfg) {
-  const ct = document.getElementById('gmContent'); ct.innerHTML = '';
-  if (cfg.title) {
-    const t = document.createElement('div');
-    t.style.cssText = 'font:16px/1 sans-serif;color:rgba(230,237,243,0.9);text-align:center;padding:0 0 12px;font-weight:600;';
-    t.textContent = cfg.title; ct.appendChild(t);
+
+/* Re-derive the siblings array a leaf node lives in, by walking from root through path titles. */
+function _gmSiblingsForPath(path) {
+  let nodes = (_gmCfg.menu || []);
+  for (let i = 0; i < path.length; i++) {
+    const match = nodes.find(n => n.title === path[i].title);
+    if (!match) return nodes;
+    nodes = match.children || [];
   }
-  (cfg.menu || []).forEach(sec => {
-    const wrap2 = document.createElement('div'); wrap2.className = 'gm-section';
-    const hasChildren = (sec.children && sec.children.length > 0);
-    const hdr = document.createElement('div'); hdr.className = 'gm-section-hdr';
-    hdr.innerHTML = '<span>' + (sec.icon || '📁') + '</span><span>' + sec.title + '</span>' + (hasChildren ? '<span class="arrow">▼</span>' : '');
-    if (hasChildren) hdr.onclick = () => toggleSection(hdr);
-    else { hdr.style.cursor = 'default'; hdr.style.padding = '5px 12px'; }
-    const body = document.createElement('div'); body.className = 'gm-section-body';
-    if (!hasChildren) { body.classList.add('open'); body.classList.add('compact'); }
-    buildItems(body, sec.items); buildSubs(body, sec.children, 0);
-    wrap2.appendChild(hdr); wrap2.appendChild(body); ct.appendChild(wrap2);
-  });
+  return nodes;
 }
+
+/* Legacy stubs */
+function toggleSection(el) {}
+function buildItems(parent, items) {}
+function buildSubs(parent, children, depth) {}
+function buildMenu(cfg) { _gmCfg = cfg; _gmShowPanel((cfg.menu || []), []); }
 
 // ── dialogue engine ──
 let _dlgNodes = {}, _dlgObj = null, _dlgActive = null;
