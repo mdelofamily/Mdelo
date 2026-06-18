@@ -69,13 +69,76 @@ function parseLinks(t) {
     if (p < 0) { o += inner2; }
     else {
       const lbl = inner2.slice(0, p), url = inner2.slice(p + 1).trim();
-      const safe = (url.startsWith('http') || url.startsWith('//') || url.startsWith('/')) ? url : '#';
-      o += '<a href="' + safe + '" target="_blank" style="color:#58a6ff;">' + lbl + '</a>';
+      if (url.startsWith('menu:')) {
+        const slug = url.slice(5).trim();
+        o += '<a href="#" class="gm-link" data-menu-slug="' + _escAttr(slug) + '" style="color:#58a6ff;">' + lbl + '</a>';
+      } else {
+        const safe = (url.startsWith('http') || url.startsWith('//') || url.startsWith('/')) ? url : '#';
+        o += '<a href="' + safe + '" target="_blank" style="color:#58a6ff;">' + lbl + '</a>';
+      }
     }
     i = e + 2;
   }
   return o.replace(/\n/g, '<br>');
 }
+
+function _escAttr(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
+
+/* slug -> {id, nodes, path} resolved from _gmCfg.menu, built lazily and cached.
+   nodes/path here mean: the siblings array + breadcrumb path TO the panel containing this node
+   (mirrors what _gmShowPanel/_gmOpenOverlay expect). */
+var _gmSlugCache = null;
+function _gmSlugify(title) {
+  return (title || '').trim().toLowerCase().replace(/\s+/g, '-').replace(/[|[\]#]/g, '');
+}
+function _gmBuildSlugIndex() {
+  const index = new Map(); // slug -> {node, nodes, path}
+  const seen  = new Map(); // base slug -> count
+  function walk(nodes, path) {
+    nodes.forEach(node => {
+      const base  = _gmSlugify(node.title) || node.id;
+      const count = (seen.get(base) || 0) + 1;
+      seen.set(base, count);
+      const slug  = count === 1 ? base : base + '-' + count;
+      index.set(slug, { node, nodes, path });
+      if (node.children && node.children.length) {
+        walk(node.children, [...path, {title: node.title, nodes: node.children}]);
+      }
+    });
+  }
+  walk((_gmCfg && _gmCfg.menu) || [], []);
+  return index;
+}
+function _gmResolveSlug(slug) {
+  if (!_gmSlugCache) _gmSlugCache = _gmBuildSlugIndex();
+  return _gmSlugCache.get(slug) || null;
+}
+/* Navigate to a menu node by slug — opens the burger menu if closed, then drills/overlays to it. */
+function _gmGoToSlug(slug) {
+  const hit = _gmResolveSlug(slug);
+  if (!hit) { toast('⚠️ მენიუს ბმული ვერ მოიძებნა'); return; }
+  const gm = document.getElementById('gameMenu');
+  if (!gm.classList.contains('open')) {
+    gm.classList.add('open');
+    wrap.style.overflow = 'hidden';
+    if (!window._cfgLoaded) { window._cfgLoaded = true; _gmCfg = _CFG; }
+  }
+  const hasChildren = hit.node.children && hit.node.children.length > 0;
+  if (hasChildren) {
+    _gmShowPanel(hit.node.children, [...hit.path, {title: hit.node.title, nodes: hit.node.children}]);
+  } else {
+    _gmOpenOverlay(hit.node, hit.nodes, hit.path);
+  }
+}
+// global click dispatcher for internal menu links rendered by parseLinks
+document.addEventListener('click', e => {
+  const a = e.target.closest('.gm-link');
+  if (!a) return;
+  e.preventDefault();
+  _gmGoToSlug(a.getAttribute('data-menu-slug'));
+});
 
 // ── hotspot click dispatcher ──
 wrap.addEventListener('click', e => {
@@ -479,7 +542,10 @@ function _dlgShowNode(nodeId, selectedLabel) {
             body: JSON.stringify({ type: nType, symbol: nSymbol, text: notifyTxt, sender: sender, linked_area: btn.area || '' })
           }).catch(() => {});
         }
-        if (btn.link) window.open(btn.link, '_blank');
+        if (btn.link) {
+          if (btn.link.startsWith('menu:')) { _gmGoToSlug(btn.link.slice(5).trim()); }
+          else { window.open(btn.link, '_blank'); }
+        }
         if (btn.area) { closeHsPopup(); _gotoNamedLocation(btn.area); return; }
         // [^Xსახელი] marker effects
         if (btn.markers && btn.markers.length) {
