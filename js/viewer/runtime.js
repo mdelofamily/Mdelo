@@ -112,6 +112,7 @@ function _gmBuildSlugIndex() {
   return index;
 }
 function _gmResolveSlug(slug) {
+  if (!_gmCfg) _gmCfg = _CFG;
   if (!_gmSlugCache) _gmSlugCache = _gmBuildSlugIndex();
   return _gmSlugCache.get(slug) || null;
 }
