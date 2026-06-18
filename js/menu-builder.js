@@ -3,6 +3,36 @@
 //  Depends on: state.js
 // ============================================================
 
+// ── SLUG GENERATION (for [[label|menu:slug]] links) ──────────
+// Slugs are derived from title at render/export time — never stored.
+// Collisions get a numeric suffix in tree order: გიორგი, გიორგი-2, გიორგი-3...
+function _slugify(title) {
+  return (title || "").trim().toLowerCase().replace(/\s+/g, "-").replace(/[|[\]#]/g, "");
+}
+
+// Walks the whole tree in order, returns Map<nodeId, slug> with collisions resolved.
+function _buildSlugMap(nodes, map, seen) {
+  map  = map  || new Map();
+  seen = seen || new Map(); // base slug -> count seen so far
+  for (const n of (nodes || _menuSections)) {
+    const base = _slugify(n.title) || n.id;
+    const count = (seen.get(base) || 0) + 1;
+    seen.set(base, count);
+    map.set(n.id, count === 1 ? base : base + "-" + count);
+    if (n.children && n.children.length) _buildSlugMap(n.children, map, seen);
+  }
+  return map;
+}
+
+// Reverse lookup used by the link picker: slug -> node
+function _findNodeBySlug(slug) {
+  const map = _buildSlugMap(_menuSections);
+  for (const [id, s] of map) {
+    if (s === slug) return _findNode(id);
+  }
+  return null;
+}
+
 // ── NODE LOOKUP (any depth) ──
 function _findNode(id, nodes) {
   for (const n of (nodes || _menuSections)) {
@@ -155,6 +185,7 @@ function _renderNode(node, depth, isRoot) {
   const delB = document.createElement("button"); delB.textContent = "✕";
   delB.style.cssText = "background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;";
   delB.onclick = () => isRoot ? _removeSection(node.id) : _removeChild(node.id);
+
   hdr.appendChild(iconI); hdr.appendChild(titleI); hdr.appendChild(moveCtrl); hdr.appendChild(delB);
   wrap.appendChild(hdr);
 
@@ -256,3 +287,6 @@ window._updateItem         = _updateItem;
 window._insertLinkIntoItem = _insertLinkIntoItem;
 window._moveSection        = _moveSection;
 window._moveChild          = _moveChild;
+window._slugify            = _slugify;
+window._buildSlugMap       = _buildSlugMap;
+window._findNodeBySlug     = _findNodeBySlug;
