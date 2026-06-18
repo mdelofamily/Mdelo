@@ -312,6 +312,10 @@ function toggleMenu() {
   const gm = document.getElementById('gameMenu');
   const open = gm.classList.toggle('open');
   wrap.style.overflow = open ? 'hidden' : 'auto';
+  if (!open) {
+    gm.classList.remove('ov-open');
+    document.getElementById('gmOverlay').classList.remove('open');
+  }
   if (open && !window._cfgLoaded) {
     window._cfgLoaded = true;
     _gmCfg = _CFG;
@@ -355,7 +359,14 @@ function _gmShowPanel(nodes, path) {
     const icon  = document.createElement('span'); icon.className = 'gm-pi-icon'; icon.textContent = node.icon || '📁';
     const title = document.createElement('span'); title.className = 'gm-pi-title'; title.textContent = node.title || '';
     el.appendChild(icon); el.appendChild(title);
-    if (hasChildren) {
+    if (hasChildren && hasItems) {
+      const txtBtn = document.createElement('span'); txtBtn.className = 'gm-pi-textbtn'; txtBtn.textContent = '📄';
+      txtBtn.onclick = (e) => { e.stopPropagation(); _gmOpenOverlay(node, nodes, path); };
+      el.appendChild(txtBtn);
+      const arr = document.createElement('span'); arr.className = 'gm-pi-arrow'; arr.textContent = '›';
+      el.appendChild(arr);
+      el.onclick = () => _gmShowPanel(node.children, [...path, {title: node.title, nodes: node.children}]);
+    } else if (hasChildren) {
       const arr = document.createElement('span'); arr.className = 'gm-pi-arrow'; arr.textContent = '›';
       el.appendChild(arr);
       el.onclick = () => _gmShowPanel(node.children, [...path, {title: node.title, nodes: node.children}]);
@@ -396,8 +407,10 @@ function _gmOpenOverlay(node, parentNodes, parentPath) {
     }
   });
   ov.classList.add('open');
+  document.getElementById('gameMenu').classList.add('ov-open');
   document.getElementById('gmOverlayClose').onclick = () => {
     ov.classList.remove('open');
+    document.getElementById('gameMenu').classList.remove('ov-open');
     _gmShowPanel(parentNodes, parentPath);
   };
 }
