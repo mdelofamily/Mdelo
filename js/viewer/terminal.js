@@ -10,8 +10,11 @@ function _tmInit() {
 
 var _tmOpen = false, _tmFull = false, _tmHist = [], _tmHIdx = -1, _tmHCur = '', _tmMulti = false;
 var _tmBooted = false;
-var _tmEditObj = null; // title of object currently being edited in DSL mode
-var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/სრული','/ისტორია','/ვადა','/ტექსტი','/დახურვა','/flag','/nick','/me','/who','/color','/help','/pwd','/ls','/cd','/md','/rm','/edit','/ფოთოლი'];
+var _tmEditObj = null;     // truthy sentinel while an edit session is open (dlg objKey, or menu node id)
+var _tmEditMode = null;    // 'dlg' | 'menuItem' | null
+var _tmEditMenuCtx = null; // { node, idx, type } — set only when _tmEditMode === 'menuItem'
+var _tmEditLabel = null;   // human-readable label shown in cancel/header messages
+var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/სრული','/ისტორია','/ვადა','/ტექსტი','/დახურვა','/flag','/nick','/me','/who','/color','/help','/pwd','/ls','/cd','/md','/rm','/edit','/ფოთოლი','/macro'];
 
 function toggleTerm() { _tmOpen ? closeTerm() : _tmOpen_(); }
 function _tmOpen_() {
@@ -22,7 +25,7 @@ function _tmOpen_() {
 }
 function closeTerm() {
   // cancel edit mode silently on close
-  if (_tmEditObj) { _tmEditObj = null; document.getElementById('tmTa').value = ''; if (_tmMulti) tmToggleMulti(); }
+  if (_tmEditObj) { _tmEditObj = null; _tmEditMode = null; _tmEditMenuCtx = null; _tmEditLabel = null; document.getElementById('tmTa').value = ''; if (_tmMulti) tmToggleMulti(); }
   _tmOpen = false; _tmFull = false;
   var t = document.getElementById('mdlTerm');
   t.classList.remove('open', 'tmfull');
@@ -113,8 +116,11 @@ function tmSend() {
   var ta = document.getElementById('tmTa');
   var v = ta.value.trim(); if (!v) return;
 
-  // DSL edit mode intercept — don't treat as chat
-  if (_tmEditObj) { _tmSaveDlg(v); return; }
+  // DSL/menu-item edit mode intercept — don't treat as chat
+  if (_tmEditObj) {
+    if (_tmEditMode === 'menuItem') { _tmSaveMenuItem(v); return; }
+    _tmSaveDlg(v); return;
+  }
 
   _tmHist.unshift(v); _tmHIdx = -1; _tmHCur = '';
   ta.value = '';
@@ -224,14 +230,26 @@ function tmInsertSlash() {
 }
 
 // ── command router ──
-function _tmRun(raw) {
+async function _tmRun(raw) {
   var text = raw.trim();
   if (text.charAt(0) !== '/') {
     if (typeof chatHandleInput === 'function' && chatHandleInput(text)) return;
     _tmL('ter', 'ბრძანებები იწყება "/" — მაგ.: /დახმარება');
     return;
   }
-  var parts = text.slice(1).split(/\s+/), cmd = parts[0], args = parts.slice(1);
+  var full = text.slice(1);
+
+  // ── exact macro-name match (local scope wins over shared) — checked before
+  //    normal dispatch, so a saved shortcut behaves like a brand-new command ──
+  var macroCmds = _tmMacroResolve(full);
+  if (macroCmds) { await _tmRunChain(macroCmds); return; }
+
+  // ── generic ";"-chaining: only splits where ";" is followed by "/",
+  //    so a stray ";" inside ordinary item text is left alone ──
+  var chainParts = _tmSplitChain(full);
+  if (chainParts.length > 1) { await _tmRunChain(chainParts); return; }
+
+  var parts = full.split(/\s+/), cmd = parts[0], args = parts.slice(1);
   var map = {
     'დახმარება':   _tmHelp,
     'გასუფთავება': tmClear,
@@ -255,10 +273,11 @@ function _tmRun(raw) {
     'md':          _tmMenuMd,
     'rm':          _tmMenuRm,
     'edit':        _tmMenuEdit,
-    'ფოთოლი':      _tmMenuLeaf
+    'ფოთოლი':      _tmMenuLeaf,
+    'macro':       _tmMacro
   };
   var fn = map[cmd];
-  if (fn) { fn(args); return; }
+  if (fn) { await fn(args); return; }
   if (typeof chatHandleInput === 'function' && chatHandleInput(text)) return;
   _tmL('ter', 'უცნობი ბრძანა: "/' + cmd + '" — სცადე: /დახმარება');
 }
@@ -292,7 +311,12 @@ function _tmHelp() {
     ['/md <სახელი>',      'ახალი ქვე-სექცია + ავტო-cd'],
     ['/ფოთოლი ტექსტი|ინდიკატორი', 'item-ის დამატება მიმდინარე კვანძში'],
     ['/rm <სახელი|N>',    'სექციის (სახელით) ან item-ის (ინდექსით) წაშლა'],
-    ['/edit <N> <...>',   'item-ის [N] შინაარსის რედაქტირება']
+    ['/edit <N>',         'item [N] — multiline რედაქტირება'],
+    ['/edit <N> <...>',   'item [N] — სწრაფი ერთხაზიანი ედიტი'],
+    ['/macro local <სახელი> := ...',  'პერსონალური შორთკატის შექმნა'],
+    ['/macro საერთო <სახელი> := ...', 'გაზიარებული შორთკატის შექმნა'],
+    ['/macro ls',         'ყველა შორთკატის სია'],
+    ['/macro rm local|საერთო <სახელი>', 'შორთკატის წაშლა']
   ];
   _tmL('tdm', _SEP); _tmL('tsy', '--- ბრძანები ---');
   for (var i = 0; i < list.length; i++) {
@@ -414,6 +438,8 @@ function _tmDlgEdit(args) {
   document.getElementById('tmTa').value = dsl;
   _tmTaResize();
   _tmEditObj = objKey;
+  _tmEditMode = 'dlg';
+  _tmEditLabel = (_OBJS && _OBJS[+hs.dataset.oi] && _OBJS[+hs.dataset.oi].lb) || objKey;
 
   _tmL('tsy', '─── ' + ((_OBJS && _OBJS[+hs.dataset.oi] && _OBJS[+hs.dataset.oi].lb) || objKey) + ' — DSL ──────────────');
   _tmL('tdm', 'Ctrl+Enter — შენახვა · Esc — გაუქმება');
@@ -421,11 +447,14 @@ function _tmDlgEdit(args) {
 
 // Cancel edit mode without saving
 function _tmEditCancel() {
-  var title = _tmEditObj;
+  var label = _tmEditLabel || _tmEditObj;
   _tmEditObj = null;
+  _tmEditMode = null;
+  _tmEditMenuCtx = null;
+  _tmEditLabel = null;
   document.getElementById('tmTa').value = '';
   if (_tmMulti) tmToggleMulti();
-  _tmL('tdm', title + ' — გაუქმდა');
+  _tmL('tdm', label + ' — გაუქმდა');
 }
 
 // Save DSL to Supabase and patch _OBJS locally
@@ -472,6 +501,8 @@ async function _tmSaveDlg(dsl) {
 
   if (ok) {
     _tmEditObj = null;
+    _tmEditMode = null;
+    _tmEditLabel = null;
     document.getElementById('tmTa').value = '';
     if (_tmMulti) tmToggleMulti();
     _tmL('tok', title + ' — შენახულია ✓  (ყველა viewer განახლდება)');
@@ -638,7 +669,7 @@ async function _tmMenuLeaf(args) {
 }
 
 async function _tmMenuRm(args) {
-  var arg = (args[0] || '').trim();
+  var arg = args.join(' ').trim();
   if (!arg) { _tmL('ter', 'გამოყენება: /rm <სახელი>  ან  /rm <ინდექსი>'); return; }
   var node     = _tmMenuCwdNode();
   var isIndex  = /^\d+$/.test(arg);
@@ -662,21 +693,22 @@ async function _tmMenuRm(args) {
 }
 
 // Edit an existing item in place by index.
-//   /edit <N> <ახალი ტექსტი>         — text item: ცვლის label-ს მთლიანად
-//   /edit <N> <ახალი ტექსტი> <%>     — progress item: ცვლის label-სა და value-ს ერთად
-//   /edit <N> <%>                    — progress item: ცვლის მხოლოდ value-ს, label ხელუხლებელია
+//   /edit <N>                          — multiline editor (Ctrl+Enter — შენახვა · Esc — გაუქმება)
+//   /edit <N> <ახალი ტექსტი>           — text item: ცვლის label-ს მთლიანად, inline
+//   /edit <N> <ახალი ტექსტი> <%>       — progress item: ცვლის label-სა და value-ს ერთად, inline
+//   /edit <N> <%>                      — progress item: ცვლის მხოლოდ value-ს, label ხელუხლებელია
 async function _tmMenuEdit(args) {
   var node = _tmMenuCwdNode();
   if (!node) { _tmL('ter', 'root-ში items არ არსებობს'); return; }
   var idx = parseInt(args[0]);
   if (isNaN(idx) || !node.items || !node.items[idx]) {
-    _tmL('ter', 'გამოყენება: /edit <ინდექსი> <ახალი შინაარსი> — სია: /ls');
+    _tmL('ter', 'გამოყენება: /edit <ინდექსი> [ახალი შინაარსი] — სია: /ls');
     return;
   }
-  var rest = args.slice(1);
-  if (!rest.length) { _tmL('ter', 'გამოყენება: /edit <ინდექსი> <ახალი შინაარსი>'); return; }
-
+  var rest  = args.slice(1);
   var itObj = typeof node.items[idx] === 'string' ? { type: 'text', emoji: '•', label: node.items[idx] } : node.items[idx];
+
+  if (!rest.length) { _tmMenuEditOpen(node, idx, itObj); return; }
 
   if (itObj.type === 'progress') {
     var lastIsNum = /^\d+$/.test(rest[rest.length - 1]);
@@ -692,6 +724,75 @@ async function _tmMenuEdit(args) {
   await _tmMenuSaveNode(node.id, { items_json: node.items });
 }
 
+// Serialize an item into editable plain text for the multiline textarea.
+// progress items keep their value on a trailing "NN%" line so it round-trips.
+function _tmMenuItemToEditText(itObj) {
+  if (itObj.type === 'progress') {
+    return (itObj.label || '') + '\n\n' + (itObj.value != null ? itObj.value : 0) + '%';
+  }
+  return itObj.label || '';
+}
+
+// Parse the textarea content back into { label, value } on save.
+function _tmParseMenuEditText(text, type) {
+  if (type === 'progress') {
+    var lines = text.split('\n');
+    while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
+    var last  = lines.length ? lines[lines.length - 1].trim() : '';
+    var m     = /^(\d{1,3})%?$/.exec(last);
+    var value = null, labelLines = lines;
+    if (m) { value = Math.max(0, Math.min(100, parseInt(m[1]))); labelLines = lines.slice(0, -1); }
+    while (labelLines.length && labelLines[labelLines.length - 1].trim() === '') labelLines.pop();
+    return { label: labelLines.join('\n').trim(), value: value };
+  }
+  return { label: text.trim(), value: null };
+}
+
+// Open the multiline editor for item [idx] of `node`.
+function _tmMenuEditOpen(node, idx, itObj) {
+  if (!_tmMulti) tmToggleMulti();
+  document.getElementById('tmTa').value = _tmMenuItemToEditText(itObj);
+  _tmTaResize();
+  _tmEditObj     = node.id;
+  _tmEditMode    = 'menuItem';
+  _tmEditMenuCtx = { node: node, idx: idx, type: itObj.type || 'text' };
+  _tmEditLabel   = '[' + idx + '] ' + (node.title || '');
+
+  _tmL('tsy', '─── [' + idx + '] ' + (node.title || '') + ' ──────────────');
+  _tmL('tdm', 'Ctrl+Enter — შენახვა · Esc — გაუქმება');
+}
+
+// Save the multiline editor content back into the item + push to Supabase.
+async function _tmSaveMenuItem(text) {
+  var ctx = _tmEditMenuCtx;
+  if (!ctx) { _tmEditCancel(); return; }
+  var node = ctx.node, idx = ctx.idx;
+  if (!node.items || !node.items[idx]) {
+    _tmL('ter', '✗ item [' + idx + '] აღარ არსებობს');
+    _tmEditObj = null; _tmEditMode = null; _tmEditMenuCtx = null; _tmEditLabel = null;
+    document.getElementById('tmTa').value = '';
+    if (_tmMulti) tmToggleMulti();
+    return;
+  }
+
+  var parsed = _tmParseMenuEditText(text, ctx.type);
+  var itObj  = typeof node.items[idx] === 'string' ? { type: ctx.type, emoji: '•' } : node.items[idx];
+  itObj.type  = ctx.type;
+  itObj.label = parsed.label;
+  if (ctx.type === 'progress' && parsed.value != null) itObj.value = parsed.value;
+  if (!itObj.emoji) itObj.emoji = ctx.type === 'progress' ? '📊' : '•';
+  node.items[idx] = itObj;
+
+  var label = _tmEditLabel;
+  _tmEditObj = null; _tmEditMode = null; _tmEditMenuCtx = null; _tmEditLabel = null;
+  document.getElementById('tmTa').value = '';
+  if (_tmMulti) tmToggleMulti();
+
+  _tmL('tdm', '↑ ' + label + ' — ვინახავ...');
+  await _tmMenuSaveNode(node.id, { items_json: node.items });
+  _tmL('tok', label + ' — შენახულია ✓');
+}
+
 // Partial upsert into menu_overrides — only the given fields get written/replaced server-side.
 async function _tmMenuSaveNode(nodeId, fields) {
   if (typeof window.menuOverrideSave !== 'function') {
@@ -704,3 +805,148 @@ async function _tmMenuSaveNode(nodeId, fields) {
     _tmL('ter', '✗ Supabase: ' + em);
   }
 }
+
+// ── macro/shortcut engine ──
+// Two scopes:
+//   local   — localStorage, this device only, instant, no Supabase round-trip
+//   საერთო  — Supabase (terminal_macros table), every viewer sees it on next load
+// A macro IS a brand-new command: once saved, typing its exact name (with /) runs
+// the whole stored chain. Local scope takes precedence over shared on a name clash.
+var _TM_RESERVED = ['macro','cd','md','rm','ls','pwd','edit','ფოთოლი','flag','nick','me','who','color','help',
+  'დახმარება','გასუფთავება','ინფო','მასშტაბი','ზონები','ობიექტები','დიალოგი','წასვლა','ლეგენდა','მენიუ','სრული','ისტორია','ვადა','ტექსტი','დახურვა'];
+
+// Split a raw (no leading "/") command line on ";" — only where ";" is followed
+// (after optional whitespace) by "/", so semicolons inside ordinary text are safe.
+function _tmSplitChain(full) {
+  return full.split(/;\s*(?=\/)/).map(function (s) { return s.trim(); }).filter(Boolean);
+}
+
+// Run a list of command strings (each with or without a leading "/") in order,
+// awaiting each before starting the next, echoing every step to the log.
+async function _tmRunChain(cmds) {
+  for (var i = 0; i < cmds.length; i++) {
+    var c = (cmds[i] || '').trim();
+    if (!c) continue;
+    if (c.charAt(0) !== '/') c = '/' + c;
+    _tmL('ti', c);
+    await _tmRun(c);
+  }
+}
+
+function _tmMacroLocalKey() { return 'mdelo_macro_local_' + ((typeof _CFG !== 'undefined' && _CFG && _CFG.title) || 'map'); }
+function _tmMacroLocalAll() {
+  try { return JSON.parse(localStorage.getItem(_tmMacroLocalKey()) || '{}'); } catch (e) { return {}; }
+}
+function _tmMacroLocalSave(all) {
+  try { localStorage.setItem(_tmMacroLocalKey(), JSON.stringify(all)); return true; } catch (e) { return false; }
+}
+
+// Exact-name lookup across both scopes. Returns a commands[] array or null.
+function _tmMacroResolve(full) {
+  var name = (full || '').trim();
+  if (!name) return null;
+  var locals = _tmMacroLocalAll();
+  if (locals[name]) return locals[name];
+  if (window._tmMacroShared && window._tmMacroShared[name]) return window._tmMacroShared[name];
+  return null;
+}
+
+// /macro local|საერთო <სახელი> := cmd1 ; cmd2 ; ...
+// /macro ls
+// /macro rm local|საერთო <სახელი>
+async function _tmMacro(args) {
+  var head0 = (args[0] || '').trim();
+
+  if (head0 === 'ls') { _tmMacroLs(); return; }
+
+  if (head0 === 'rm') {
+    var scopeWord = (args[1] || '').trim();
+    var rmName = args.slice(2).join(' ').trim();
+    if (!rmName || (scopeWord !== 'local' && scopeWord !== 'საერთო')) {
+      _tmL('ter', 'გამოყენება: /macro rm local|საერთო <სახელი>');
+      return;
+    }
+    if (scopeWord === 'local') {
+      var all = _tmMacroLocalAll();
+      if (!all[rmName]) { _tmL('ter', 'local მაკრო ვერ მოიძებნა: "' + rmName + '"'); return; }
+      delete all[rmName];
+      _tmMacroLocalSave(all);
+      _tmL('tok', '✗ 🔒 "' + rmName + '" წაიშალა');
+    } else {
+      if (typeof window.macroOverrideDelete !== 'function') { _tmL('ter', '✗ macroOverrideDelete ვერ მოიძებნა (runtime.js?)'); return; }
+      var dres = await window.macroOverrideDelete(rmName);
+      if (dres === true) _tmL('tok', '✗ 🌐 "' + rmName + '" წაიშალა');
+      else _tmL('ter', '✗ Supabase: ' + (dres && dres.msg ? dres.msg : 'უცნობი'));
+    }
+    return;
+  }
+
+  var raw = args.join(' ');
+  var assignIdx = raw.indexOf(':=');
+  if (assignIdx < 0) {
+    _tmL('tdm', _SEP);
+    _tmL('tsy', '/macro ბრძანებები:');
+    _tmL('tnf', '  local <სახელი> := cmd1 ; cmd2 ...   — პერსონალური შორთკატი');
+    _tmL('tnf', '  საერთო <სახელი> := cmd1 ; cmd2 ...  — გაზიარებული შორთკატი');
+    _tmL('tnf', '  ls                                  — ყველა შორთკატის სია');
+    _tmL('tnf', '  rm local|საერთო <სახელი>            — წაშლა');
+    _tmL('tdm', _SEP);
+    return;
+  }
+
+  var head = raw.slice(0, assignIdx).trim();
+  var body = raw.slice(assignIdx + 2).trim();
+  var headParts = head.split(/\s+/);
+  var scope = headParts[0];
+  var name = headParts.slice(1).join(' ').trim();
+
+  if (scope !== 'local' && scope !== 'საერთო') {
+    _tmL('ter', 'მითხარი scope: /macro local <სახელი> := ...  ან  /macro საერთო <სახელი> := ...');
+    return;
+  }
+  if (!name) { _tmL('ter', 'სახელი არ მიუთითე'); return; }
+  if (_TM_RESERVED.indexOf(name) >= 0) { _tmL('ter', '✗ "' + name + '" დაცული სახელია — სხვა აარჩიე'); return; }
+
+  var commands = body.split(';').map(function (s) { return s.trim(); }).filter(Boolean)
+    .map(function (c) { return c.charAt(0) === '/' ? c : '/' + c; });
+  if (!commands.length) { _tmL('ter', 'ბრძანებების ჩამონათვალი ცარიელია'); return; }
+
+  if (scope === 'local') {
+    var locAll = _tmMacroLocalAll();
+    locAll[name] = commands;
+    _tmMacroLocalSave(locAll);
+    _tmL('tok', '🔒 "' + name + '" შენახულია (' + commands.length + ' ბრძანება)');
+  } else {
+    if (typeof window.macroOverrideSave !== 'function') { _tmL('ter', '✗ macroOverrideSave ვერ მოიძებნა (runtime.js?)'); return; }
+    var sres = await window.macroOverrideSave(name, commands);
+    if (sres === true) _tmL('tok', '🌐 "' + name + '" შენახულია — ყველა viewer-ს ეჩვენება');
+    else _tmL('ter', '✗ Supabase: ' + (sres && sres.msg ? sres.msg : 'უცნობი'));
+  }
+}
+
+function _tmMacroLs() {
+  var locals = _tmMacroLocalAll();
+  var shared = window._tmMacroShared || {};
+  _tmL('tdm', _SEP);
+  var any = false;
+  Object.keys(locals).forEach(function (n) {
+    any = true;
+    _tmL('tnf', '🔒 ' + n + '  (' + locals[n].length + ' ბრძანება)');
+  });
+  Object.keys(shared).forEach(function (n) {
+    if (locals[n]) return; // local already shown, and takes precedence
+    any = true;
+    _tmL('tnf', '🌐 ' + n + '  (' + shared[n].length + ' ბრძანება)');
+  });
+  if (!any) _tmL('tdm', '(შორთკატები არ არსებობს)');
+  _tmL('tdm', _SEP);
+}
+
+// Cross-file hook — e.g. a dialogue marker effect can call window.runMacro('name')
+// to replay a saved shortcut from inside an NPC conversation.
+window.runMacro = function (name) {
+  var cmds = _tmMacroResolve(name);
+  if (!cmds) { if (typeof _tmL === 'function') _tmL('ter', 'მაკრო ვერ მოიძებნა: "' + name + '"'); return false; }
+  _tmRunChain(cmds);
+  return true;
+};

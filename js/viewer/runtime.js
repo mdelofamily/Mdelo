@@ -1164,11 +1164,64 @@ window.menuOverrideSave = async function (nodeId, fields) {
   } catch (e) { return { ok: false, status: 0, msg: e.message }; }
 };
 
+// ── shared terminal macros (Supabase) ──
+// Personal ("local") macros never leave the device — see terminal.js localStorage.
+// Shared ("საერთო") macros are visible to every viewer; cached in window._tmMacroShared
+// (name -> commands[]) so terminal.js can resolve them with zero network latency
+// once boot has finished.
+window._tmMacroShared = {};
+
+async function loadMacroOverrides() {
+  try {
+    var r = await fetch(
+      SUPA_URL + '/rest/v1/terminal_macros?map_id=eq.' + encodeURIComponent(_MAP_ID),
+      { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY } }
+    );
+    if (!r.ok) return;
+    var rows = await r.json();
+    var shared = {};
+    rows.forEach(function (row) { shared[row.name] = row.commands_json || []; });
+    window._tmMacroShared = shared;
+  } catch (e) {}
+}
+
+window.macroOverrideSave = async function (name, commands) {
+  try {
+    var body = { map_id: _MAP_ID, name: name, commands_json: commands, updated_at: new Date().toISOString() };
+    var r = await fetch(SUPA_URL + '/rest/v1/terminal_macros', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPA_KEY,
+        'Authorization': 'Bearer ' + SUPA_KEY,
+        'Prefer': 'resolution=merge-duplicates,return=minimal'
+      },
+      body: JSON.stringify(body)
+    });
+    if (r.ok) { window._tmMacroShared[name] = commands; return true; }
+    var errBody = r.text ? await r.text().catch(function () { return ''; }) : '';
+    return { ok: false, status: r.status, msg: errBody.slice(0, 150) };
+  } catch (e) { return { ok: false, status: 0, msg: e.message }; }
+};
+
+window.macroOverrideDelete = async function (name) {
+  try {
+    var r = await fetch(
+      SUPA_URL + '/rest/v1/terminal_macros?map_id=eq.' + encodeURIComponent(_MAP_ID) + '&name=eq.' + encodeURIComponent(name),
+      { method: 'DELETE', headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY } }
+    );
+    if (r.ok) { delete window._tmMacroShared[name]; return true; }
+    var errBody = r.text ? await r.text().catch(function () { return ''; }) : '';
+    return { ok: false, status: r.status, msg: errBody.slice(0, 150) };
+  } catch (e) { return { ok: false, status: 0, msg: e.message }; }
+};
+
 // ── init ──
 window.addEventListener('load', () => {
   loadNotifs();
   loadDialogueOverrides().then(_markerRestore);
   loadMenuOverrides();
+  loadMacroOverrides();
   _startRealtime();
   applySpotHash();
   applyAreaHash();
