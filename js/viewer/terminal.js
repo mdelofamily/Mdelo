@@ -1,6 +1,6 @@
 // terminal.js — viewer terminal + /commands
 // injected inline by export-html.js assembler
-// depends on: _CFG, scale (runtime.js), applyScale, fitAreas, toggleMenu (runtime.js)
+// depends on: _CFG, scale (runtime.js), applyScale, fitAreas, toggleMenu (runtime.js), menuOverrideSave (runtime.js)
 
 function _tmInit() {
   if (!window.matchMedia('(display-mode: standalone)').matches) return;
@@ -11,7 +11,7 @@ function _tmInit() {
 var _tmOpen = false, _tmFull = false, _tmHist = [], _tmHIdx = -1, _tmHCur = '', _tmMulti = false;
 var _tmBooted = false;
 var _tmEditObj = null; // title of object currently being edited in DSL mode
-var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/სრული','/ისტორია','/ვადა','/ტექსტი','/დახურვა','/flag','/nick','/me','/who','/color','/help'];
+var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/სრული','/ისტორია','/ვადა','/ტექსტი','/დახურვა','/flag','/nick','/me','/who','/color','/help','/pwd','/ls','/cd','/md','/rm','/ფოთოლი'];
 
 function toggleTerm() { _tmOpen ? closeTerm() : _tmOpen_(); }
 function _tmOpen_() {
@@ -248,7 +248,13 @@ function _tmRun(raw) {
     'ვადა':        _tmVada,
     'ტექსტი':      tmToggleMulti,
     'დახურვა':     closeTerm,
-    'flag':        _tmFlag
+    'flag':        _tmFlag,
+    'pwd':         _tmMenuPwd,
+    'ls':          _tmMenuLs,
+    'cd':          _tmMenuCd,
+    'md':          _tmMenuMd,
+    'rm':          _tmMenuRm,
+    'ფოთოლი':      _tmMenuLeaf
   };
   var fn = map[cmd];
   if (fn) { fn(args); return; }
@@ -278,7 +284,13 @@ function _tmHelp() {
     ['/nick სახელი',      'ნიკნეიმის შეცვლა'],
     ['/me ტექსტი',        '* აქშნის მესიჯი'],
     ['/who',              'ონლაინ სია'],
-    ['/color #hex',       'ნიკნეიმის ფერი']
+    ['/color #hex',       'ნიკნეიმის ფერი'],
+    ['/pwd',              'მენიუს მიმდინარე გზა'],
+    ['/ls',               'მენიუს კვანძის შემცველობა'],
+    ['/cd [სახელი|..|/]', 'მენიუში ნავიგაცია'],
+    ['/md <სახელი>',      'ახალი ქვე-სექცია + ავტო-cd'],
+    ['/ფოთოლი ტექსტი|ინდიკატორი', 'item-ის დამატება მიმდინარე კვანძში'],
+    ['/rm <სახელი|N>',    'სექციის (სახელით) ან item-ის (ინდექსით) წაშლა']
   ];
   _tmL('tdm', _SEP); _tmL('tsy', '--- ბრძანები ---');
   for (var i = 0; i < list.length; i++) {
@@ -513,5 +525,149 @@ function _tmFlag(args) {
     _tmL('tnf', '  list         — ყველა flag-ის სია');
     _tmL('tnf', '  reset        — ყველა flag-ის გასუფთავება');
     _tmL('tdm', _SEP);
+  }
+}
+
+// ── menu CLI — filesystem-style navigation/editing over _CFG.menu ──
+// State lives only in the terminal session (Pure CLI State): navigating with
+// /cd never touches the burger menu's own drill-down UI/state (_gmCfg/_gmShowPanel).
+// Mutations (/md, /ფოთოლი, /rm) DO mutate _CFG.menu in place — the same object
+// the burger menu reads from — and are pushed to Supabase via menuOverrideSave
+// (runtime.js) so every viewer sees them on next page load.
+var _tmMenuStack = []; // array of node refs, root = []
+
+function _tmMenuCwdNode() { return _tmMenuStack.length ? _tmMenuStack[_tmMenuStack.length - 1] : null; }
+function _tmMenuCwdList() {
+  var n = _tmMenuCwdNode();
+  if (!n) { if (!_CFG.menu) _CFG.menu = []; return _CFG.menu; }
+  if (!n.children) n.children = [];
+  return n.children;
+}
+function _tmMenuPathStr() {
+  var parts = _tmMenuStack.map(function (n) { return n.title || '(უსახელო)'; });
+  return 'root' + (parts.length ? '/' + parts.join('/') : '');
+}
+
+function _tmMenuPwd() { _tmL('tnf', _tmMenuPathStr()); }
+
+function _tmMenuLs() {
+  var node  = _tmMenuCwdNode();
+  var list  = _tmMenuCwdList();
+  var items = node ? (node.items || []) : [];
+  _tmL('tdm', _SEP);
+  _tmL('tsy', _tmMenuPathStr());
+  if (!list.length && !items.length) _tmL('tdm', '(ცარიელია)');
+  list.forEach(function (n) {
+    var hasKids = (n.children && n.children.length) || (n.items && n.items.length);
+    _tmL('tnf', (n.icon || '📁') + ' ' + (n.title || '(უსახელო)') + (hasKids ? '/' : ''));
+  });
+  items.forEach(function (it, idx) {
+    var itObj = typeof it === 'string' ? { type: 'text', emoji: '•', label: it } : it;
+    if (itObj.type === 'progress') {
+      _tmL('tnf', '  [' + idx + '] ინდიკატორი: "' + (itObj.label || '') + '" (' + (itObj.value != null ? itObj.value : 0) + '%)');
+    } else {
+      var lbl = (itObj.label || '').replace(/\n/g, ' ');
+      if (lbl.length > 60) lbl = lbl.slice(0, 60) + '…';
+      _tmL('tnf', '  [' + idx + '] ტექსტი: "' + lbl + '"');
+    }
+  });
+  _tmL('tdm', _SEP);
+}
+
+function _tmMenuCd(args) {
+  var name = args.join(' ').trim();
+  if (!name || name === '/') { _tmMenuStack = []; _tmL('tok', _tmMenuPathStr()); return; }
+  if (name === '..') {
+    if (!_tmMenuStack.length) { _tmL('tnf', 'უკვე root-ში ხარ'); return; }
+    _tmMenuStack.pop(); _tmL('tok', _tmMenuPathStr()); return;
+  }
+  var list  = _tmMenuCwdList();
+  var found = list.find(function (n) { return (n.title || '').trim() === name; });
+  if (!found) { _tmL('ter', 'ვერ მოიძებნა: "' + name + '"'); _tmL('tdm', 'სია: /ls'); return; }
+  _tmMenuStack.push(found);
+  _tmL('tok', _tmMenuPathStr());
+}
+
+async function _tmMenuMd(args) {
+  var name = args.join(' ').trim();
+  if (!name) { _tmL('ter', 'გამოყენება: /md <სახელი>'); return; }
+  var parent = _tmMenuCwdNode();
+  var list   = _tmMenuCwdList();
+  if (list.find(function (n) { return (n.title || '').trim() === name; })) {
+    _tmL('ter', 'უკვე არსებობს: "' + name + '"'); return;
+  }
+  var node = { id: 'nd_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), icon: '📁', title: name, items: [], children: [] };
+  list.push(node);
+  _tmMenuStack.push(node);
+  _tmL('tok', '+ ' + name + '  →  ' + _tmMenuPathStr());
+  await _tmMenuSaveNode(node.id, { parent_id: parent ? parent.id : null, icon: node.icon, title: node.title, items_json: [] });
+}
+
+async function _tmMenuLeaf(args) {
+  var sub  = (args[0] || '').trim();
+  var node = _tmMenuCwdNode();
+  if (!node) { _tmL('ter', 'root-ში ფოთლები არ შეიძლება — /cd <სახელი> შედი სექციაში'); return; }
+
+  if (sub === 'ტექსტი') {
+    var text = args.slice(1).join(' ').trim();
+    if (!text) { _tmL('ter', 'გამოყენება: /ფოთოლი ტექსტი <ტექსტი>'); return; }
+    if (!node.items) node.items = [];
+    node.items.push({ type: 'text', emoji: '•', label: text });
+    _tmL('tok', '+ [' + (node.items.length - 1) + '] ტექსტი დაემატა');
+    await _tmMenuSaveNode(node.id, { items_json: node.items });
+  } else if (sub === 'ინდიკატორი') {
+    var rest   = args.slice(1);
+    var pct    = parseInt(rest[rest.length - 1]);
+    var hasPct = !isNaN(pct) && rest.length > 1;
+    var label  = (hasPct ? rest.slice(0, -1) : rest).join(' ').trim();
+    if (!label) { _tmL('ter', 'გამოყენება: /ფოთოლი ინდიკატორი <სახელი> <%>'); return; }
+    var val = hasPct ? Math.max(0, Math.min(100, pct)) : 100;
+    if (!node.items) node.items = [];
+    node.items.push({ type: 'progress', emoji: '📊', label: label, value: val });
+    _tmL('tok', '+ [' + (node.items.length - 1) + '] ინდიკატორი დაემატა (' + val + '%)');
+    await _tmMenuSaveNode(node.id, { items_json: node.items });
+  } else {
+    _tmL('tdm', _SEP);
+    _tmL('tsy', '/ფოთოლი ბრძანებები:');
+    _tmL('tnf', '  ტექსტი <ტექსტი>         — ტექსტური item');
+    _tmL('tnf', '  ინდიკატორი <სახელი> <%> — progress item');
+    _tmL('tdm', _SEP);
+  }
+}
+
+async function _tmMenuRm(args) {
+  var arg = (args[0] || '').trim();
+  if (!arg) { _tmL('ter', 'გამოყენება: /rm <სახელი>  ან  /rm <ინდექსი>'); return; }
+  var node     = _tmMenuCwdNode();
+  var isIndex  = /^\d+$/.test(arg);
+
+  if (isIndex) {
+    var idx = parseInt(arg);
+    if (!node) { _tmL('ter', 'root-ში items არ არსებობს'); return; }
+    if (!node.items || !node.items[idx]) { _tmL('ter', 'item [' + idx + '] ვერ მოიძებნა — /ls'); return; }
+    node.items.splice(idx, 1);
+    _tmL('tok', '✗ item [' + idx + '] წაიშალა');
+    await _tmMenuSaveNode(node.id, { items_json: node.items });
+  } else {
+    var list = _tmMenuCwdList();
+    var fIdx = list.findIndex(function (n) { return (n.title || '').trim() === arg; });
+    if (fIdx < 0) { _tmL('ter', 'ვერ მოიძებნა: "' + arg + '" — /ls'); return; }
+    var removed = list[fIdx];
+    list.splice(fIdx, 1);
+    _tmL('tok', '✗ "' + arg + '" — სექცია წაიშალა (ქვე-შემცველობასთან ერთად)');
+    await _tmMenuSaveNode(removed.id, { deleted: true });
+  }
+}
+
+// Partial upsert into menu_overrides — only the given fields get written/replaced server-side.
+async function _tmMenuSaveNode(nodeId, fields) {
+  if (typeof window.menuOverrideSave !== 'function') {
+    _tmL('ter', '✗ menuOverrideSave ვერ მოიძებნა (runtime.js?)');
+    return;
+  }
+  var res = await window.menuOverrideSave(nodeId, fields);
+  if (res !== true) {
+    var em = res && res.msg ? ('HTTP ' + res.status + ': ' + res.msg) : 'უცნობი';
+    _tmL('ter', '✗ Supabase: ' + em);
   }
 }

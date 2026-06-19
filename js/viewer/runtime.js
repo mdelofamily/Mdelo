@@ -1055,10 +1055,120 @@ window.dlgGetCurrentDsl = function(objTitle) {
   return dsl;
 };
 
+// ── menu overrides (Supabase) ──
+// Allows community members to extend the burger menu via the terminal's
+// /cd /md /ფოთოლი /rm commands (see terminal.js). All viewers get the same
+// merged structure on every page load — there is no realtime channel for this,
+// just a fetch+merge into _CFG.menu before the burger menu is ever opened.
+//
+// Table: menu_overrides (map_id, node_id) unique
+//   node_id    — Fixed ID of the node being touched (matches node.id in _CFG.menu,
+//                survives re-export since menu-builder.js never regenerates ids)
+//   parent_id  — only set when node_id is a brand-new node created via /md;
+//                null means either "root-level" or "not a new node" (existing baked node)
+//   icon/title — only meaningful for brand-new nodes
+//   items_json — the CURRENT full items[] array for that node (snapshot, not a delta —
+//                mirrors how dialogue_overrides stores the full nodes_json each time)
+//   deleted    — tombstone; true means this node (and anything still hanging under it)
+//                should be removed from the tree on load
+
+// Find a node anywhere in _CFG.menu by its Fixed ID.
+function _mnFindNode(id, nodes) {
+  nodes = nodes || (_CFG.menu || []);
+  for (var i = 0; i < nodes.length; i++) {
+    if (nodes[i].id === id) return nodes[i];
+    if (nodes[i].children && nodes[i].children.length) {
+      var f = _mnFindNode(id, nodes[i].children);
+      if (f) return f;
+    }
+  }
+  return null;
+}
+
+// Remove a node anywhere in _CFG.menu by its Fixed ID (used for `deleted` tombstones).
+function _mnRemoveNodeById(id, nodes) {
+  nodes = nodes || (_CFG.menu || []);
+  for (var i = 0; i < nodes.length; i++) {
+    if (nodes[i].id === id) { nodes.splice(i, 1); return true; }
+    if (nodes[i].children && nodes[i].children.length) {
+      if (_mnRemoveNodeById(id, nodes[i].children)) return true;
+    }
+  }
+  return false;
+}
+
+// Apply fetched menu_overrides rows onto _CFG.menu in place.
+// Pass 1 attaches brand-new nodes — iteratively, since a new node's parent may
+// itself be another new node that appears later/earlier in the unordered rows.
+// Pass 2 applies items snapshots + deletions to every touched node (including
+// ones just attached in pass 1).
+function _applyMenuOverrides(rows) {
+  if (!_CFG.menu) _CFG.menu = [];
+
+  var pending = rows.filter(function (r) { return r.parent_id !== null && !r.deleted; });
+  for (var pass = 0; pass < 50 && pending.length; pass++) {
+    var stillPending = [];
+    pending.forEach(function (r) {
+      if (_mnFindNode(r.node_id)) return; // already attached
+      var parentList;
+      if (!r.parent_id) { parentList = _CFG.menu; }
+      else {
+        var parentNode = _mnFindNode(r.parent_id);
+        parentList = parentNode ? (parentNode.children || (parentNode.children = [])) : null;
+      }
+      if (!parentList) { stillPending.push(r); return; }
+      parentList.push({ id: r.node_id, icon: r.icon || '📁', title: r.title || '', items: [], children: [] });
+    });
+    pending = stillPending;
+  }
+
+  rows.forEach(function (r) {
+    if (r.deleted) { _mnRemoveNodeById(r.node_id); return; }
+    var node = _mnFindNode(r.node_id);
+    if (node && Array.isArray(r.items_json)) node.items = r.items_json;
+  });
+}
+
+// Load all menu overrides for this map on startup.
+async function loadMenuOverrides() {
+  try {
+    var r = await fetch(
+      SUPA_URL + '/rest/v1/menu_overrides?map_id=eq.' + encodeURIComponent(_MAP_ID),
+      { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY } }
+    );
+    if (!r.ok) return;
+    var rows = await r.json();
+    _applyMenuOverrides(rows);
+  } catch (e) {}
+}
+
+// Partial upsert — called from terminal.js. `fields` may include any of:
+// parent_id, icon, title, items_json, deleted. Only the given keys are written;
+// PostgREST's merge-duplicates upsert leaves every other column untouched.
+window.menuOverrideSave = async function (nodeId, fields) {
+  try {
+    var body = Object.assign({ map_id: _MAP_ID, node_id: nodeId, updated_at: new Date().toISOString() }, fields);
+    var r = await fetch(SUPA_URL + '/rest/v1/menu_overrides', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPA_KEY,
+        'Authorization': 'Bearer ' + SUPA_KEY,
+        'Prefer': 'resolution=merge-duplicates,return=minimal'
+      },
+      body: JSON.stringify(body)
+    });
+    if (r.ok) return true;
+    var errBody = r.text ? await r.text().catch(function () { return ''; }) : '';
+    return { ok: false, status: r.status, msg: errBody.slice(0, 150) };
+  } catch (e) { return { ok: false, status: 0, msg: e.message }; }
+};
+
 // ── init ──
 window.addEventListener('load', () => {
   loadNotifs();
   loadDialogueOverrides().then(_markerRestore);
+  loadMenuOverrides();
   _startRealtime();
   applySpotHash();
   applyAreaHash();
