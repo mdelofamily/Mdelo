@@ -1216,12 +1216,50 @@ window.macroOverrideDelete = async function (name) {
   } catch (e) { return { ok: false, status: 0, msg: e.message }; }
 };
 
+// ── main "?" legend override (Supabase) ──
+// The legend's baked-in text (export time) lives in #questPopup. A single row
+// per map_id is enough — there's only one legend, not a tree like the menu.
+async function loadLegendOverride() {
+  try {
+    var r = await fetch(
+      SUPA_URL + '/rest/v1/legend_overrides?map_id=eq.' + encodeURIComponent(_MAP_ID),
+      { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY } }
+    );
+    if (!r.ok) return;
+    var rows = await r.json();
+    if (rows && rows[0] && rows[0].text != null) {
+      var p = document.getElementById('questPopup');
+      if (p) { p.dataset.full = rows[0].text; if (p.style.display === 'block') p.textContent = rows[0].text; }
+    }
+  } catch (e) {}
+}
+
+window.legendOverrideSave = async function (text) {
+  try {
+    var body = { map_id: _MAP_ID, text: text, updated_at: new Date().toISOString() };
+    var r = await fetch(SUPA_URL + '/rest/v1/legend_overrides', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPA_KEY,
+        'Authorization': 'Bearer ' + SUPA_KEY,
+        'Prefer': 'resolution=merge-duplicates,return=minimal'
+      },
+      body: JSON.stringify(body)
+    });
+    if (r.ok) return true;
+    var errBody = r.text ? await r.text().catch(function () { return ''; }) : '';
+    return { ok: false, status: r.status, msg: errBody.slice(0, 150) };
+  } catch (e) { return { ok: false, status: 0, msg: e.message }; }
+};
+
 // ── init ──
 window.addEventListener('load', () => {
   loadNotifs();
   loadDialogueOverrides().then(_markerRestore);
   loadMenuOverrides();
   loadMacroOverrides();
+  loadLegendOverride();
   _startRealtime();
   applySpotHash();
   applyAreaHash();

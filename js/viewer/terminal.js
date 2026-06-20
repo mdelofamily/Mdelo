@@ -116,9 +116,10 @@ function tmSend() {
   var ta = document.getElementById('tmTa');
   var v = ta.value.trim(); if (!v) return;
 
-  // DSL/menu-item edit mode intercept — don't treat as chat
+  // DSL/menu-item/legend edit mode intercept — don't treat as chat
   if (_tmEditObj) {
     if (_tmEditMode === 'menuItem') { _tmSaveMenuItem(v); return; }
+    if (_tmEditMode === 'legend')   { _tmSaveLegend(v); return; }
     _tmSaveDlg(v); return;
   }
 
@@ -300,6 +301,7 @@ function _tmHelp() {
     ['/დიალოგი [სახელი]', 'DSL რედაქტირება · Ctrl+Enter შესანახად'],
     ['/წასვლა [N]',       'ზონაზე ნავიგაცია'],
     ['/ლეგენდა',          'აღწერას ჩვენა/დამალვა'],
+    ['/ლეგენდა რედაქტირება', 'მთავარი ლეგენდის ტექსტის რედაქტირება'],
     ['/მენიუ',            'მენიუს toggle'],
     ['/სრული',            'სრული ↔ ნახევარი'],
     ['/ისტორია',          'ჩატის ისტორიის წაშლა'],
@@ -386,7 +388,56 @@ function _tmGo(args) {
   if (!els.length) { _tmL('ter', 'ზონა ვერ მოიძებნა: "' + label + '"'); return; }
   fitAreas(label); closeTerm();
 }
-function _tmLegend() { toggleQuest(); _tmL('tok', 'ლეგენდა: toggled'); }
+function _tmLegend(args) {
+  var sub = (args[0] || '').trim();
+  if (sub === 'რედაქტირება' || sub === 'edit') { _tmLegendEditOpen(); return; }
+  toggleQuest();
+  _tmL('tok', 'ლეგენდა: toggled');
+}
+
+// Open the multiline editor for the main "?" legend text.
+function _tmLegendEditOpen() {
+  var p = document.getElementById('questPopup');
+  if (!p) { _tmL('ter', '✗ ლეგენდის ელემენტი ვერ მოიძებნა'); return; }
+  var current = p.dataset.full || p.textContent || '';
+
+  if (!_tmMulti) tmToggleMulti();
+  document.getElementById('tmTa').value = current;
+  _tmTaResize();
+  _tmEditObj   = '__legend__';
+  _tmEditMode  = 'legend';
+  _tmEditLabel = 'მთავარი ლეგენდა';
+
+  _tmL('tsy', '─── მთავარი ლეგენდა ──────────────');
+  _tmL('tdm', 'Ctrl+Enter — შენახვა · Esc — გაუქმება');
+}
+
+// Save the multiline editor content as the new legend text — updates the
+// live popup immediately and pushes the override to Supabase for every viewer.
+async function _tmSaveLegend(text) {
+  var p = document.getElementById('questPopup');
+  if (p) {
+    p.dataset.full = text;
+    if (p.style.display === 'block') {
+      p.textContent = '';
+      if (typeof _typewriter === 'function') _typewriter(p, text, 60); else p.textContent = text;
+    }
+  }
+
+  var label = _tmEditLabel;
+  _tmEditObj = null; _tmEditMode = null; _tmEditMenuCtx = null; _tmEditLabel = null;
+  document.getElementById('tmTa').value = '';
+  if (_tmMulti) tmToggleMulti();
+
+  _tmL('tdm', '↑ ' + label + ' — ვინახავ...');
+  if (typeof window.legendOverrideSave !== 'function') {
+    _tmL('ter', '✗ legendOverrideSave ვერ მოიძებნა (runtime.js?)');
+    return;
+  }
+  var res = await window.legendOverrideSave(text);
+  if (res === true) _tmL('tok', label + ' — შენახულია ✓ (ყველა viewer-ს ეჩვენება)');
+  else _tmL('ter', '✗ Supabase: ' + (res && res.msg ? res.msg : 'უცნობი'));
+}
 function _tmMenu() { closeTerm(); toggleMenu(); }
 function _tmVada(args) {
   var n = parseInt(args[0]);
