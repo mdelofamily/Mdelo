@@ -239,15 +239,21 @@ async function _tmRun(raw) {
   }
   var full = text.slice(1);
 
-  // ── exact macro-name match (local scope wins over shared) — checked before
-  //    normal dispatch, so a saved shortcut behaves like a brand-new command ──
-  var macroCmds = _tmMacroResolve(full);
-  if (macroCmds) { await _tmRunChain(macroCmds); return; }
+  // A macro DEFINITION owns its own ";"-separated body — never let the generic
+  // resolver/splitter below tear it apart before it reaches _tmMacro.
+  var isMacroDef = /^macro\s+(local|საერთო)\s+/.test(full) && full.indexOf(':=') >= 0;
 
-  // ── generic ";"-chaining: only splits where ";" is followed by "/",
-  //    so a stray ";" inside ordinary item text is left alone ──
-  var chainParts = _tmSplitChain(full);
-  if (chainParts.length > 1) { await _tmRunChain(chainParts); return; }
+  if (!isMacroDef) {
+    // ── exact macro-name match (local scope wins over shared) — checked before
+    //    normal dispatch, so a saved shortcut behaves like a brand-new command ──
+    var macroCmds = _tmMacroResolve(full);
+    if (macroCmds) { await _tmRunChain(macroCmds); return; }
+
+    // ── generic ";"-chaining: only splits where ";" is followed by "/",
+    //    so a stray ";" inside ordinary item text is left alone ──
+    var chainParts = _tmSplitChain(full);
+    if (chainParts.length > 1) { await _tmRunChain(chainParts); return; }
+  }
 
   var parts = full.split(/\s+/), cmd = parts[0], args = parts.slice(1);
   var map = {
@@ -725,27 +731,38 @@ async function _tmMenuEdit(args) {
 }
 
 // Serialize an item into editable plain text for the multiline textarea.
-// progress items keep their value on a trailing "NN%" line so it round-trips.
+// Line 1 is a tagged "[emoji: X]" line so it can't be confused with real
+// label content — progress items also keep their value on a trailing "NN%" line.
 function _tmMenuItemToEditText(itObj) {
+  var emoji = itObj.emoji || (itObj.type === 'progress' ? '📊' : '•');
+  var head  = '[emoji: ' + emoji + ']';
   if (itObj.type === 'progress') {
-    return (itObj.label || '') + '\n\n' + (itObj.value != null ? itObj.value : 0) + '%';
+    return head + '\n' + (itObj.label || '') + '\n\n' + (itObj.value != null ? itObj.value : 0) + '%';
   }
-  return itObj.label || '';
+  return head + '\n' + (itObj.label || '');
 }
 
-// Parse the textarea content back into { label, value } on save.
-function _tmParseMenuEditText(text, type) {
+// Parse the textarea content back into { emoji, label, value } on save.
+// If line 1 isn't a valid "[emoji: X]" tag (e.g. accidentally edited away),
+// `fallbackEmoji` (the item's current emoji) is kept instead of guessing —
+// nothing gets silently swallowed into the label.
+function _tmParseMenuEditText(text, type, fallbackEmoji) {
+  var lines = text.split('\n');
+  var emoji = fallbackEmoji || (type === 'progress' ? '📊' : '•');
+  var tagMatch = /^\[emoji:\s*(.*)\]$/.exec((lines[0] || '').trim());
+  if (tagMatch) { emoji = tagMatch[1].trim() || emoji; lines.shift(); }
+  var rest = lines;
+
   if (type === 'progress') {
-    var lines = text.split('\n');
-    while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
-    var last  = lines.length ? lines[lines.length - 1].trim() : '';
+    while (rest.length && rest[rest.length - 1].trim() === '') rest.pop();
+    var last  = rest.length ? rest[rest.length - 1].trim() : '';
     var m     = /^(\d{1,3})%?$/.exec(last);
-    var value = null, labelLines = lines;
-    if (m) { value = Math.max(0, Math.min(100, parseInt(m[1]))); labelLines = lines.slice(0, -1); }
+    var value = null, labelLines = rest;
+    if (m) { value = Math.max(0, Math.min(100, parseInt(m[1]))); labelLines = rest.slice(0, -1); }
     while (labelLines.length && labelLines[labelLines.length - 1].trim() === '') labelLines.pop();
-    return { label: labelLines.join('\n').trim(), value: value };
+    return { emoji: emoji, label: labelLines.join('\n').trim(), value: value };
   }
-  return { label: text.trim(), value: null };
+  return { emoji: emoji, label: rest.join('\n').trim(), value: null };
 }
 
 // Open the multiline editor for item [idx] of `node`.
@@ -759,6 +776,7 @@ function _tmMenuEditOpen(node, idx, itObj) {
   _tmEditLabel   = '[' + idx + '] ' + (node.title || '');
 
   _tmL('tsy', '─── [' + idx + '] ' + (node.title || '') + ' ──────────────');
+  _tmL('tdm', 'ხაზი 1 — [emoji: X], მხოლოდ X გამოცვალე');
   _tmL('tdm', 'Ctrl+Enter — შენახვა · Esc — გაუქმება');
 }
 
@@ -775,12 +793,14 @@ async function _tmSaveMenuItem(text) {
     return;
   }
 
-  var parsed = _tmParseMenuEditText(text, ctx.type);
-  var itObj  = typeof node.items[idx] === 'string' ? { type: ctx.type, emoji: '•' } : node.items[idx];
+  var existing      = node.items[idx];
+  var currentEmoji  = (existing && typeof existing === 'object' && existing.emoji) ? existing.emoji : (ctx.type === 'progress' ? '📊' : '•');
+  var parsed        = _tmParseMenuEditText(text, ctx.type, currentEmoji);
+  var itObj         = typeof existing === 'string' ? { type: ctx.type } : existing;
   itObj.type  = ctx.type;
+  itObj.emoji = parsed.emoji;
   itObj.label = parsed.label;
   if (ctx.type === 'progress' && parsed.value != null) itObj.value = parsed.value;
-  if (!itObj.emoji) itObj.emoji = ctx.type === 'progress' ? '📊' : '•';
   node.items[idx] = itObj;
 
   var label = _tmEditLabel;
