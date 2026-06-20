@@ -562,6 +562,10 @@ function _dlgShowNode(nodeId, selectedLabel) {
         if (btn.flags && btn.flags.length) {
           btn.flags.forEach(function(f) { if (typeof flagSet === 'function') flagSet(f); });
         }
+        // [$macro_name] — run a saved console macro (window.runMacro, terminal.js)
+        if (btn.cmds && btn.cmds.length) {
+          btn.cmds.forEach(function(c) { if (typeof window.runMacro === 'function') window.runMacro(c); });
+        }
         if (btn.nextNode && _dlgNodes[btn.nextNode]) { _dlgShowNode(btn.nextNode, btn.label); }
         else {
           if (_dlgActive && typeof completeDialog === 'function') completeDialog(_dlgActive);
