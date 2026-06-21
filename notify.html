@@ -203,6 +203,17 @@ async function send() {
 
     if (res.ok) {
       toast("✅ გაიგზავნა!");
+      // push-fetch (Scope C) — non-blocking, independent of the notifications insert above
+      fetch(SUPABASE_URL + "/functions/v1/send-push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": SUPABASE_KEY },
+        body: JSON.stringify({
+          map_id: "მდელო",
+          title: "მდელო",
+          body: sender + " — " + text,
+          url: linked ? ("#area=" + encodeURIComponent(linked)) : "/"
+        })
+      }).catch(() => {});
       document.getElementById("text").value = "";
       document.getElementById("detail").value = "";
       document.getElementById("linked_area").value = "";
