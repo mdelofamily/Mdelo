@@ -155,6 +155,71 @@ function fitToBg() {
   toast("✓ " + COLS + "×" + ROWS);
 }
 
+// ── MAP RESIZE ──
+/**
+ * Resize the map to newCols × newRows.
+ * - Growing: existing tiles preserved, new cells filled with "".
+ * - Shrinking: tiles outside new bounds are dropped; objects and
+ *   hotAreas that fall fully or partially outside the new bounds
+ *   are removed (to avoid orphaned out-of-bounds data).
+ * - Always clears undo history (different-shaped snapshots are invalid).
+ */
+function resizeMap(newCols, newRows) {
+  newCols = Math.floor(Number(newCols));
+  newRows = Math.floor(Number(newRows));
+  if (!Number.isFinite(newCols) || !Number.isFinite(newRows) || newCols < 1 || newRows < 1) {
+    toast("⚠ არასწორი ზომა");
+    return;
+  }
+  if (newCols === COLS && newRows === ROWS) { toast("ზომა უცვლელია"); return; }
+
+  const big = newCols * newRows;
+  if (big > 150 * 150) {
+    if (!confirm("⚠ " + newCols + "×" + newRows + " მძიმე ზომაა მობილურზე (memory).\nგავაგრძელო?")) return;
+  }
+  if (!confirm("რუკა → " + newCols + "×" + newRows + "?\n(" + COLS + "×" + ROWS + " → " + newCols + "×" + newRows + ")")) return;
+
+  const nm  = Array.from({ length: newRows }, (_, r) =>
+    Array.from({ length: newCols }, (_, c) => (r < ROWS && c < COLS ? map[r][c] : "")));
+  const nom = Array.from({ length: newRows }, (_, r) =>
+    Array.from({ length: newCols }, (_, c) => (r < ROWS && c < COLS ? overlayMap[r][c] : "")));
+
+  // Drop objects that no longer fully fit inside the new bounds.
+  const keptObjects = [];
+  let droppedObjects = 0;
+  objects.forEach(o => {
+    const fits = o.x >= 0 && o.y >= 0 && (o.x + o.cols) <= newCols && (o.y + o.rows) <= newRows;
+    if (fits) keptObjects.push(o); else droppedObjects++;
+  });
+
+  // Drop hotAreas that no longer fully fit inside the new bounds.
+  const keptAreas = [];
+  let droppedAreas = 0;
+  hotAreas.forEach(a => {
+    const fits = a.x1 >= 0 && a.y1 >= 0 && a.x2 <= newCols && a.y2 <= newRows;
+    if (fits) keptAreas.push(a); else droppedAreas++;
+  });
+
+  COLS = newCols; ROWS = newRows;
+  map = nm; overlayMap = nom;
+  objects  = keptObjects;
+  hotAreas = keptAreas;
+  hist = [];
+  bgLayerDirty = true;
+
+  rebuildOff(); centerView(); scheduleRender();
+
+  let msg = "✓ " + COLS + "×" + ROWS;
+  if (droppedObjects || droppedAreas) {
+    msg += " (გაიწმინდა: ";
+    const parts = [];
+    if (droppedObjects) parts.push(droppedObjects + " ობიექტი");
+    if (droppedAreas)   parts.push(droppedAreas + " არეალი");
+    msg += parts.join(", ") + ")";
+  }
+  toast(msg);
+}
+
 // ── SPOT POPUP ──
 function showSpotPopup(col, row, clientX, clientY) {
   _spotCell = { col, row }; _spotZoom = 1;
@@ -558,6 +623,7 @@ window.setBgOp         = setBgOp;
 window.toggleBgVis     = toggleBgVis;
 window.removeBg        = removeBg;
 window.fitToBg         = fitToBg;
+window.resizeMap       = resizeMap;
 window.showSpotPopup   = showSpotPopup;
 window.closeSpotPopup  = closeSpotPopup;
 window.setSpotZoom     = setSpotZoom;
