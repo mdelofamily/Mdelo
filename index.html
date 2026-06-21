@@ -316,6 +316,18 @@ body{display:flex;flex-direction:column;}
         <div class="bdot"    onclick="setBrush(5,this)">5×</div>
         <div class="bdot"    onclick="setBrush(7,this)">7×</div>
       </div>
+      <div style="border-top:1px solid var(--border);padding:10px 8px 4px;display:flex;flex-direction:column;gap:6px;">
+        <span style="font-size:12px;color:var(--muted);">📐 რუკის ზომა (cols × rows)</span>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <input id="resizeColsInp" type="number" min="1" max="500" placeholder="cols"
+            style="flex:1;min-width:0;background:var(--bg);border:2px solid var(--border);color:var(--text);font-family:monospace;font-size:14px;padding:6px 8px;border-radius:4px;">
+          <span style="color:var(--muted);">×</span>
+          <input id="resizeRowsInp" type="number" min="1" max="500" placeholder="rows"
+            style="flex:1;min-width:0;background:var(--bg);border:2px solid var(--border);color:var(--text);font-family:monospace;font-size:14px;padding:6px 8px;border-radius:4px;">
+          <button class="bxbtn" style="border-color:var(--accent);color:var(--accent);flex-shrink:0;"
+            onclick="resizeMap(document.getElementById('resizeColsInp').value, document.getElementById('resizeRowsInp').value)">⤢ შეცვლა</button>
+        </div>
+      </div>
     </div>
     <div id="tabLegend" style="display:none;"></div>
   </div>
@@ -459,7 +471,7 @@ body{display:flex;flex-direction:column;}
 <script src="js/state.js"></script>
 <script src="js/tile-engine.js"></script>
 <script src="js/render.js"></script>
-<script src="js/tools.js?v=5"></script>
+<script src="js/tools.js?v=6"></script>
 <script src="js/objects.js"></script>
 <script src="js/bulk-parser.js"></script>
 <script src="js/ui-palette.js"></script>
