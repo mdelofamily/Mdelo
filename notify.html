@@ -95,6 +95,10 @@ const HEADERS = {
   "Authorization": "Bearer " + SUPABASE_KEY
 };
 
+// send-push Edge Function checks the NEW publishable key format (sb_publishable_...),
+// not the legacy anon JWT used everywhere else for REST calls — separate constant.
+const SEND_PUSH_APIKEY = "sb_publishable_soE_2V-VW_fIu0DyM6QdzQ_TOvYNxF2";
+
 // restore sender name
 const savedName = localStorage.getItem("mdelo_sender");
 if (savedName) {
@@ -206,7 +210,7 @@ async function send() {
       // push-fetch (Scope C) — non-blocking, independent of the notifications insert above
       fetch(SUPABASE_URL + "/functions/v1/send-push", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "apikey": SUPABASE_KEY },
+        headers: { "Content-Type": "application/json", "apikey": SEND_PUSH_APIKEY },
         body: JSON.stringify({
           map_id: "მდელო",
           title: "მდელო",
