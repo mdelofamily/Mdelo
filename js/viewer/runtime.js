@@ -542,6 +542,12 @@ function _dlgShowNode(nodeId, selectedLabel) {
             headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Prefer': 'return=minimal' },
             body: JSON.stringify({ type: nType, symbol: nSymbol, text: notifyTxt, sender: sender, linked_area: btn.area || '' })
           }).catch(() => {});
+          // push-fetch (Scope C) — non-blocking, independent of the notifications insert above
+          fetch(SUPA_URL + '/functions/v1/send-push', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY },
+            body: JSON.stringify({ map_id: _MAP_ID, title: 'მდელო', body: notifyTxt, url: btn.area ? ('#area=' + encodeURIComponent(btn.area)) : '/' })
+          }).catch(() => {});
         }
         if (btn.link) {
           if (btn.link.startsWith('menu:')) { _gmGoToSlug(btn.link.slice(5).trim()); }
