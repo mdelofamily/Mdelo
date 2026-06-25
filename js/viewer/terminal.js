@@ -482,10 +482,11 @@ function _tmMenuOpenPath(segs) {
   }
 
   var gm = document.getElementById('gameMenu');
-  if (!gm.classList.contains('open')) toggleMenu();
+  var wasOpen = gm.classList.contains('open');
+  if (!wasOpen) toggleMenu();
 
   if (node.items && node.items.length) {
-    _gmOpenOverlay(node, nodes, path);
+    _gmOpenOverlay(node, nodes, path, !wasOpen);
     if (itemIdx != null) {
       setTimeout(function () {
         var body = document.getElementById('gmOverlayBody');

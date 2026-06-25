@@ -448,8 +448,12 @@ function _gmShowPanel(nodes, path) {
 
 /* Open full-screen overlay for a leaf node's items.
    parentNodes = the siblings array the leaf lives in (so "back" can return to the exact same panel).
-   parentPath  = breadcrumb path TO that panel (not including the leaf itself). */
-function _gmOpenOverlay(node, parentNodes, parentPath) {
+   parentPath  = breadcrumb path TO that panel (not including the leaf itself).
+   standalone  = true when this overlay was opened directly (e.g. a console
+                 /მენიუ/.../N deep-link) without the person ever browsing the
+                 menu themselves — closing it should return straight to the
+                 map instead of revealing a menu panel they never opened. */
+function _gmOpenOverlay(node, parentNodes, parentPath, standalone) {
   const ov   = document.getElementById('gmOverlay');
   const body = document.getElementById('gmOverlayBody');
   const titleEl = document.getElementById('gmOverlayTitle');
@@ -475,7 +479,7 @@ function _gmOpenOverlay(node, parentNodes, parentPath) {
   document.getElementById('gmOverlayClose').onclick = () => {
     ov.classList.remove('open');
     document.getElementById('gameMenu').classList.remove('ov-open');
-    _gmShowPanel(parentNodes, parentPath);
+    if (standalone) { toggleMenu(); } else { _gmShowPanel(parentNodes, parentPath); }
   };
 }
 
