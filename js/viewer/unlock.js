@@ -278,38 +278,17 @@
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Auto-hook: intercept #tmIn keydown if terminal.js doesn't already handle
-  // /flag commands. Runs after DOMContentLoaded.
+  // NOTE: terminal.js now owns /flag dispatch directly (delegates to
+  // unlockHandleCmd via _tmFlagDelegate) for both single-line and multiline
+  // input. The old capture-phase #tmIn auto-hook was removed — it only
+  // covered the single-line path and is now redundant/dead weight.
   // ─────────────────────────────────────────────────────────────────────────
-  function _hookTerminalInput() {
-    var inp = document.getElementById('tmIn');
-    if (!inp || inp._unlockHooked) return;
-    inp._unlockHooked = true;
-
-    inp.addEventListener('keydown', function (e) {
-      if (e.key !== 'Enter') return;
-      var raw = inp.value.trim();
-      if (!raw) return;
-      if (raw.charAt(0) !== '/') return;
-
-      var parts = raw.slice(1).split(/\s+/);
-      if (parts[0].toLowerCase() !== 'flag') return;
-
-      // We handle /flag — prevent terminal.js from seeing it as unknown
-      e.stopImmediatePropagation();
-      // Let the default submit finish first, then process
-      setTimeout(function () {
-        unlockHandleCmd(parts);
-      }, 0);
-    }, true); // capture phase — runs before terminal.js listener
-  }
 
   // ─────────────────────────────────────────────────────────────────────────
   // Init
   // ─────────────────────────────────────────────────────────────────────────
   function unlockInit() {
     _restoreAreas();
-    _hookTerminalInput();
   }
 
   if (document.readyState === 'loading') {
