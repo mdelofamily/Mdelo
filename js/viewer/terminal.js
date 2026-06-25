@@ -13,8 +13,9 @@ var _tmBooted = false;
 var _tmEditObj = null;     // truthy sentinel while an edit session is open (dlg objKey, or menu node id)
 var _tmEditMode = null;    // 'dlg' | 'menuItem' | null
 var _tmEditMenuCtx = null; // { node, idx, type } — set only when _tmEditMode === 'menuItem'
+var _tmEditBuf = null;     // raw content buffered from a chain segment, consumed by /შეყვანა
 var _tmEditLabel = null;   // human-readable label shown in cancel/header messages
-var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/marker','/დახურვა','/flag','/nick','/me','/who','/color','/help','/pwd','/ls','/cd','/md','/rm','/edit','/ფოთოლი','/macro'];
+var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/marker','/დახურვა','/flag','/nick','/me','/who','/color','/help','/pwd','/ls','/cd','/md','/rm','/edit','/ფოთოლი','/macro'];
 
 function toggleTerm() { _tmOpen ? closeTerm() : _tmOpen_(); }
 function _tmOpen_() {
@@ -25,7 +26,7 @@ function _tmOpen_() {
 }
 function closeTerm() {
   // cancel edit mode silently on close
-  if (_tmEditObj) { _tmEditObj = null; _tmEditMode = null; _tmEditMenuCtx = null; _tmEditLabel = null; document.getElementById('tmTa').value = ''; if (_tmMulti) tmToggleMulti(); }
+  if (_tmEditObj) { _tmEditObj = null; _tmEditMode = null; _tmEditMenuCtx = null; _tmEditLabel = null; _tmEditBuf = null; document.getElementById('tmTa').value = ''; if (_tmMulti) tmToggleMulti(); }
   _tmOpen = false; _tmFull = false;
   var t = document.getElementById('mdlTerm');
   t.classList.remove('open', 'tmfull');
@@ -273,6 +274,7 @@ async function _tmRun(raw) {
     'ლეგენდა':     _tmLegend,
     'მენიუ':       _tmMenu,
     'გახსნა':      _tmOpenCmd,
+    'შეყვანა':     _tmSubmitCmd,
     'სრული':       tmToggleFull,
     'ისტორია':     _histClear,
     'ვადა':        _tmVada,
@@ -310,6 +312,7 @@ function _tmHelp() {
     ['/ლეგენდა რედაქტირება', 'მთავარი ლეგენდის ტექსტის რედაქტირება'],
     ['/მენიუ',            'მენიუს toggle'],
     ['/გახსნა',           'ტერმინალის გახსნა (macro/window hook-ისთვის)'],
+    ['/შეყვანა',          'Enter/Send — ღია edit-სესიის submit (macro-chain-ისთვის)'],
     ['/სრული',            'სრული ↔ ნახევარი'],
     ['/ისტორია',          'ჩატის ისტორიის წაშლა'],
     ['/ვადა [N]',         'ისტ. შენახვა N დღე'],
@@ -435,7 +438,7 @@ async function _tmSaveLegend(text) {
   }
 
   var label = _tmEditLabel;
-  _tmEditObj = null; _tmEditMode = null; _tmEditMenuCtx = null; _tmEditLabel = null;
+  _tmEditObj = null; _tmEditMode = null; _tmEditMenuCtx = null; _tmEditLabel = null; _tmEditBuf = null;
   document.getElementById('tmTa').value = '';
   if (_tmMulti) tmToggleMulti();
 
@@ -452,6 +455,21 @@ function _tmMenu() { closeTerm(); toggleMenu(); }
 function _tmOpenCmd() {
   if (!_tmOpen) _tmOpen_();
   _tmL('tok', 'ტერმინალი გახსნილია');
+}
+
+// ── /შეყვანა — Enter/Send equivalent for macro chains ──
+// Submits content into whichever edit session is currently open (dlg/menuItem/
+// legend), exactly as pressing the ➤ button would. Content comes from either
+// a buffered chain segment (_tmEditBuf, set by _tmRunChain) or, if typed
+// directly rather than via a macro, whatever's already sitting in #tmTa.
+function _tmSubmitCmd() {
+  if (!_tmEditObj) { _tmL('ter', '/შეყვანა: ღია edit-სესია არ მოიძებნა'); return; }
+  var v = (_tmEditBuf != null) ? _tmEditBuf : document.getElementById('tmTa').value.trim();
+  _tmEditBuf = null;
+  if (!v) { _tmL('ter', '/შეყვანა: შესანახი ტექსტი არ მოიძებნა'); return; }
+  if (_tmEditMode === 'menuItem') { _tmSaveMenuItem(v); return; }
+  if (_tmEditMode === 'legend')   { _tmSaveLegend(v); return; }
+  _tmSaveDlg(v);
 }
 
 // ── /marker set|reset — local-only marker override (personal exploration) ──
@@ -647,6 +665,7 @@ function _tmEditCancel() {
   _tmEditMode = null;
   _tmEditMenuCtx = null;
   _tmEditLabel = null;
+  _tmEditBuf = null;
   document.getElementById('tmTa').value = '';
   if (_tmMulti) tmToggleMulti();
   _tmL('tdm', label + ' — გაუქმდა');
@@ -698,6 +717,7 @@ async function _tmSaveDlg(dsl) {
     _tmEditObj = null;
     _tmEditMode = null;
     _tmEditLabel = null;
+    _tmEditBuf = null;
     document.getElementById('tmTa').value = '';
     if (_tmMulti) tmToggleMulti();
     _tmL('tok', title + ' — შენახულია ✓  (ყველა viewer განახლდება)');
@@ -974,7 +994,7 @@ async function _tmSaveMenuItem(text) {
   var node = ctx.node, idx = ctx.idx;
   if (!node.items || !node.items[idx]) {
     _tmL('ter', '✗ item [' + idx + '] აღარ არსებობს');
-    _tmEditObj = null; _tmEditMode = null; _tmEditMenuCtx = null; _tmEditLabel = null;
+    _tmEditObj = null; _tmEditMode = null; _tmEditMenuCtx = null; _tmEditLabel = null; _tmEditBuf = null;
     document.getElementById('tmTa').value = '';
     if (_tmMulti) tmToggleMulti();
     return;
@@ -991,7 +1011,7 @@ async function _tmSaveMenuItem(text) {
   node.items[idx] = itObj;
 
   var label = _tmEditLabel;
-  _tmEditObj = null; _tmEditMode = null; _tmEditMenuCtx = null; _tmEditLabel = null;
+  _tmEditObj = null; _tmEditMode = null; _tmEditMenuCtx = null; _tmEditLabel = null; _tmEditBuf = null;
   document.getElementById('tmTa').value = '';
   if (_tmMulti) tmToggleMulti();
 
@@ -1020,12 +1040,46 @@ async function _tmMenuSaveNode(nodeId, fields) {
 // A macro IS a brand-new command: once saved, typing its exact name (with /) runs
 // the whole stored chain. Local scope takes precedence over shared on a name clash.
 var _TM_RESERVED = ['macro','marker','cd','md','rm','ls','pwd','edit','ფოთოლი','flag','nick','me','who','color','help',
-  'დახმარება','გასუფთავება','ინფო','მასშტაბი','ზონები','ობიექტები','დიალოგი','წასვლა','ლეგენდა','მენიუ','გახსნა','სრული','ისტორია','ვადა','ტექსტი','შეტყობინება','დახურვა'];
+  'დახმარება','გასუფთავება','ინფო','მასშტაბი','ზონები','ობიექტები','დიალოგი','წასვლა','ლეგენდა','მენიუ','გახსნა','შეყვანა','სრული','ისტორია','ვადა','ტექსტი','შეტყობინება','დახურვა'];
 
 // Split a raw (no leading "/") command line on ";" — only where ";" is followed
 // (after optional whitespace) by "/", so semicolons inside ordinary text are safe.
+// Splits a chain on ";" — but only when ";" is followed by "/" (so a stray
+// ";" inside ordinary command args is left alone) — PLUS treats any [...]
+// block as its own atomic segment: content inside brackets is never split
+// on ";" no matter what follows, and the brackets force a boundary on both
+// sides. This lets a macro safely carry free-form multi-word content (e.g.
+// the body for /edit + /შეყვანა) without it bleeding into a neighboring
+// command's args or being torn apart by a literal ";" in the text itself.
+//   /edit 0; [თავის ტექსტი; შესაძლოა ; აქაც]; /შეყვანა
 function _tmSplitChain(full) {
-  return full.split(/;\s*(?=\/)/).map(function (s) { return s.trim(); }).filter(Boolean);
+  var parts = [], buf = '', i = 0, n = full.length;
+  while (i < n) {
+    var ch = full[i];
+    if (ch === '[') {
+      if (buf.trim()) parts.push(buf);
+      buf = '';
+      var j = full.indexOf(']', i + 1);
+      if (j === -1) j = n;
+      parts.push(full.slice(i + 1, j));
+      i = j + 1;
+      while (i < n && /[\s;]/.test(full[i])) i++;
+      continue;
+    }
+    if (ch === ';') {
+      var rest = full.slice(i + 1).replace(/^\s+/, '');
+      if (rest.charAt(0) === '/' || rest.charAt(0) === '[') {
+        if (buf.trim()) parts.push(buf);
+        buf = '';
+        i++;
+        continue;
+      }
+    }
+    buf += ch;
+    i++;
+  }
+  if (buf.trim()) parts.push(buf);
+  return parts.map(function (s) { return s.trim(); }).filter(Boolean);
 }
 
 // Run a list of command strings (each with or without a leading "/") in order,
@@ -1034,6 +1088,16 @@ async function _tmRunChain(cmds) {
   for (var i = 0; i < cmds.length; i++) {
     var c = (cmds[i] || '').trim();
     if (!c) continue;
+
+    // While an edit session is open (_tmEditObj truthy), a segment that isn't
+    // an explicit "/" command is raw content for that session — buffer it for
+    // /შეყვანა to submit, instead of force-dispatching it as an unknown command.
+    if (_tmEditObj && c.charAt(0) !== '/') {
+      _tmEditBuf = c;
+      _tmL('ti', c);
+      continue;
+    }
+
     if (c.charAt(0) !== '/') c = '/' + c;
     _tmL('ti', c);
     await _tmRun(c);
