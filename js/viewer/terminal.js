@@ -445,6 +445,18 @@ var COMMAND_REGISTRY = {
     params: [],
     desc: 'დახურვა [Esc]',
     handler: function (args) { return closeTerm(); } // takes no args itself
+  },
+
+  // ── Step 7: marker ──
+  // /marker set|reset keeps its own internal sub-action switch (same pattern
+  // as /flag → unlockHandleCmd and /ლეგენდა → _tmLegend): single entry, no
+  // `subs` block, _tmMarkerCmd does its own args[0]=sub / args.slice(1)=rest
+  // extraction exactly as before. Local-only (localStorage), per-device —
+  // unrelated to Supabase-synced notification/menu overrides.
+  marker: {
+    params: [], // _tmMarkerCmd parses its own sub-action (set/reset) + rest
+    desc: 'set|reset <სახელი> [?|!|~|-] — ლოკალური მარკერი (მხ. ეს device)',
+    handler: function (args) { return _tmMarkerCmd(args); }
   }
 };
 
@@ -512,8 +524,7 @@ async function _tmRun(raw) {
   // ── legacy map dispatch (commands not yet migrated to COMMAND_REGISTRY) ──
   var map = {
     'მენიუ':       _tmMenu,
-    'macro':       _tmMacro,
-    'marker':      _tmMarkerCmd
+    'macro':       _tmMacro
   };
   var fn = map[cmd];
   if (fn) { await fn(args); return; }
