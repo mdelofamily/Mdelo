@@ -457,6 +457,20 @@ var COMMAND_REGISTRY = {
     params: [], // _tmMarkerCmd parses its own sub-action (set/reset) + rest
     desc: 'set|reset <სახელი> [?|!|~|-] — ლოკალური მარკერი (მხ. ეს device)',
     handler: function (args) { return _tmMarkerCmd(args); }
+  },
+
+  // ── Step 8: macro ──
+  // /macro has two different things living behind args[0]: a literal
+  // sub-action (ls/rm), OR the scope word (local/საერთო) of a `:=` assignment
+  // — _tmMacro tells them apart itself by re-joining the raw args and looking
+  // for ":=" before treating args[0] as scope. This doesn't fit a clean
+  // registry `subs` split (ls/rm aren't peers of local/საერთო — they're a
+  // separate branch entirely), so same Variant A approach as /flag, /marker,
+  // /ლეგენდა: one entry, no `subs`, full args array passed through untouched.
+  macro: {
+    params: [], // _tmMacro parses ls / rm <scope> <name> / <scope> <name> := cmd;cmd... itself
+    desc: 'local|საერთო <სახელი> := cmd1;cmd2... · ls · rm local|საერთო <სახელი>',
+    handler: function (args) { return _tmMacro(args); }
   }
 };
 
@@ -523,8 +537,7 @@ async function _tmRun(raw) {
 
   // ── legacy map dispatch (commands not yet migrated to COMMAND_REGISTRY) ──
   var map = {
-    'მენიუ':       _tmMenu,
-    'macro':       _tmMacro
+    'მენიუ':       _tmMenu
   };
   var fn = map[cmd];
   if (fn) { await fn(args); return; }
