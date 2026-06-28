@@ -259,6 +259,16 @@ var COMMAND_REGISTRY = {
   flag: {
     params: [], // unlockHandleCmd parses its own sub-action + arg from the array
     desc: 'flag სისტემა — set/clear/check/list/reset',
+    // Multi-row /help override — mirrors unlock.js's own header-comment list
+    // of sub-actions exactly (single source of truth stays in unlock.js;
+    // this is just its help-row mirror, same Variant A pattern as elsewhere).
+    helpLines: [
+      ['/flag set <სახელი>',   'flag-ის დაყენება'],
+      ['/flag clear <სახელი>', 'flag-ის წაშლა'],
+      ['/flag check <სახელი>', 'flag-ის შემოწმება'],
+      ['/flag list',           'ყველა flag-ის სია'],
+      ['/flag reset',          'ყველა flag-ის გასუფთავება']
+    ],
     handler: function (args) {
       if (typeof unlockHandleCmd !== 'function') {
         _tmL('ter', '/flag: unlock.js არ არის ჩატვირთული'); return;
@@ -286,7 +296,7 @@ var COMMAND_REGISTRY = {
 
   cd: {
     params: [
-      { name: 'path', type: 'text', desc: 'სექციის სახელი, ".." ან slash-path ("/a/b", "a/b")' }
+      { name: 'სახელი|..|/|a/b/c', type: 'text', desc: 'სექციის სახელი, ".." ან slash-path ("/a/b", "a/b")' }
     ],
     desc: 'მენიუში გადასვლა — სახელით, ".."-ით root-ზე/მშობელზე ასასვლელად, ან slash-path-ით',
     handler: function (args) { return _tmMenuCd(args); }
@@ -294,8 +304,8 @@ var COMMAND_REGISTRY = {
 
   md: {
     params: [
-      { name: 'name', type: 'text', desc: 'ახალი სექციის სახელი' },
-      { name: 'icon', type: 'text', optional: true, desc: 'ემოჯი (default 📁)' }
+      { name: 'სახელი', type: 'text', desc: 'ახალი სექციის სახელი' },
+      { name: 'ემოჯი', type: 'text', optional: true, desc: 'ემოჯი (default 📁)' }
     ],
     desc: 'ახალი ქვე-სექციის შექმნა მიმდინარე მდებარეობაში',
     handler: function (args) { return _tmMenuMd(args); }
@@ -303,7 +313,7 @@ var COMMAND_REGISTRY = {
 
   rm: {
     params: [
-      { name: 'target', type: 'text', desc: 'სექციის სახელი ან item-ის რიცხვითი ინდექსი' }
+      { name: 'სახელი|N', type: 'text', desc: 'სექციის სახელი ან item-ის რიცხვითი ინდექსი' }
     ],
     desc: 'სექციის ან item-ის წაშლა (სახელით ან ინდექსით)',
     handler: function (args) { return _tmMenuRm(args); }
@@ -311,8 +321,8 @@ var COMMAND_REGISTRY = {
 
   edit: {
     params: [
-      { name: 'index', type: 'number', desc: 'item-ის ინდექსი (/ls-ში ნანახი)' },
-      { name: 'content', type: 'text', optional: true, multiline: true,
+      { name: 'N', type: 'number', desc: 'item-ის ინდექსი (/ls-ში ნანახი)' },
+      { name: '...', type: 'text', optional: true, multiline: true,
         desc: 'ახალი ტექსტი/% — თუ გამოტოვებული, იხსნება multiline editor' }
     ],
     desc: 'item-ის შემცველობის რედაქტირება ინდექსით — inline ან multiline editor-ით',
@@ -325,6 +335,9 @@ var COMMAND_REGISTRY = {
   'ფოთოლი': {
     params: [], // _tmMenuLeaf parses its own sub-action (ტექსტი/ინდიკატორი) + args
     desc: 'item-ის დამატება მიმდინარე სექციაში — ტექსტი/ინდიკატორი',
+    helpLines: [
+      ['/ფოთოლი ტექსტი|ინდიკატორი [ემოჯი]', 'item-ის დამატება მიმდინარე კვანძში']
+    ],
     handler: function (args) { return _tmMenuLeaf(args); }
   },
 
@@ -360,7 +373,7 @@ var COMMAND_REGISTRY = {
 
   'მასშტაბი': {
     params: [
-      { name: 'level', type: 'number', desc: 'zoom დონე 0.25–6' }
+      { name: 'N', type: 'number', desc: 'zoom დონე 0.25–6' }
     ],
     desc: 'zoom 0.25–6',
     handler: function (args) { return _tmZoom(args); }
@@ -380,7 +393,7 @@ var COMMAND_REGISTRY = {
 
   'დიალოგი': {
     params: [
-      { name: 'objectName', type: 'text', optional: true, desc: 'ობიექტის სახელი' }
+      { name: 'სახელი', type: 'text', optional: true, desc: 'ობიექტის სახელი' }
     ],
     desc: 'DSL რედაქტირება · Ctrl+Enter შესანახად',
     handler: function (args) { return _tmDlgEdit(args); }
@@ -388,7 +401,7 @@ var COMMAND_REGISTRY = {
 
   'წასვლა': {
     params: [
-      { name: 'areaName', type: 'text', desc: 'ზონის სახელი' }
+      { name: 'N', type: 'text', desc: 'ზონის სახელი' }
     ],
     desc: 'ზონაზე ნავიგაცია',
     handler: function (args) { return _tmGo(args); }
@@ -400,6 +413,10 @@ var COMMAND_REGISTRY = {
   'ლეგენდა': {
     params: [], // _tmLegend parses its own optional sub-action (რედაქტირება/edit)
     desc: 'აღწერას ჩვენა/დამალვა · "რედაქტირება" — მთავარი ლეგენდის ტექსტი',
+    helpLines: [
+      ['/ლეგენდა',            'აღწერას ჩვენა/დამალვა'],
+      ['/ლეგენდა რედაქტირება', 'მთავარი ლეგენდის ტექსტის რედაქტირება']
+    ],
     handler: function (args) { return _tmLegend(args); }
   },
 
@@ -429,7 +446,7 @@ var COMMAND_REGISTRY = {
 
   'ვადა': {
     params: [
-      { name: 'days', type: 'number', optional: true, desc: 'შენახვის ვადა დღეებში (1–365)' }
+      { name: 'N', type: 'number', optional: true, desc: 'შენახვის ვადა დღეებში (1–365)' }
     ],
     desc: 'ისტ. შენახვა N დღე',
     handler: function (args) { return _tmVada(args); }
@@ -456,6 +473,10 @@ var COMMAND_REGISTRY = {
   marker: {
     params: [], // _tmMarkerCmd parses its own sub-action (set/reset) + rest
     desc: 'set|reset <სახელი> [?|!|~|-] — ლოკალური მარკერი (მხ. ეს device)',
+    helpLines: [
+      ['/marker set <სახელი> ?/!/~/-', 'მარკერი — ლოკალური (მხ. შენ)'],
+      ['/marker reset [სახელი]',       'მარკერი → საწყისზე (ერთი ან ყველა)']
+    ],
     handler: function (args) { return _tmMarkerCmd(args); }
   },
 
@@ -470,6 +491,12 @@ var COMMAND_REGISTRY = {
   macro: {
     params: [], // _tmMacro parses ls / rm <scope> <name> / <scope> <name> := cmd;cmd... itself
     desc: 'local|საერთო <სახელი> := cmd1;cmd2... · ls · rm local|საერთო <სახელი>',
+    helpLines: [
+      ['/macro local <სახელი> := ...',  'პერსონალური შორთკატის შექმნა'],
+      ['/macro საერთო <სახელი> := ...', 'გაზიარებული შორთკატის შექმნა'],
+      ['/macro ls',                     'ყველა შორთკატის სია'],
+      ['/macro rm local|საერთო <სახელი>', 'შორთკატის წაშლა']
+    ],
     handler: function (args) { return _tmMacro(args); }
   },
 
@@ -490,6 +517,13 @@ var COMMAND_REGISTRY = {
   'მენიუ': {
     params: [],
     desc: 'მენიუ-პანელის გახსნა/დახურვა (deep-link: /მენიუ/სექცია/.../N)',
+    // Second row documents the deep-link syntax even though that syntax is
+    // matched by a separate regex in _tmRun and never reaches this entry's
+    // handler (see comment above) — it's a help-text pairing only.
+    helpLines: [
+      ['/მენიუ',              'მენიუს toggle'],
+      ['/მენიუ/სექცია/.../N', 'პირდაპირი ლინკი ნესტ. სექციაზე ან item-ზე']
+    ],
     handler: function (args) { return _tmMenu(); } // takes no args itself
   },
 
@@ -508,8 +542,8 @@ var COMMAND_REGISTRY = {
     params: [
       { name: 'typeChar', type: 'select', options: ['*', '!', '~', '+', '.'], optional: true,
         desc: '*ინფო  !გაფრთხ.  ~საფრთხე  +პროექტი  .მზადაა (default: ინფო)' },
-      { name: 'text', type: 'text', multiline: true, desc: 'შეტყობინების ტექსტი' },
-      { name: 'area', type: 'text', optional: true, prefix: '@@', desc: 'დაკავშირებული ზონა' }
+      { name: 'ტექსტი', type: 'text', multiline: true, desc: 'შეტყობინების ტექსტი' },
+      { name: 'ზონა', type: 'text', optional: true, prefix: '@@', desc: 'დაკავშირებული ზონა' }
     ],
     desc: 'პირდაპირი შეტყობინების გაგზავნა (Supabase + PWA push)',
     handler: function (args) {
@@ -589,58 +623,67 @@ async function _tmRun(raw) {
   _tmL('ter', 'უცნობი ბრძანა: "/' + cmd + '" — სცადე: /დახმარება');
 }
 
+// ── /help formatting helper ──────────────────────────────────────────────
+// Turns a registry entry's `params` array into the bracket/angle notation
+// _tmHelp displays, e.g. [{name:'index',type:'number'},{name:'content',
+// optional:true}] → "<index> [content]". A param's own `prefix` (e.g. '@@'
+// on /შეტყობინება's area param) is glued inside its bracket/angle pair;
+// `type:'select'` with `options` renders as a pipe-joined choice list
+// instead of the bare name (e.g. "*|!|~|+|.").
+function _tmFormatParam(p) {
+  var label = (p.type === 'select' && p.options) ? p.options.join('|') : p.name;
+  if (p.prefix) label = p.prefix + label;
+  return p.optional ? ('[' + label + ']') : ('<' + label + '>');
+}
+function _tmFormatCmdRow(name, entry) {
+  var parts = (entry.params || []).map(_tmFormatParam);
+  return '/' + name + (parts.length ? ' ' + parts.join(' ') : '');
+}
+
 // ── built-in commands ──
+// /help is now generated FROM COMMAND_REGISTRY, not a hand-maintained list —
+// adding/changing a command's params/desc/helpLines here automatically
+// updates what /დახმარება prints, with zero risk of the two drifting apart.
+//   - An entry with `helpLines` (Variant A: flag, marker, macro, ლეგენდა,
+//     ფოთოლი, მენიუ) prints those rows verbatim — these are the commands
+//     whose real syntax is an internal sub-action switch that a flat
+//     `params` array can't express as a single row.
+//   - Every other entry prints one auto-formatted row: /name + its params
+//     in <required>/[optional] notation (see _tmFormatCmdRow above).
+// Order follows Object.keys(COMMAND_REGISTRY) insertion order, which mirrors
+// the registry's own step-by-step migration grouping (flag → filesystem-
+// style menu commands → დახმარება/გასუფთავება → the 14-command batch →
+// marker → macro → მენიუ → შეტყობინება) — the same grouping the old
+// hardcoded list followed by hand.
 function _tmHelp() {
-  var list = [
-    ['/დახმარება',        'ბრძანების სია'],
-    ['/გასუფთავება',      'კონსოლის გასუფთავება'],
-    ['/ინფო',             'რუკის ინფორმაცია'],
-    ['/მასშტაბი [N]',     'zoom 0.25–6'],
-    ['/ზონები',           'ზონების სია'],
-    ['/ობიექტები',        'ობიექტები + dialogue სტატუსი'],
-    ['/დიალოგი [სახელი]', 'DSL რედაქტირება · Ctrl+Enter შესანახად'],
-    ['/წასვლა [N]',       'ზონაზე ნავიგაცია'],
-    ['/ლეგენდა',          'აღწერას ჩვენა/დამალვა'],
-    ['/ლეგენდა რედაქტირება', 'მთავარი ლეგენდის ტექსტის რედაქტირება'],
-    ['/მენიუ',            'მენიუს toggle'],
-    ['/მენიუ/სექცია/.../N', 'პირდაპირი ლინკი ნესტ. სექციაზე ან item-ზე'],
-    ['/გახსნა',           'ტერმინალის გახსნა (macro/window hook-ისთვის)'],
-    ['/შეყვანა',          'Enter/Send — ღია edit-სესიის submit (macro-chain-ისთვის)'],
-    ['/სრული',            'სრული ↔ ნახევარი'],
-    ['/ისტორია',          'ჩატის ისტორიის წაშლა'],
-    ['/ვადა [N]',         'ისტ. შენახვა N დღე'],
-    ['/ტექსტი',           'ჩატ ↔ ბრძანება mode'],
-    ['/შეტყობინება[*!~+.] ტექსტი [@@ზონა]', 'შეტყობინების გაგზავნა'],
-    ['/marker set <სახელი> ?/!/~/-', 'მარკერი — ლოკალური (მხ. შენ)'],
-    ['/marker reset [სახელი]', 'მარკერი → საწყისზე (ერთი ან ყველა)'],
-    ['/დახურვა',          'დახურვა  [Esc]'],
-    ['/flag set/clear/list', 'flag სისტემა'],
-    ['/nick სახელი',      'ნიკნეიმის შეცვლა'],
-    ['/me ტექსტი',        '* აქშნის მესიჯი'],
-    ['/who',              'ონლაინ სია'],
-    ['/color #hex',       'ნიკნეიმის ფერი'],
-    ['/pwd',              'მენიუს მიმდინარე გზა'],
-    ['/ls',               'მენიუს კვანძის შემცველობა'],
-    ['/cd [სახელი|..|/|a/b/c]', 'ნავიგაცია — ერთი ნაბიჯი ან slash-path'],
-    ['/md <სახელი> [ემოჯი]', 'ახალი ქვე-სექცია + ავტო-cd (default 📁)'],
-    ['/ფოთოლი ტექსტი|ინდიკატორი [ემოჯი]', 'item-ის დამატება მიმდინარე კვანძში'],
-    ['/rm <სახელი|N>',    'სექციის (სახელით) ან item-ის (ინდექსით) წაშლა'],
-    ['/edit <N>',         'item [N] — multiline რედაქტირება'],
-    ['/edit <N> <...>',   'item [N] — სწრაფი ერთხაზიანი ედიტი'],
-    ['/macro local <სახელი> := ...',  'პერსონალური შორთკატის შექმნა'],
-    ['/macro საერთო <სახელი> := ...', 'გაზიარებული შორთკატის შექმნა'],
-    ['/macro ls',         'ყველა შორთკატის სია'],
-    ['/macro rm local|საერთო <სახელი>', 'შორთკატის წაშლა']
-  ];
-  _tmL('tdm', _SEP); _tmL('tsy', '--- ბრძანები ---');
-  for (var i = 0; i < list.length; i++) {
-    var c = list[i][0], d = list[i][1];
-    var pad = c; while (pad.length < 24) pad += ' ';
-    _tmL('tnf', pad + d);
-  }
+  _tmL('tdm', _SEP);
+  _tmL('tsy', '--- ბრძანები ---');
+  Object.keys(COMMAND_REGISTRY).forEach(function (name) {
+    var entry = COMMAND_REGISTRY[name];
+    if (entry.helpLines) {
+      entry.helpLines.forEach(function (row) { _tmL('tnf', pad(row[0]) + row[1]); });
+    } else {
+      _tmL('tnf', pad(_tmFormatCmdRow(name, entry)) + entry.desc);
+    }
+  });
+  // /nick, /me, /who, /color live in chat.js / chat-hud.js — a separate
+  // subsystem, never migrated into COMMAND_REGISTRY (out of this refactor's
+  // scope) — so these four rows stay static here, exactly as before.
+  _tmL('tnf', pad('/nick სახელი') + 'ნიკნეიმის შეცვლა');
+  _tmL('tnf', pad('/me ტექსტი')   + '* აქშნის მესიჯი');
+  _tmL('tnf', pad('/who')         + 'ონლაინ სია');
+  _tmL('tnf', pad('/color #hex')  + 'ნიკნეიმის ფერი');
   _tmL('tdm', 'Tab — ავტოდასრულება   ↑↓ — ისტორია');
   _tmL('tdm', 'ტექსტი "/" გარეშე → ჩატის მესიჯი');
   _tmL('tdm', _SEP);
+
+  // column-align helper: pads a command string to a fixed width so the
+  // description column lines up — same 24-char width the old hardcoded
+  // list used, so auto-generated rows visually match it.
+  function pad(s) {
+    var W = 24;
+    return s.length >= W ? (s + ' ') : (s + new Array(W - s.length + 1).join(' '));
+  }
 }
 function _tmInfo() {
   var d = _CFG;
