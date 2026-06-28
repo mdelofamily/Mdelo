@@ -471,6 +471,26 @@ var COMMAND_REGISTRY = {
     params: [], // _tmMacro parses ls / rm <scope> <name> / <scope> <name> := cmd;cmd... itself
     desc: 'local|საერთო <სახელი> := cmd1;cmd2... · ls · rm local|საერთო <სახელი>',
     handler: function (args) { return _tmMacro(args); }
+  },
+
+  // ── Step 9: მენიუ (plain form only) ──
+  // /მენიუ has two structurally different entry points:
+  //   1. Plain "/მენიუ" — toggles the menu panel open/closed (closeTerm +
+  //      toggleMenu). Space-split args shape, fits the registry cleanly.
+  //   2. "/მენიუ/ა/ბ/2" — deep-link path syntax with literal "/" separators.
+  //      This NEVER reaches here as cmd="მენიუ": the whole "მენიუ/ა/ბ/2"
+  //      string is matched by the menuPathM regex earlier in _tmRun (before
+  //      the parts=full.split(/\s+/) line), because there's no whitespace
+  //      to split on — it's one token. That branch opens a leaf as a
+  //      standalone overlay (no menu panel underneath), a genuinely
+  //      different UI state from the plain toggle. It stays a permanent
+  //      regex special-case in _tmRun, same as /შეტყობინება — see scope
+  //      discussion: literal-syntax commands don't fit a space-split args
+  //      registry model, structurally, not as a migration-ordering choice.
+  'მენიუ': {
+    params: [],
+    desc: 'მენიუ-პანელის გახსნა/დახურვა (deep-link: /მენიუ/სექცია/.../N)',
+    handler: function (args) { return _tmMenu(); } // takes no args itself
   }
 };
 
@@ -536,9 +556,7 @@ async function _tmRun(raw) {
   if (regEntry) { await regEntry.handler(regArgs); return; }
 
   // ── legacy map dispatch (commands not yet migrated to COMMAND_REGISTRY) ──
-  var map = {
-    'მენიუ':       _tmMenu
-  };
+  var map = {};
   var fn = map[cmd];
   if (fn) { await fn(args); return; }
   if (typeof chatHandleInput === 'function' && chatHandleInput(text)) return;
