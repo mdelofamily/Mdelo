@@ -1832,11 +1832,243 @@ async function _tmIzivei(args) {
   _tmIziviBuilderOpen(scope, name, shared[name] || null);
 }
 
-// Builder-open placeholder — step 3 replaces this with the actual editor UI
-// (title/buttons/fields inline editing per IZIVEI_SCOPE scope item 6).
+// ── Izivei Builder UI (step 4) ────────────────────────────────────────────
+// Replaces the step-3 placeholder. Opens the SAME #izWin popup that
+// _tmIziviOpenWindow (runtime.js) uses for normal viewing, but in "edit
+// mode": instead of rendering fields[] as live widgets, it renders an
+// editor that lets the person assemble fields[] in the first place.
+//
+// Design decision (confirmed in chat): field-type selection is NEVER free
+// text. The person picks a command from a dropdown (collected from
+// COMMAND_REGISTRY's `izivei` hints), then a sub-action if that command has
+// one, and the param-schema for that exact sub-action is what gets rendered
+// as the value-inputs — exactly the same shape _tmIziviOpenWindow already
+// knows how to render and run. The person never types a "type" or a
+// "label" by hand; the registry already defines those.
+
+// Flattens COMMAND_REGISTRY into a picker-friendly list of
+// { cmd, sub, label, params } rows. `იზივეი` itself is excluded — letting a
+// button open the window-builder from inside a window is circular and not
+// useful. Commands with params:[] and no izivei hint (e.g. /გასუფთავება)
+// still get one param-less row, since those are valid single-link chains
+// too (a button that just clears the console, for instance).
+function _tmIziviCollectSchema() {
+  var rows = [];
+  Object.keys(COMMAND_REGISTRY).forEach(function (cmd) {
+    if (cmd === 'იზივეი') return; // no circular builder-inside-builder
+    var entry = COMMAND_REGISTRY[cmd];
+    if (entry.izivei && entry.izivei.length) {
+      entry.izivei.forEach(function (row) {
+        rows.push({
+          cmd: cmd,
+          sub: row.sub || null,
+          label: '/' + cmd + (row.sub ? ' ' + row.sub : ''),
+          params: row.params || []
+        });
+      });
+    } else if (!entry.params || !entry.params.length) {
+      rows.push({ cmd: cmd, sub: null, label: '/' + cmd, params: [] });
+    }
+    // commands with a flat params[] but no izivei hint and no sub-actions
+    // (rare — most either have one or the other) fall through unrepresented
+    // here; they're reachable via the raw-string escape hatch if ever added.
+  });
+  return rows;
+}
+
 // existing is the prior window-JSON if this is an edit/overwrite, else null.
 function _tmIziviBuilderOpen(scope, name, existing) {
-  _tmL('tok', '🛠 Izivei builder — scope:' + scope + ' name:"' + name + '"' + (existing ? ' (არსებულის ედიტი)' : ' (ახალი)'));
-  _tmL('tdm', '(builder UI ჯერ არ არსებობს — შემდეგი ნაბიჯი)');
+  closeHsPopup(); closeAreaPopup();
+  var schema = _tmIziviCollectSchema();
+  var draft = {
+    title: (existing && existing.title) || name,
+    fields: (existing && existing.fields) ? JSON.parse(JSON.stringify(existing.fields)) : []
+  };
+
+  document.getElementById('izWinTitle').textContent =
+    '🛠 ' + (existing ? 'ედიტი' : 'ახალი') + ' — ' + (scope === 'local' ? 'პერსონალური' : 'საერთო');
+  var body = document.getElementById('izWinBody');
+  body.innerHTML = '';
+  body._izFields = null; // builder mode — not the run-mode value cache
+
+  // --- title field ---
+  var titleRow = document.createElement('div');
+  titleRow.className = 'iz-field';
+  var titleLbl = document.createElement('label'); titleLbl.textContent = 'ფანჯრის სათაური';
+  var titleInp = document.createElement('input'); titleInp.type = 'text'; titleInp.value = draft.title;
+  titleInp.oninput = function () { draft.title = titleInp.value; };
+  titleRow.appendChild(titleLbl); titleRow.appendChild(titleInp);
+  body.appendChild(titleRow);
+
+  var fieldsContainer = document.createElement('div');
+  fieldsContainer.style.display = 'flex'; fieldsContainer.style.flexDirection = 'column'; fieldsContainer.style.gap = '8px';
+  body.appendChild(fieldsContainer);
+
+  function renderFieldsList() {
+    fieldsContainer.innerHTML = '';
+    draft.fields.forEach(function (field, idx) {
+      fieldsContainer.appendChild(_tmIziviBuilderFieldRow(field, idx, draft, renderFieldsList));
+    });
+  }
+  renderFieldsList();
+
+  // --- add-field control: command dropdown -> sub dropdown -> commit ---
+  var addRow = document.createElement('div');
+  addRow.className = 'iz-field';
+  var addLbl = document.createElement('label'); addLbl.textContent = '+ ღილაკის დამატება';
+  var addSel = document.createElement('select');
+  var placeholderOpt = document.createElement('option');
+  placeholderOpt.value = ''; placeholderOpt.textContent = '— ბრძანების ამორჩევა —';
+  addSel.appendChild(placeholderOpt);
+  schema.forEach(function (row, i) {
+    var o = document.createElement('option');
+    o.value = String(i); o.textContent = row.label;
+    addSel.appendChild(o);
+  });
+  addSel.onchange = function () {
+    if (addSel.value === '') return;
+    var picked = schema[+addSel.value];
+    draft.fields.push({
+      type: 'button',
+      label: picked.label,
+      chain: [{ cmd: picked.cmd, sub: picked.sub, params: picked.params, values: picked.params.map(function () { return ''; }) }]
+    });
+    addSel.value = '';
+    renderFieldsList();
+  };
+  addRow.appendChild(addLbl); addRow.appendChild(addSel);
+  body.appendChild(addRow);
+
+  // --- save / cancel ---
+  var saveBtn = document.createElement('button');
+  saveBtn.className = 'iz-btn';
+  saveBtn.textContent = '💾 შენახვა';
+  saveBtn.onclick = function () { _tmIziviBuilderSave(scope, name, draft); };
+  body.appendChild(saveBtn);
+
+  var cancelBtn = document.createElement('button');
+  cancelBtn.className = 'iz-btn';
+  cancelBtn.style.opacity = '0.7';
+  cancelBtn.textContent = 'გაუქმება';
+  cancelBtn.onclick = function () { _tmIziviCloseWindow(); };
+  body.appendChild(cancelBtn);
+
+  var pw = Math.min(window.innerWidth * 0.92, 380);
+  var popup = document.getElementById('izWin');
+  popup.style.cssText = 'left:' + ((window.innerWidth - pw) / 2) + 'px;top:' + Math.max(60, window.innerHeight * 0.12) + 'px;max-width:' + pw + 'px;max-height:' + (window.innerHeight * 0.8) + 'px;';
+  popup.classList.add('show');
+  wrap.style.overflow = 'hidden';
 }
+
+// Renders one already-added button-field as an editable row: its label,
+// each chain-link's param value-inputs (rendered straight from that link's
+// own params[] — same render logic _tmIziviOpenWindow's value-inputs use,
+// just inline here instead of in run-mode), and a remove control.
+// onChange is called after any edit so the parent can decide whether to
+// re-render (only needed on remove, to keep indices in sync).
+function _tmIziviBuilderFieldRow(field, idx, draft, onStructuralChange) {
+  var card = document.createElement('div');
+  card.className = 'iz-field';
+  card.style.border = '1px solid rgba(88,166,255,0.25)';
+  card.style.borderRadius = '8px';
+  card.style.padding = '8px';
+
+  var lblRow = document.createElement('div');
+  lblRow.style.display = 'flex'; lblRow.style.justifyContent = 'space-between'; lblRow.style.alignItems = 'center';
+  var lblTxt = document.createElement('span'); lblTxt.textContent = '🔘 ' + field.label;
+  var rmBtn = document.createElement('button');
+  rmBtn.textContent = '✕'; rmBtn.style.background = 'none'; rmBtn.style.border = 'none';
+  rmBtn.style.color = '#8b949e'; rmBtn.style.cursor = 'pointer';
+  rmBtn.onclick = function () { draft.fields.splice(idx, 1); onStructuralChange(); };
+  lblRow.appendChild(lblTxt); lblRow.appendChild(rmBtn);
+  card.appendChild(lblRow);
+
+  // button-label override (what the person sees on the actual window button)
+  var lblInp = document.createElement('input');
+  lblInp.type = 'text'; lblInp.value = field.label;
+  lblInp.style.marginTop = '4px';
+  lblInp.oninput = function () { field.label = lblInp.value; lblTxt.textContent = '🔘 ' + lblInp.value; };
+  card.appendChild(lblInp);
+
+  // each chain-link's params, rendered from that link's own schema
+  field.chain.forEach(function (link) {
+    (link.params || []).forEach(function (p, pIdx) {
+      var pRow = document.createElement('div');
+      pRow.className = 'iz-field';
+      pRow.style.marginTop = '6px';
+      var pLbl = document.createElement('label'); pLbl.textContent = p.name + (p.optional ? ' (არასავალდებულო)' : '');
+      pRow.appendChild(pLbl);
+      var pInput;
+      if (p.type === 'select') {
+        pInput = document.createElement('select');
+        (p.options || []).forEach(function (opt) {
+          var o = document.createElement('option'); o.value = opt; o.textContent = opt;
+          pInput.appendChild(o);
+        });
+      } else if (p.multiline) {
+        pInput = document.createElement('textarea');
+      } else {
+        pInput = document.createElement('input');
+        pInput.type = (p.type === 'number') ? 'number' : 'text';
+      }
+      pInput.value = link.values[pIdx] || '';
+      pInput.oninput = function () { link.values[pIdx] = pInput.value; };
+      pRow.appendChild(pInput);
+      card.appendChild(pRow);
+    });
+    if (!link.params || !link.params.length) {
+      var noParam = document.createElement('div');
+      noParam.style.fontSize = '11px'; noParam.style.color = '#8b949e'; noParam.style.marginTop = '4px';
+      noParam.textContent = '(ეს ბრძანება პარამეტრს არ ითხოვს)';
+      card.appendChild(noParam);
+    }
+  });
+
+  return card;
+}
+
+// Resolves every chain-link's {cmd, sub, params, values} into a concrete
+// command string (e.g. "/flag set quest1"), producing the final fields[]
+// shape _tmIziviOpenWindow already knows how to render and run — builder
+// output and run-mode input are the exact same JSON shape.
+function _tmIziviBuilderResolveChain(field) {
+  return field.chain.map(function (link) {
+    var parts = ['/' + link.cmd];
+    if (link.sub) parts.push(link.sub);
+    (link.values || []).forEach(function (v) { if (v !== '') parts.push(v); });
+    return parts.join(' ');
+  });
+}
+
+function _tmIziviBuilderSave(scope, name, draft) {
+  var finalFields = draft.fields.map(function (f) {
+    return { type: 'button', label: f.label, chain: _tmIziviBuilderResolveChain(f) };
+  });
+  var winJson = { title: draft.title, fields: finalFields };
+
+  if (scope === 'local') {
+    var all = _tmIziviLocalAll();
+    all[name] = winJson;
+    _tmIziviLocalSave(all);
+    _tmL('tok', '✓ "' + name + '" — შენახულია (local)');
+    _tmIziviCloseWindow();
+    return;
+  }
+
+  // scope === 'საერთო'
+  if (typeof window.iziviOverrideSave !== 'function') {
+    _tmL('ter', '✗ Supabase save ფუნქცია არ არის ჩატვირთული (runtime.js)');
+    return;
+  }
+  window.iziviOverrideSave(name, { scope: 'shared', title: winJson.title, fields_json: winJson.fields })
+    .then(function (res) {
+      if (res === true) {
+        _tmL('tok', '✓ "' + name + '" — შენახულია (საერთო)');
+        _tmIziviCloseWindow();
+      } else {
+        _tmL('ter', '✗ შენახვა ჩავარდა: ' + ((res && res.msg) || 'უცნობი შეცდომა'));
+      }
+    });
+}
+
 
