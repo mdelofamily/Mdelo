@@ -15,7 +15,7 @@ var _tmEditMode = null;    // 'dlg' | 'menuItem' | null
 var _tmEditMenuCtx = null; // { node, idx, type } — set only when _tmEditMode === 'menuItem'
 var _tmEditBuf = null;     // raw content buffered from a chain segment, consumed by /შეყვანა
 var _tmEditLabel = null;   // human-readable label shown in cancel/header messages
-var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/marker','/დახურვა','/flag','/nick','/me','/who','/color','/help','/pwd','/ls','/cd','/md','/rm','/edit','/ფოთოლი','/macro'];
+var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/marker','/დახურვა','/flag','/nick','/me','/who','/color','/help','/pwd','/ls','/cd','/md','/rm','/edit','/ფოთოლი','/macro','/იზივეი'];
 
 function toggleTerm() { _tmOpen ? closeTerm() : _tmOpen_(); }
 function _tmOpen_() {
@@ -269,6 +269,18 @@ var COMMAND_REGISTRY = {
       ['/flag list',           'ყველა flag-ის სია'],
       ['/flag reset',          'ყველა flag-ის გასუფთავება']
     ],
+    // Izivei picker hint (IZIVEI_SCOPE design Q2): manually curated parallel
+    // to helpLines above — each `sub` becomes its own structured picker row
+    // with its own param-schema, since internal dispatch (unlockHandleCmd)
+    // doesn't expose sub-actions through the flat `params` array. Must be
+    // kept in sync by hand alongside helpLines — same accepted trade-off.
+    izivei: [
+      { sub: 'set',   params: [{ name: 'სახელი', type: 'text' }] },
+      { sub: 'clear', params: [{ name: 'სახელი', type: 'text' }] },
+      { sub: 'check', params: [{ name: 'სახელი', type: 'text' }] },
+      { sub: 'list',  params: [] },
+      { sub: 'reset', params: [] }
+    ],
     handler: function (args) {
       if (typeof unlockHandleCmd !== 'function') {
         _tmL('ter', '/flag: unlock.js არ არის ჩატვირთული'); return;
@@ -337,6 +349,20 @@ var COMMAND_REGISTRY = {
     desc: 'item-ის დამატება მიმდინარე სექციაში — ტექსტი/ინდიკატორი',
     helpLines: [
       ['/ფოთოლი ტექსტი|ინდიკატორი [ემოჯი]', 'item-ის დამატება მიმდინარე კვანძში']
+    ],
+    // Izivei picker hint — both sub-actions take an optional leading emoji
+    // plus their own content shape: ტექსტი is free text, ინდიკატორი is a
+    // numeric value (rendered as the progress bar _gmOpenOverlay draws).
+    izivei: [
+      { sub: 'ტექსტი',      params: [
+        { name: 'ემოჯი', type: 'text', optional: true },
+        { name: 'ტექსტი', type: 'text', multiline: true }
+      ] },
+      { sub: 'ინდიკატორი',  params: [
+        { name: 'ემოჯი', type: 'text', optional: true },
+        { name: 'სახელი', type: 'text' },
+        { name: 'მნიშვნელობა', type: 'number' }
+      ] }
     ],
     handler: function (args) { return _tmMenuLeaf(args); }
   },
@@ -417,6 +443,13 @@ var COMMAND_REGISTRY = {
       ['/ლეგენდა',            'აღწერას ჩვენა/დამალვა'],
       ['/ლეგენდა რედაქტირება', 'მთავარი ლეგენდის ტექსტის რედაქტირება']
     ],
+    // Izivei picker hint — plain toggle has no sub/params; რედაქტირება opens
+    // the multiline legend editor, modeled as a single multiline text param
+    // (mirrors what _tmLegendEditOpen + _tmSaveLegend actually do).
+    izivei: [
+      { sub: null,            params: [] },
+      { sub: 'რედაქტირება',  params: [{ name: 'ტექსტი', type: 'text', multiline: true }] }
+    ],
     handler: function (args) { return _tmLegend(args); }
   },
 
@@ -477,6 +510,17 @@ var COMMAND_REGISTRY = {
       ['/marker set <სახელი> ?/!/~/-', 'მარკერი — ლოკალური (მხ. შენ)'],
       ['/marker reset [სახელი]',       'მარკერი → საწყისზე (ერთი ან ყველა)']
     ],
+    // Izivei picker hint — set takes a name + a select of the 4 marker chars;
+    // reset's name is optional (omitted clears all), matching helpLines above.
+    izivei: [
+      { sub: 'set',   params: [
+        { name: 'სახელი', type: 'text' },
+        { name: 'მარკერი', type: 'select', options: ['?', '!', '~', '-'] }
+      ] },
+      { sub: 'reset', params: [
+        { name: 'სახელი', type: 'text', optional: true }
+      ] }
+    ],
     handler: function (args) { return _tmMarkerCmd(args); }
   },
 
@@ -496,6 +540,25 @@ var COMMAND_REGISTRY = {
       ['/macro საერთო <სახელი> := ...', 'გაზიარებული შორთკატის შექმნა'],
       ['/macro ls',                     'ყველა შორთკატის სია'],
       ['/macro rm local|საერთო <სახელი>', 'შორთკატის წაშლა']
+    ],
+    // Izivei picker hint — `local`/`საერთო` both take name + a multiline
+    // chain body (the ";"-joined command list _tmMacro splits itself); `ls`
+    // has no params; `rm` takes a scope select + name, matching the rm
+    // sub-branch _tmMacro itself parses (args[1]=scope, rest=name).
+    izivei: [
+      { sub: 'local',   params: [
+        { name: 'სახელი', type: 'text' },
+        { name: 'ჯაჭვი', type: 'text', multiline: true }
+      ] },
+      { sub: 'საერთო',  params: [
+        { name: 'სახელი', type: 'text' },
+        { name: 'ჯაჭვი', type: 'text', multiline: true }
+      ] },
+      { sub: 'ls',      params: [] },
+      { sub: 'rm',      params: [
+        { name: 'scope', type: 'select', options: ['local', 'საერთო'] },
+        { name: 'სახელი', type: 'text' }
+      ] }
     ],
     handler: function (args) { return _tmMacro(args); }
   },
@@ -523,6 +586,14 @@ var COMMAND_REGISTRY = {
     helpLines: [
       ['/მენიუ',              'მენიუს toggle'],
       ['/მენიუ/სექცია/.../N', 'პირდაპირი ლინკი ნესტ. სექციაზე ან item-ზე']
+    ],
+    // Izivei picker hint — plain toggle has no params. The deep-link form is
+    // hinted here too even though it's matched by a separate regex in _tmRun
+    // and never reaches this entry's handler (same permanent special-case
+    // noted above) — picker treats it as a single free-text path param.
+    izivei: [
+      { sub: null, params: [] },
+      { sub: 'deep-link', params: [{ name: 'path', type: 'text' }] }
     ],
     handler: function (args) { return _tmMenu(); } // takes no args itself
   },
@@ -555,6 +626,27 @@ var COMMAND_REGISTRY = {
       }
       return _tmNotify(typeChar, rest.join(' '));
     }
+  },
+
+  // ── Step 11: იზივეი (window-builder trigger — Variant A, own dispatch) ──
+  // /იზივეი local|საერთო <სახელი> opens the builder for a new/existing window
+  // (creation + collision rules live in _tmIzivei). Opening an ALREADY-SAVED
+  // window by its bare name is NOT this command's job — that's
+  // _tmIziviResolve, checked earlier in _tmRun's dispatch chain, same
+  // precedence rule as macros (local wins over shared on a name clash).
+  'იზივეი': {
+    params: [], // _tmIzivei parses its own scope word + name (+ optional "force")
+    desc: 'local|საერთო <სახელი> — ფანჯრის-ბილდერის გახსნა (ახალი ან ედიტი)',
+    helpLines: [
+      ['/იზივეი local <სახელი>',          'პერსონალური ფანჯრის შექმნა/ედიტი'],
+      ['/იზივეი საერთო <სახელი>',         'გაზიარებული ფანჯრის შექმნა/ედიტი'],
+      ['/იზივეი საერთო <სახელი> force',   'სახელის კონფლიქტის გადაწერა']
+    ],
+    izivei: [
+      { sub: 'local',  params: [{ name: 'სახელი', type: 'text' }] },
+      { sub: 'საერთო', params: [{ name: 'სახელი', type: 'text' }] }
+    ],
+    handler: function (args) { return _tmIzivei(args); }
   }
 };
 
@@ -593,6 +685,12 @@ async function _tmRun(raw) {
     //    normal dispatch, so a saved shortcut behaves like a brand-new command ──
     var macroCmds = _tmMacroResolve(full);
     if (macroCmds) { await _tmRunChain(macroCmds); return; }
+
+    // ── exact Izivei-window-name match (local scope wins over shared) —
+    //    same precedence rule as macros, checked right after them so a saved
+    //    window opens by typing its bare name, same as a macro does ──
+    var iziviWin = _tmIziviResolve(full);
+    if (iziviWin) { _tmIziviOpenWindow(iziviWin); return; }
 
     // ── generic ";"-chaining: only splits where ";" is followed by "/",
     //    so a stray ";" inside ordinary item text is left alone ──
@@ -653,7 +751,7 @@ function _tmFormatCmdRow(name, entry) {
 // Order follows Object.keys(COMMAND_REGISTRY) insertion order, which mirrors
 // the registry's own step-by-step migration grouping (flag → filesystem-
 // style menu commands → დახმარება/გასუფთავება → the 14-command batch →
-// marker → macro → მენიუ → შეტყობინება) — the same grouping the old
+// marker → macro → მენიუ → შეტყობინება → იზივეი) — the same grouping the old
 // hardcoded list followed by hand.
 function _tmHelp() {
   _tmL('tdm', _SEP);
@@ -1453,7 +1551,7 @@ async function _tmMenuSaveNode(nodeId, fields) {
 // A macro IS a brand-new command: once saved, typing its exact name (with /) runs
 // the whole stored chain. Local scope takes precedence over shared on a name clash.
 var _TM_RESERVED = ['macro','marker','cd','md','rm','ls','pwd','edit','ფოთოლი','flag','nick','me','who','color','help',
-  'დახმარება','გასუფთავება','ინფო','მასშტაბი','ზონები','ობიექტები','დიალოგი','წასვლა','ლეგენდა','მენიუ','გახსნა','შეყვანა','სრული','ისტორია','ვადა','ტექსტი','შეტყობინება','დახურვა'];
+  'დახმარება','გასუფთავება','ინფო','მასშტაბი','ზონები','ობიექტები','დიალოგი','წასვლა','ლეგენდა','მენიუ','გახსნა','შეყვანა','სრული','ისტორია','ვადა','ტექსტი','შეტყობინება','დახურვა','იზივეი'];
 
 // Split a raw (no leading "/") command line on ";" — only where ";" is followed
 // (after optional whitespace) by "/", so semicolons inside ordinary text are safe.
@@ -1634,3 +1732,111 @@ window.runMacro = function (name) {
   _tmRunChain(cmds);
   return true;
 };
+
+// ── Izivei window-builder engine (step 2: trigger command + storage layer) ──
+// Mirrors the macro engine's duality pattern exactly:
+//   local   — localStorage, this device only, instant, no Supabase round-trip
+//   საერთო  — Supabase (izivei_windows table), every viewer sees it on next load
+// A saved window IS a brand-new command too: typing its exact name (with /)
+// opens it, same precedence rule as macros (local wins over shared on a name
+// clash) — see _tmRun's dispatch chain above, right after _tmMacroResolve.
+//
+// Window-builder UI (field/widget rendering, button-chain editor) is step 3
+// — DONE: real render lives in runtime.js as _tmIziviOpenWindow (same
+// cross-file convention as toggleMenu/applyScale — terminal.js calls it,
+// runtime.js owns the DOM). The step-2 placeholder that used to live here
+// has been removed now that the real implementation exists.
+
+function _tmIziviLocalKey() { return 'mdelo_izivei_local_' + ((typeof _CFG !== 'undefined' && _CFG && _CFG.title) || 'map'); }
+function _tmIziviLocalAll() {
+  try { return JSON.parse(localStorage.getItem(_tmIziviLocalKey()) || '{}'); } catch (e) { return {}; }
+}
+function _tmIziviLocalSave(all) {
+  try { localStorage.setItem(_tmIziviLocalKey(), JSON.stringify(all)); return true; } catch (e) { return false; }
+}
+
+// Exact-name lookup across both scopes. Returns a window-JSON object or null.
+// Same precedence as _tmMacroResolve: local always wins over shared.
+function _tmIziviResolve(full) {
+  var name = (full || '').trim();
+  if (!name) return null;
+  var locals = _tmIziviLocalAll();
+  if (locals[name]) return locals[name];
+  if (window._tmIziviShared && window._tmIziviShared[name]) return window._tmIziviShared[name];
+  return null;
+}
+
+// /იზივეი local|საერთო <სახელი>
+// Opens the builder for a brand-new window (or re-opens an existing one of
+// the same scope+name to edit it — builder UI itself is step 3). This
+// command only handles creation/lookup + the collision rules below; it does
+// NOT open a window by bare name — that's _tmIziviResolve's job, checked
+// earlier in _tmRun's dispatch chain.
+//
+// Collision rules (IZIVEI_SCOPE design discussion):
+//   local create, name already used by another LOCAL window → silent overwrite
+//     (same as macro's local scope — no confirmation, matches user's own
+//     instant/no-round-trip expectation for local scope)
+//   local create, name already used by a SHARED window → not a collision —
+//     local precedence on resolve means this is fine, the global window is
+//     simply shadowed for this device when typing the bare name; the shared
+//     row itself is untouched.
+//   საერთო create, name already used by another SHARED window → CANNOT
+//     silently overwrite. Warn the person the name already exists globally,
+//     and require them to either pick a new name or explicitly confirm they
+//     want to overwrite (re-issue the same command with `force` as a 3rd
+//     arg). Permission-check on *who* is allowed to overwrite a global
+//     window is a STUB here — real access control is out of this scope
+//     (PROGRESSION_ENGINE_SCOPE_V1.md), so for now any viewer can force an
+//     overwrite once warned.
+//   საერთო create, name already used by a LOCAL window (for this device) →
+//     not a collision either, by the same local-precedence logic — the
+//     shared window is created normally; this device just won't see it by
+//     bare name (its own local one shadows it), a known macro-engine-style
+//     trade-off, not specially handled.
+async function _tmIzivei(args) {
+  var scope = (args[0] || '').trim();
+  var rest = args.slice(1);
+  var force = false;
+  if (rest.length && rest[rest.length - 1] === 'force') { force = true; rest = rest.slice(0, -1); }
+  var name = rest.join(' ').trim();
+
+  if (scope !== 'local' && scope !== 'საერთო') {
+    _tmL('ter', 'მითხარი scope: /იზივეი local <სახელი>  ან  /იზივეი საერთო <სახელი>');
+    return;
+  }
+  if (!name) { _tmL('ter', 'სახელი არ მიუთითე'); return; }
+  if (_TM_RESERVED.indexOf(name) >= 0) { _tmL('ter', '✗ "' + name + '" დაცული სახელია — სხვა აარჩიე'); return; }
+
+  if (scope === 'local') {
+    var locAll = _tmIziviLocalAll();
+    var isOverwrite = !!locAll[name];
+    // silent overwrite — no confirmation needed for local scope
+    _tmIziviBuilderOpen(scope, name, locAll[name] || null);
+    if (isOverwrite) _tmL('tdm', '("' + name + '" — local ფანჯარა უკვე არსებობს, ედიტში გადააწერ)');
+    return;
+  }
+
+  // საერთო — check for an existing SHARED window under this name first
+  var shared = window._tmIziviShared || {};
+  if (shared[name] && !force) {
+    _tmL('ter', '✗ "' + name + '" სახელი უკვე არსებობს გლობალურად');
+    _tmL('tdm', 'მოიფიქრე ახალი სახელი, ან დაადასტურე: /იზივეი საერთო ' + name + ' force');
+    return;
+  }
+  if (shared[name] && force) {
+    // STUB: real permission check belongs here once access-control exists
+    // (PROGRESSION_ENGINE_SCOPE_V1.md). For now, force always succeeds.
+    _tmL('tdm', '⚠️ გლობალური "' + name + '" — გადაწერად ეხსნება ედიტში');
+  }
+  _tmIziviBuilderOpen(scope, name, shared[name] || null);
+}
+
+// Builder-open placeholder — step 3 replaces this with the actual editor UI
+// (title/buttons/fields inline editing per IZIVEI_SCOPE scope item 6).
+// existing is the prior window-JSON if this is an edit/overwrite, else null.
+function _tmIziviBuilderOpen(scope, name, existing) {
+  _tmL('tok', '🛠 Izivei builder — scope:' + scope + ' name:"' + name + '"' + (existing ? ' (არსებულის ედიტი)' : ' (ახალი)'));
+  _tmL('tdm', '(builder UI ჯერ არ არსებობს — შემდეგი ნაბიჯი)');
+}
+

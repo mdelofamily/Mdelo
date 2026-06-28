@@ -218,6 +218,133 @@ function closeAreaPopup() {
   if (_areaHlCanvas) { _areaHlCanvas.remove(); _areaHlCanvas = null; }
 }
 
+// ── Izivei window-builder render engine (step 3) ──────────────────────────
+// Takes a window-JSON object ({ title, fields: [...] }) and renders it into
+// the #izWin popup. This REPLACES the terminal.js placeholder of the same
+// name (that one only logged a confirmation line — this is the real thing).
+//
+// Field schema (per entry in fields[]):
+//   { type: 'text'|'number',           label, value?, prefix? }
+//   { type: 'text', multiline: true,   label, value? }
+//   { type: 'select', options: [...],  label, value? }
+//   { type: 'toggle',                  label, value?: bool }
+//   { type: 'button',                  label, chain: [...] }   // commands[] array, _tmRunChain shape
+// Every non-button field gets an id (its index, "f0","f1",...) so button
+// chains can reference its live value via {f0} placeholder substitution —
+// mirrors the param-schema `name` used elsewhere, but scoped to this window
+// instance rather than a global command param.
+var _izCurrentValues = {}; // id -> live DOM element, read at click-time
+
+function _tmIziviOpenWindow(win) {
+  if (!win) return;
+  closeHsPopup(); closeAreaPopup();
+  document.getElementById('izWinTitle').textContent = win.title || '(უსახელო ფანჯარა)';
+  var body = document.getElementById('izWinBody');
+  body.innerHTML = '';
+  _izCurrentValues = {};
+
+  (win.fields || []).forEach(function (field, idx) {
+    var fid = 'f' + idx;
+    if (field.type === 'button') {
+      var btn = document.createElement('button');
+      btn.className = 'iz-btn';
+      btn.textContent = field.label || 'გაშვება';
+      btn.onclick = function () { _tmIziviRunButton(field.chain || []); };
+      body.appendChild(btn);
+      return;
+    }
+
+    var row = document.createElement('div');
+    row.className = (field.type === 'toggle') ? 'iz-field iz-toggle' : 'iz-field';
+
+    if (field.type === 'toggle') {
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = !!field.value;
+      cb.id = fid;
+      var lbl = document.createElement('label');
+      lbl.textContent = field.label || '';
+      lbl.setAttribute('for', fid);
+      row.appendChild(cb); row.appendChild(lbl);
+      _izCurrentValues[fid] = cb;
+    } else {
+      var lblTop = document.createElement('label');
+      lblTop.textContent = field.label || '';
+      row.appendChild(lblTop);
+
+      var input;
+      if (field.type === 'select') {
+        input = document.createElement('select');
+        (field.options || []).forEach(function (opt) {
+          var o = document.createElement('option');
+          o.value = opt; o.textContent = opt;
+          if (field.value === opt) o.selected = true;
+          input.appendChild(o);
+        });
+      } else if (field.multiline) {
+        input = document.createElement('textarea');
+        input.value = field.value || '';
+      } else {
+        input = document.createElement('input');
+        input.type = (field.type === 'number') ? 'number' : 'text';
+        input.value = (field.value != null) ? field.value : '';
+      }
+      input.id = fid;
+      row.appendChild(input);
+      _izCurrentValues[fid] = input;
+
+      // prefix (e.g. "@@") is shown as a hint, glued onto the value only at
+      // chain-execution time — same convention as /შეტყობინება's area param.
+      if (field.prefix) {
+        var pfx = document.createElement('span');
+        pfx.className = 'iz-field-prefix';
+        pfx.textContent = field.prefix + ' (ავტომატურად მიწებდება)';
+        row.appendChild(pfx);
+      }
+    }
+    body.appendChild(row);
+  });
+
+  // store the field schema itself (not just live elements) so prefix lookup
+  // at click-time doesn't need to re-walk win.fields by hand
+  body._izFields = win.fields || [];
+
+  var pw = Math.min(window.innerWidth * 0.92, 380);
+  var popup = document.getElementById('izWin');
+  popup.style.cssText = 'left:' + ((window.innerWidth - pw) / 2) + 'px;top:' + Math.max(60, window.innerHeight * 0.18) + 'px;max-width:' + pw + 'px;max-height:' + (window.innerHeight * 0.74) + 'px;';
+  popup.classList.add('show');
+  wrap.style.overflow = 'hidden';
+}
+
+function _tmIziviCloseWindow() {
+  document.getElementById('izWin').classList.remove('show');
+  wrap.style.overflow = 'auto';
+  _izCurrentValues = {};
+}
+
+// Resolves {f0}, {f1}, ... placeholders in a button's chain against the
+// window's live field values, then runs the result through _tmRunChain —
+// same engine /macro already uses, so a button IS just a macro invocation
+// under the hood. Toggle fields resolve to "1"/"0"; select/text/number
+// resolve to their raw value; a field with a `prefix` gets it glued on
+// automatically (mirrors /შეტყობინება's @@-area behavior — never typed by
+// hand, always applied at execution time).
+function _tmIziviRunButton(chain) {
+  var body = document.getElementById('izWinBody');
+  var fields = body._izFields || [];
+  var resolved = chain.map(function (c) {
+    return c.replace(/\{f(\d+)\}/g, function (_, n) {
+      var fid = 'f' + n;
+      var el = _izCurrentValues[fid];
+      if (!el) return '';
+      var schema = fields[+n] || {};
+      var raw = (el.type === 'checkbox') ? (el.checked ? '1' : '0') : el.value;
+      return schema.prefix ? (schema.prefix + raw) : raw;
+    });
+  });
+  if (typeof _tmRunChain === 'function') _tmRunChain(resolved);
+}
+
 // ── area blink outline ──
 var _areaHlCanvas = null;
 function _tracePoly(cells, TS) {
@@ -1232,6 +1359,97 @@ window.macroOverrideDelete = async function (name) {
   } catch (e) { return { ok: false, status: 0, msg: e.message }; }
 };
 
+// ── shared Izivei windows (Supabase) ──
+// Mirrors the terminal_macros pattern exactly (see _tmMacroShared above).
+// Personal ("local") windows never leave the device — see terminal.js
+// localStorage. Shared ("საერთო") windows are visible to every viewer;
+// cached in window._tmIziviShared (name -> window-JSON) so terminal.js can
+// resolve them with zero network latency once boot has finished.
+//
+// Rows also carry `scope`: 'shared' for normal community windows, or
+// 'template' for admin-authored starting points a person instantiates into
+// their own copy (IZIVEI_SCOPE design Q5). Only 'shared' rows populate the
+// bare-name resolve cache below — templates are deliberately NOT directly
+// runnable by name, they only exist to be copied via iziviInstantiateTemplate.
+window._tmIziviShared = {};
+window._tmIziviTemplates = {};
+
+async function loadIziviOverrides() {
+  try {
+    var r = await fetch(
+      SUPA_URL + '/rest/v1/izivei_windows?map_id=eq.' + encodeURIComponent(_MAP_ID),
+      { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY } }
+    );
+    if (!r.ok) return;
+    var rows = await r.json();
+    var shared = {}, templates = {};
+    rows.forEach(function (row) {
+      var win = { title: row.title || '', fields: row.fields_json || [], ownerId: row.owner_id || null };
+      if (row.scope === 'template') templates[row.window_id] = win;
+      else shared[row.window_id] = win;
+    });
+    window._tmIziviShared = shared;
+    window._tmIziviTemplates = templates;
+  } catch (e) {}
+}
+
+// Partial upsert, same merge-duplicates convention as menuOverrideSave/
+// macroOverrideSave. `fields` may include any of: owner_id, scope, title,
+// fields_json. windowId is the row's stable key (== the window's name for
+// 'shared' scope; admin-chosen slug for 'template' scope).
+window.iziviOverrideSave = async function (windowId, fields) {
+  try {
+    var body = Object.assign({ map_id: _MAP_ID, window_id: windowId, updated_at: new Date().toISOString() }, fields);
+    var r = await fetch(SUPA_URL + '/rest/v1/izivei_windows', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPA_KEY,
+        'Authorization': 'Bearer ' + SUPA_KEY,
+        'Prefer': 'resolution=merge-duplicates,return=minimal'
+      },
+      body: JSON.stringify(body)
+    });
+    if (r.ok) {
+      var win = { title: fields.title, fields: fields.fields_json || [], ownerId: fields.owner_id || null };
+      if (fields.scope === 'template') window._tmIziviTemplates[windowId] = win;
+      else window._tmIziviShared[windowId] = win;
+      return true;
+    }
+    var errBody = r.text ? await r.text().catch(function () { return ''; }) : '';
+    return { ok: false, status: r.status, msg: errBody.slice(0, 150) };
+  } catch (e) { return { ok: false, status: 0, msg: e.message }; }
+};
+
+window.iziviOverrideDelete = async function (windowId) {
+  try {
+    var r = await fetch(
+      SUPA_URL + '/rest/v1/izivei_windows?map_id=eq.' + encodeURIComponent(_MAP_ID) + '&window_id=eq.' + encodeURIComponent(windowId),
+      { method: 'DELETE', headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY } }
+    );
+    if (r.ok) { delete window._tmIziviShared[windowId]; delete window._tmIziviTemplates[windowId]; return true; }
+    var errBody = r.text ? await r.text().catch(function () { return ''; }) : '';
+    return { ok: false, status: r.status, msg: errBody.slice(0, 150) };
+  } catch (e) { return { ok: false, status: 0, msg: e.message }; }
+};
+
+// Copies a 'template' row into a brand-new 'shared' row owned by the calling
+// device/session (IZIVEI_SCOPE design Q5: templates are live-editable
+// Supabase rows, not hardcoded — instantiate is just a scoped copy).
+// newWindowId is the name the instantiated window will be saved/resolved
+// under — caller is responsible for running it through the same collision
+// rules _tmIzivei already applies to any other საერთო create.
+window.iziviInstantiateTemplate = async function (templateId, newWindowId, ownerId) {
+  var tpl = window._tmIziviTemplates[templateId];
+  if (!tpl) return { ok: false, status: 0, msg: 'template ვერ მოიძებნა: ' + templateId };
+  return window.iziviOverrideSave(newWindowId, {
+    owner_id: ownerId || null,
+    scope: 'shared',
+    title: tpl.title,
+    fields_json: tpl.fields
+  });
+};
+
 // ── main "?" legend override (Supabase) ──
 // The legend's baked-in text (export time) lives in #questPopup. A single row
 // per map_id is enough — there's only one legend, not a tree like the menu.
@@ -1275,6 +1493,7 @@ window.addEventListener('load', () => {
   loadDialogueOverrides().then(_markerRestore);
   loadMenuOverrides();
   loadMacroOverrides();
+  loadIziviOverrides();
   loadLegendOverride();
   _startRealtime();
   applySpotHash();
