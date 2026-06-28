@@ -339,6 +339,112 @@ var COMMAND_REGISTRY = {
     params: [],
     desc: 'ბრძანების სია',
     handler: function (args) { return _tmHelp(); } // takes no args itself
+  },
+
+  // ── Step 5: გასუფთავება ──
+  'გასუფთავება': {
+    params: [],
+    desc: 'კონსოლის გასუფთავება',
+    handler: function (args) { return tmClear(); } // takes no args itself
+  },
+
+  // ── Step 6: 14 simple commands, migrated as one batch ──
+  // All thin pass-throughs to existing handlers — same args array shape the
+  // legacy map[cmd](args) dispatch already used. No behavior change.
+
+  'ინფო': {
+    params: [],
+    desc: 'რუკის ინფორმაცია',
+    handler: function (args) { return _tmInfo(); } // takes no args itself
+  },
+
+  'მასშტაბი': {
+    params: [
+      { name: 'level', type: 'number', desc: 'zoom დონე 0.25–6' }
+    ],
+    desc: 'zoom 0.25–6',
+    handler: function (args) { return _tmZoom(args); }
+  },
+
+  'ზონები': {
+    params: [],
+    desc: 'ზონების სია',
+    handler: function (args) { return _tmAreas(); } // takes no args itself
+  },
+
+  'ობიექტები': {
+    params: [],
+    desc: 'ობიექტები + dialogue სტატუსი',
+    handler: function (args) { return _tmObjects(); } // takes no args itself
+  },
+
+  'დიალოგი': {
+    params: [
+      { name: 'objectName', type: 'text', optional: true, desc: 'ობიექტის სახელი' }
+    ],
+    desc: 'DSL რედაქტირება · Ctrl+Enter შესანახად',
+    handler: function (args) { return _tmDlgEdit(args); }
+  },
+
+  'წასვლა': {
+    params: [
+      { name: 'areaName', type: 'text', desc: 'ზონის სახელი' }
+    ],
+    desc: 'ზონაზე ნავიგაცია',
+    handler: function (args) { return _tmGo(args); }
+  },
+
+  // /ლეგენდა keeps its own internal sub-action check (რედაქტირება/edit),
+  // same Variant A pattern as /flag and /ფოთოლი: single entry, no `subs`
+  // block, internal dispatch in _tmLegend untouched.
+  'ლეგენდა': {
+    params: [], // _tmLegend parses its own optional sub-action (რედაქტირება/edit)
+    desc: 'აღწერას ჩვენა/დამალვა · "რედაქტირება" — მთავარი ლეგენდის ტექსტი',
+    handler: function (args) { return _tmLegend(args); }
+  },
+
+  'გახსნა': {
+    params: [],
+    desc: 'ტერმინალის გახსნა (macro/window hook-ისთვის)',
+    handler: function (args) { return _tmOpenCmd(); } // takes no args itself
+  },
+
+  'შეყვანა': {
+    params: [],
+    desc: 'Enter/Send — ღია edit-სესიის submit (macro-chain-ისთვის)',
+    handler: function (args) { return _tmSubmitCmd(); } // takes no args itself
+  },
+
+  'სრული': {
+    params: [],
+    desc: 'სრული ↔ ნახევარი',
+    handler: function (args) { return tmToggleFull(); } // takes no args itself
+  },
+
+  'ისტორია': {
+    params: [],
+    desc: 'ჩატის ისტორიის წაშლა',
+    handler: function (args) { return _histClear(); } // takes no args itself
+  },
+
+  'ვადა': {
+    params: [
+      { name: 'days', type: 'number', optional: true, desc: 'შენახვის ვადა დღეებში (1–365)' }
+    ],
+    desc: 'ისტ. შენახვა N დღე',
+    handler: function (args) { return _tmVada(args); }
+  },
+
+  'ტექსტი': {
+    params: [],
+    desc: 'ჩატ ↔ ბრძანება mode',
+    handler: function (args) { return tmToggleMulti(); } // takes no args itself
+  },
+
+  'დახურვა': {
+    params: [],
+    desc: 'დახურვა [Esc]',
+    handler: function (args) { return closeTerm(); } // takes no args itself
   }
 };
 
@@ -405,22 +511,7 @@ async function _tmRun(raw) {
 
   // ── legacy map dispatch (commands not yet migrated to COMMAND_REGISTRY) ──
   var map = {
-    'გასუფთავება': tmClear,
-    'ინფო':        _tmInfo,
-    'მასშტაბი':    _tmZoom,
-    'ზონები':      _tmAreas,
-    'ობიექტები':   _tmObjects,
-    'დიალოგი':     _tmDlgEdit,
-    'წასვლა':      _tmGo,
-    'ლეგენდა':     _tmLegend,
     'მენიუ':       _tmMenu,
-    'გახსნა':      _tmOpenCmd,
-    'შეყვანა':     _tmSubmitCmd,
-    'სრული':       tmToggleFull,
-    'ისტორია':     _histClear,
-    'ვადა':        _tmVada,
-    'ტექსტი':      tmToggleMulti,
-    'დახურვა':     closeTerm,
     'macro':       _tmMacro,
     'marker':      _tmMarkerCmd
   };
