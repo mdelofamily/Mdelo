@@ -448,8 +448,12 @@ function _gmShowPanel(nodes, path) {
 
 /* Open full-screen overlay for a leaf node's items.
    parentNodes = the siblings array the leaf lives in (so "back" can return to the exact same panel).
-   parentPath  = breadcrumb path TO that panel (not including the leaf itself). */
-function _gmOpenOverlay(node, parentNodes, parentPath) {
+   parentPath  = breadcrumb path TO that panel (not including the leaf itself).
+   standalone  = true when this overlay was opened directly (e.g. a console
+                 /მენიუ/.../N deep-link) without the person ever browsing the
+                 menu themselves — closing it should return straight to the
+                 map instead of revealing a menu panel they never opened. */
+function _gmOpenOverlay(node, parentNodes, parentPath, standalone) {
   const ov   = document.getElementById('gmOverlay');
   const body = document.getElementById('gmOverlayBody');
   const titleEl = document.getElementById('gmOverlayTitle');
@@ -464,6 +468,19 @@ function _gmOpenOverlay(node, parentNodes, parentPath) {
       const pfx = itObj.emoji ? itObj.emoji + ' ' : '';
       row.innerHTML = '<span class="gm-progress-label">' + pfx + itObj.label + '</span><div class="gm-bar"><div class="gm-bar-fill" style="width:' + v + '%;background:' + color + ';"></div></div><span class="gm-bar-pct">' + v + '%</span>';
       body.appendChild(row);
+    } else if (itObj.type === 'todo') {
+      const row = document.createElement('div'); row.className = 'gm-todo-row' + (itObj.checked ? ' checked' : '');
+      const box = document.createElement('span'); box.className = 'gm-todo-box'; box.textContent = itObj.checked ? '✅' : '⬜';
+      const lbl = document.createElement('span'); lbl.className = 'gm-todo-label';
+      lbl.innerHTML = parseLinks(itObj.label || '');
+      row.appendChild(box); row.appendChild(lbl);
+      row.onclick = (e) => {
+        if (e.target.closest('a')) return;
+        itObj.checked = !itObj.checked;
+        row.classList.toggle('checked', itObj.checked);
+        box.textContent = itObj.checked ? '✅' : '⬜';
+      };
+      body.appendChild(row);
     } else {
       const d = document.createElement('div'); d.className = 'gm-item';
       d.innerHTML = (itObj.emoji || '•') + ' ' + parseLinks(itObj.label || '');
@@ -475,7 +492,7 @@ function _gmOpenOverlay(node, parentNodes, parentPath) {
   document.getElementById('gmOverlayClose').onclick = () => {
     ov.classList.remove('open');
     document.getElementById('gameMenu').classList.remove('ov-open');
-    _gmShowPanel(parentNodes, parentPath);
+    if (standalone) { toggleMenu(); } else { _gmShowPanel(parentNodes, parentPath); }
   };
 }
 
@@ -542,6 +559,14 @@ function _dlgShowNode(nodeId, selectedLabel) {
             headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Prefer': 'return=minimal' },
             body: JSON.stringify({ type: nType, symbol: nSymbol, text: notifyTxt, sender: sender, linked_area: btn.area || '' })
           }).catch(() => {});
+          // push-fetch (Scope C) — non-blocking, independent of the notifications insert above
+          // NOTE: send-push checks the NEW publishable key format (sb_publishable_...),
+          // not the legacy anon JWT (SUPA_KEY) used for REST calls above.
+          fetch(SUPA_URL + '/functions/v1/send-push', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'apikey': 'sb_publishable_soE_2V-VW_fIu0DyM6QdzQ_TOvYNxF2' },
+            body: JSON.stringify({ map_id: _MAP_ID, title: 'მდელო', body: notifyTxt, url: btn.area ? ('#area=' + encodeURIComponent(btn.area)) : '/' })
+          }).catch(() => {});
         }
         if (btn.link) {
           if (btn.link.startsWith('menu:')) { _gmGoToSlug(btn.link.slice(5).trim()); }
@@ -561,6 +586,10 @@ function _dlgShowNode(nodeId, selectedLabel) {
         // [+flag_name] button-level flag set
         if (btn.flags && btn.flags.length) {
           btn.flags.forEach(function(f) { if (typeof flagSet === 'function') flagSet(f); });
+        }
+        // [$macro_name] — run a saved console macro (window.runMacro, terminal.js)
+        if (btn.cmds && btn.cmds.length) {
+          btn.cmds.forEach(function(c) { if (typeof window.runMacro === 'function') window.runMacro(c); });
         }
         if (btn.nextNode && _dlgNodes[btn.nextNode]) { _dlgShowNode(btn.nextNode, btn.label); }
         else {
@@ -1142,61 +1171,6 @@ async function loadMenuOverrides() {
   } catch (e) {}
 }
 
-// ── todo items (Supabase) ──
-// Todos are stored in the menu_overrides items_json snapshot with their checked status.
-// This function fetches the authoritative checked state from todo_items table and
-// merges it back into _CFG.menu, overwriting the stale snapshot values.
-async function loadTodoItems() {
-  try {
-    var r = await fetch(
-      SUPA_URL + '/rest/v1/todo_items?map_id=eq.' + encodeURIComponent(_MAP_ID),
-      { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY } }
-    );
-    if (!r.ok) return;
-    var rows = await r.json();
-    // Build a lookup: (node_id, todo_id) -> checked status
-    var todoMap = {};
-    rows.forEach(function (row) {
-      todoMap[row.node_id + '|' + row.todo_id] = !!row.checked;
-    });
-    // Walk the entire menu tree, find todos, and update their checked status
-    function _applyTodoChecks(nodes) {
-      (nodes || []).forEach(function (n) {
-        if (n.items) {
-          n.items.forEach(function (it) {
-            if (it.type === 'todo' && it.id) {
-              var key = n.id + '|' + it.id;
-              if (todoMap.hasOwnProperty(key)) it.checked = todoMap[key];
-            }
-          });
-        }
-        if (n.children) _applyTodoChecks(n.children);
-      });
-    }
-    _applyTodoChecks(_CFG.menu);
-  } catch (e) {}
-}
-
-// Partial upsert for a todo's checked status (called from terminal.js)
-window.todoSaveChecked = async function (nodeId, todoId, checked) {
-  try {
-    var body = { map_id: _MAP_ID, node_id: nodeId, todo_id: todoId, checked: checked, updated_at: new Date().toISOString() };
-    var r = await fetch(SUPA_URL + '/rest/v1/todo_items', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': SUPA_KEY,
-        'Authorization': 'Bearer ' + SUPA_KEY,
-        'Prefer': 'resolution=merge-duplicates,return=minimal'
-      },
-      body: JSON.stringify(body)
-    });
-    if (r.ok) return true;
-    var errBody = r.text ? await r.text().catch(function () { return ''; }) : '';
-    return { ok: false, status: r.status, msg: errBody.slice(0, 150) };
-  } catch (e) { return { ok: false, status: 0, msg: e.message }; }
-};
-
 // Partial upsert — called from terminal.js. `fields` may include any of:
 // parent_id, icon, title, items_json, deleted. Only the given keys are written;
 // PostgREST's merge-duplicates upsert leaves every other column untouched.
@@ -1309,11 +1283,19 @@ window.legendOverrideSave = async function (text) {
 };
 
 // ── init ──
+// Toggle handler for the legend-tree static todo items (exportMenuHTML output).
+// Visual-only for now — no persistence; resets on reload.
+window.toggleTodoInExport = function(todoId) {
+  const elements = document.querySelectorAll('[data-todo-id="' + todoId + '"] .todo-sym');
+  elements.forEach(function(el) {
+    el.textContent = (el.textContent.trim() === '⬜') ? '✅' : '⬜';
+  });
+};
+
 window.addEventListener('load', () => {
   loadNotifs();
   loadDialogueOverrides().then(_markerRestore);
   loadMenuOverrides();
-  loadTodoItems();
   loadMacroOverrides();
   loadLegendOverride();
   _startRealtime();
