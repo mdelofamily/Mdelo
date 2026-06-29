@@ -95,6 +95,7 @@ function addMenuSection() {
 function _addItem(nodeId, type) {
   const n = _findNode(nodeId); if (!n) return;
   if (type === "progress") n.items.push({ type: "progress", emoji: "📊", label: "", value: 100 });
+  else if (type === "todo") n.items.push({ type: "todo", id: "todo_" + Date.now(), emoji: "🌱", label: "", checked: false });
   else                     n.items.push({ type: "text",     emoji: "•",  label: "" });
   renderMenuBuilder();
 }
@@ -217,7 +218,7 @@ function _renderNode(node, depth, isRoot) {
 
     row.appendChild(emojiI);
 
-    if (itObj.type === "text") {
+    if (itObj.type === "text" || itObj.type === "todo") {
       const col2  = document.createElement("div");
       col2.style.cssText = "flex:1;display:flex;flex-direction:column;gap:3px;";
       col2.appendChild(labelI);
@@ -232,6 +233,15 @@ function _renderNode(node, depth, isRoot) {
       row.appendChild(col2);
     } else {
       row.appendChild(labelI);
+    }
+
+    if (itObj.type === "todo") {
+      const chkI = document.createElement("input"); chkI.type = "checkbox";
+      chkI.checked = !!itObj.checked;
+      chkI.title = "თავიდანვე მონიშნული";
+      chkI.style.cssText = "width:18px;height:18px;flex-shrink:0;cursor:pointer;";
+      chkI.onchange = () => _updateItem(node.id, idx, "checked", chkI.checked);
+      row.appendChild(chkI);
     }
 
     if (itObj.type === "progress") {
@@ -261,6 +271,7 @@ function _renderNode(node, depth, isRoot) {
   };
   acts.appendChild(mkA("+ ტექსტი",      () => _addItem(node.id, "text")));
   acts.appendChild(mkA("+ ინდიკატორი",  () => _addItem(node.id, "progress")));
+  acts.appendChild(mkA("+ todo",        () => _addItem(node.id, "todo")));
   acts.appendChild(mkA("+ ქვე-სექცია",  () => _addChild(node.id)));
   wrap.appendChild(acts);
   return wrap;
