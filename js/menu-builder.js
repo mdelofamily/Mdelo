@@ -95,7 +95,7 @@ function addMenuSection() {
 function _addItem(nodeId, type) {
   const n = _findNode(nodeId); if (!n) return;
   if (type === "progress") n.items.push({ type: "progress", emoji: "📊", label: "", value: 100 });
-  else if (type === "todo") n.items.push({ type: "todo", id: "todo_" + Date.now(), emoji: "🌱", label: "", checked: false });
+  else if (type === "todo") n.items.push({ type: "todo", id: "todo_" + Date.now(), label: "", checked: false });
   else                     n.items.push({ type: "text",     emoji: "•",  label: "" });
   renderMenuBuilder();
 }
@@ -197,7 +197,7 @@ function _renderNode(node, depth, isRoot) {
     row.style.cssText = "display:flex;gap:5px;align-items:center;padding-left:8px;";
 
     const emojiI = document.createElement("input");
-    emojiI.value = itObj.emoji || (itObj.type === "progress" ? "📊" : "•");
+    emojiI.value = itObj.emoji || (itObj.type === "progress" ? "📊" : itObj.type === "todo" ? "" : "•");
     emojiI.style.cssText = _ESTYLE;
     emojiI.oninput = () => _updateItem(node.id, idx, "emoji", emojiI.value);
 
@@ -216,7 +216,7 @@ function _renderNode(node, depth, isRoot) {
     rmB.style.cssText = "background:none;border:none;color:var(--muted);cursor:pointer;flex-shrink:0;";
     rmB.onclick = () => _removeItem(node.id, idx);
 
-    row.appendChild(emojiI);
+    if (itObj.type !== "todo") row.appendChild(emojiI);
 
     if (itObj.type === "text" || itObj.type === "todo") {
       const col2  = document.createElement("div");
