@@ -469,16 +469,19 @@ function _gmOpenOverlay(node, parentNodes, parentPath, standalone) {
       row.innerHTML = '<span class="gm-progress-label">' + pfx + itObj.label + '</span><div class="gm-bar"><div class="gm-bar-fill" style="width:' + v + '%;background:' + color + ';"></div></div><span class="gm-bar-pct">' + v + '%</span>';
       body.appendChild(row);
     } else if (itObj.type === 'todo') {
-      const row = document.createElement('div'); row.className = 'gm-todo-row' + (itObj.checked ? ' checked' : '');
-      const box = document.createElement('span'); box.className = 'gm-todo-box'; box.textContent = itObj.checked ? '✅' : '⬜';
+      const checked = _gmTodoState.has(itObj.id) ? _gmTodoState.get(itObj.id) : !!itObj.checked;
+      const row = document.createElement('div'); row.className = 'gm-todo-row' + (checked ? ' checked' : '');
+      const box = document.createElement('span'); box.className = 'gm-todo-box'; box.textContent = checked ? '✅' : '⬜';
       const lbl = document.createElement('span'); lbl.className = 'gm-todo-label';
       lbl.innerHTML = parseLinks(itObj.label || '');
       row.appendChild(box); row.appendChild(lbl);
       row.onclick = (e) => {
         if (e.target.closest('a')) return;
-        itObj.checked = !itObj.checked;
-        row.classList.toggle('checked', itObj.checked);
-        box.textContent = itObj.checked ? '✅' : '⬜';
+        const next = !(_gmTodoState.has(itObj.id) ? _gmTodoState.get(itObj.id) : !!itObj.checked);
+        _gmTodoState.set(itObj.id, next);
+        row.classList.toggle('checked', next);
+        box.textContent = next ? '✅' : '⬜';
+        _gmSaveTodoState(itObj.id, next);
       };
       body.appendChild(row);
     } else {
@@ -1026,6 +1029,71 @@ function _applyDlgOverride(row) {
 }
 
 // Load all overrides for this map on startup
+// ── menu todo checkbox state (persisted in Supabase, table: menu_todo_state) ──
+var _gmTodoState = new Map(); // todo_id -> checked (bool)
+
+async function loadTodoState() {
+  try {
+    var r = await fetch(
+      SUPA_URL + '/rest/v1/menu_todo_state?map_id=eq.' + encodeURIComponent(_MAP_ID),
+      { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY } }
+    );
+    if (!r.ok) return;
+    var rows = await r.json();
+    rows.forEach(function(row) { _gmTodoState.set(row.todo_id, !!row.checked); });
+  } catch (e) {}
+}
+
+async function _gmSaveTodoState(todoId, checked) {
+  try {
+    await fetch(SUPA_URL + '/rest/v1/menu_todo_state', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPA_KEY,
+        'Authorization': 'Bearer ' + SUPA_KEY,
+        'Prefer': 'resolution=merge-duplicates,return=minimal'
+      },
+      body: JSON.stringify({
+        map_id: _MAP_ID,
+        todo_id: todoId,
+        checked: checked,
+        updated_at: new Date().toISOString()
+      })
+    });
+  } catch (e) {}
+}
+
+// ── menu todo checkbox state (persisted in Supabase, table: menu_todo_state) ──
+var _gmTodoState = new Map(); // todo_id -> checked (bool)
+
+async function loadTodoState() {
+  try {
+    var r = await fetch(
+      SUPA_URL + '/rest/v1/menu_todo_state?map_id=eq.' + encodeURIComponent(_MAP_ID),
+      { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY } }
+    );
+    if (!r.ok) return;
+    var rows = await r.json();
+    rows.forEach(function(row) { _gmTodoState.set(row.todo_id, !!row.checked); });
+  } catch (e) {}
+}
+
+async function _gmSaveTodoState(todoId, checked) {
+  try {
+    await fetch(SUPA_URL + '/rest/v1/menu_todo_state', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPA_KEY,
+        'Authorization': 'Bearer ' + SUPA_KEY,
+        'Prefer': 'resolution=merge-duplicates,return=minimal'
+      },
+      body: JSON.stringify({ map_id: _MAP_ID, todo_id: todoId, checked: checked, updated_at: new Date().toISOString() })
+    });
+  } catch (e) {}
+}
+
 async function loadDialogueOverrides() {
   try {
     var r = await fetch(
@@ -1295,6 +1363,8 @@ window.toggleTodoInExport = function(todoId) {
 window.addEventListener('load', () => {
   loadNotifs();
   loadDialogueOverrides().then(_markerRestore);
+  loadTodoState();
+  loadTodoState();
   loadMenuOverrides();
   loadMacroOverrides();
   loadLegendOverride();
