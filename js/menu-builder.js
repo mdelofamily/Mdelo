@@ -241,18 +241,6 @@ function _renderNode(node, depth, isRoot) {
       row.appendChild(labelI);
     }
 
-    if (itObj.type === "todo") {
-      const chkI = document.createElement("input"); chkI.type = "checkbox";
-      chkI.checked = !!itObj.checked;
-      chkI.title = "თავიდანვე მონიშნული";
-      chkI.style.cssText = "width:18px;height:18px;flex-shrink:0;cursor:pointer;";
-      chkI.onchange = () => {
-        _updateItem(node.id, idx, "checked", chkI.checked);
-        renderMenuBuilder();
-      };
-      row.appendChild(chkI);
-    }
-
     if (itObj.type === "progress") {
       const valI = document.createElement("input"); valI.type = "number";
       valI.value = itObj.value != null ? itObj.value : 100; valI.min = 0; valI.max = 100;
