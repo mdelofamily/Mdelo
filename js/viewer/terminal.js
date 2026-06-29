@@ -1930,7 +1930,10 @@ function _tmIziviBuilderOpen(scope, name, existing) {
     var picked = schema[+addSel.value];
     draft.fields.push({
       type: 'button',
-      label: picked.label,
+      label: '', // intentionally empty — see _tmIziviBuilderFieldRow's lblInp:
+                 // the button's display text and its underlying /command are
+                 // two separate things, and starting the label pre-filled
+                 // with the command string made that hard to see at a glance
       chain: [{ cmd: picked.cmd, sub: picked.sub, params: picked.params, values: picked.params.map(function () { return ''; }) }]
     });
     addSel.value = '';
@@ -1975,7 +1978,13 @@ function _tmIziviBuilderFieldRow(field, idx, draft, onStructuralChange) {
 
   var lblRow = document.createElement('div');
   lblRow.style.display = 'flex'; lblRow.style.justifyContent = 'space-between'; lblRow.style.alignItems = 'center';
-  var lblTxt = document.createElement('span'); lblTxt.textContent = '🔘 ' + field.label;
+  // permanent, read-only context: WHICH command this button runs. Never
+  // touched by label edits below — keeps "what it does" visually separate
+  // from "what it's called", so the two are never mistaken for each other.
+  var cmdCtx = (field.chain && field.chain[0]) ? ('/' + field.chain[0].cmd + (field.chain[0].sub ? ' ' + field.chain[0].sub : '')) : '';
+  var lblTxt = document.createElement('span');
+  lblTxt.style.fontSize = '11px'; lblTxt.style.color = '#8b949e';
+  lblTxt.textContent = '⚙ ' + cmdCtx;
   var rmBtn = document.createElement('button');
   rmBtn.textContent = '✕'; rmBtn.style.background = 'none'; rmBtn.style.border = 'none';
   rmBtn.style.color = '#8b949e'; rmBtn.style.cursor = 'pointer';
@@ -1984,11 +1993,15 @@ function _tmIziviBuilderFieldRow(field, idx, draft, onStructuralChange) {
   card.appendChild(lblRow);
 
   // button-label override (what the person sees on the actual window button)
+  // — starts EMPTY (see addSel.onchange), with a placeholder explaining
+  // what it's for, so it's never visually confused with cmdCtx above.
   var lblInp = document.createElement('input');
   lblInp.type = 'text'; lblInp.value = field.label;
+  lblInp.placeholder = 'ღილაკის წარწერა (მაგ: "კარის გახსნა")';
   lblInp.style.marginTop = '4px';
-  lblInp.oninput = function () { field.label = lblInp.value; lblTxt.textContent = '🔘 ' + lblInp.value; };
+  lblInp.oninput = function () { field.label = lblInp.value; };
   card.appendChild(lblInp);
+
 
   // each chain-link's params, rendered from that link's own schema
   field.chain.forEach(function (link) {
@@ -2042,7 +2055,9 @@ function _tmIziviBuilderResolveChain(field) {
 
 function _tmIziviBuilderSave(scope, name, draft) {
   var finalFields = draft.fields.map(function (f) {
-    return { type: 'button', label: f.label, chain: _tmIziviBuilderResolveChain(f) };
+    var link0 = f.chain && f.chain[0];
+    var fallbackLabel = link0 ? ('/' + link0.cmd + (link0.sub ? ' ' + link0.sub : '')) : 'გაშვება';
+    return { type: 'button', label: (f.label || '').trim() || fallbackLabel, chain: _tmIziviBuilderResolveChain(f) };
   });
   var winJson = { title: draft.title, fields: finalFields };
 
