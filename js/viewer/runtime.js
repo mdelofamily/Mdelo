@@ -1046,7 +1046,7 @@ async function loadTodoState() {
 
 async function _gmSaveTodoState(todoId, checked) {
   try {
-    await fetch(SUPA_URL + '/rest/v1/menu_todo_state', {
+    const r = await fetch(SUPA_URL + '/rest/v1/menu_todo_state?on_conflict=map_id,todo_id', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1061,6 +1061,7 @@ async function _gmSaveTodoState(todoId, checked) {
         updated_at: new Date().toISOString()
       })
     });
+    if (!r.ok) console.error('todo save failed', r.status, await r.text());
   } catch (e) {}
 }
 
