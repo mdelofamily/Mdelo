@@ -95,7 +95,8 @@ function addMenuSection() {
 function _addItem(nodeId, type) {
   const n = _findNode(nodeId); if (!n) return;
   if (type === "progress") n.items.push({ type: "progress", emoji: "📊", label: "", value: 100 });
-  else if (type === "todo") n.items.push({ type: "todo", id: "todo_" + Date.now(), label: "", checked: false });
+  // Set default todo emoji to unchecked square
+  else if (type === "todo") n.items.push({ type: "todo", id: "todo_" + Date.now(), emoji: "⬜", label: "", checked: false });
   else                     n.items.push({ type: "text",     emoji: "•",  label: "" });
   renderMenuBuilder();
 }
@@ -127,6 +128,11 @@ function _updateItem(nodeId, idx, key, val) {
   const item = n.items[idx]; if (item == null) return;
   if (typeof item === "string") { n.items[idx] = { type: "text", emoji: "•", label: val }; return; }
   item[key] = val;
+  
+  // Sync emoji automatically when checked state changes
+  if (item.type === "todo" && key === "checked") {
+    item.emoji = val ? "✅" : "⬜";
+  }
 }
 
 // ── LINK INTO ITEM ──
@@ -197,7 +203,7 @@ function _renderNode(node, depth, isRoot) {
     row.style.cssText = "display:flex;gap:5px;align-items:center;padding-left:8px;";
 
     const emojiI = document.createElement("input");
-    emojiI.value = itObj.emoji || (itObj.type === "progress" ? "📊" : itObj.type === "todo" ? "" : "•");
+    emojiI.value = itObj.emoji || (itObj.type === "progress" ? "📊" : itObj.type === "todo" ? (itObj.checked ? "✅" : "⬜") : "•");
     emojiI.style.cssText = _ESTYLE;
     emojiI.oninput = () => _updateItem(node.id, idx, "emoji", emojiI.value);
 
@@ -240,7 +246,10 @@ function _renderNode(node, depth, isRoot) {
       chkI.checked = !!itObj.checked;
       chkI.title = "თავიდანვე მონიშნული";
       chkI.style.cssText = "width:18px;height:18px;flex-shrink:0;cursor:pointer;";
-      chkI.onchange = () => _updateItem(node.id, idx, "checked", chkI.checked);
+      chkI.onchange = () => {
+        _updateItem(node.id, idx, "checked", chkI.checked);
+        renderMenuBuilder();
+      };
       row.appendChild(chkI);
     }
 
@@ -280,9 +289,74 @@ function _renderNode(node, depth, isRoot) {
 // ── FULL RENDER ──
 function renderMenuBuilder() {
   const el = document.getElementById("menuBuilder");
+  if (!el) return;
   el.innerHTML = "";
   _menuSections.forEach(sec => el.appendChild(_renderNode(sec, 0, true)));
 }
+
+// ── EXPORT ENGINE (Builds static interactive tree) ──
+function exportMenuHTML() {
+  const slugMap = _buildSlugMap(_menuSections);
+  let h = `<div class="legend-tree">`;
+  h += _generateMenuHTML(_menuSections, slugMap);
+  h += `</div>`;
+  return h;
+}
+
+function _generateMenuHTML(nodes, slugMap) {
+  let html = `<ul style="list-style:none; padding-left:15px; margin:5px 0;">`;
+  for (const n of nodes) {
+    const slug = slugMap.get(n.id) || n.id;
+    html += `<li style="margin-bottom:6px;" data-menu-slug="${slug}">`;
+    html += `<div style="display:flex; align-items:center; gap:6px; font-weight:600; color:var(--text);">`;
+    if (n.icon) html += `<span>${n.icon}</span>`;
+    html += `<span>${n.title || "Untitled"}</span>`;
+    html += `</div>`;
+
+    if (n.items && n.items.length) {
+      html += `<ul style="list-style:none; padding-left:15px; margin:4px 0;">`;
+      n.items.forEach(it => {
+        if (it.type === "todo") {
+          const sym = it.checked ? "✅" : "⬜";
+          html += `<li class="todo-item" data-todo-id="${it.id}" style="cursor:pointer; margin-bottom:3px; display:flex; align-items:flex-start; gap:6px;" onclick="toggleTodoInExport('${it.id}')">`;
+          html += `<span class="todo-sym" style="user-select:none; flex-shrink:0;">${sym}</span>`;
+          html += `<span style="color:var(--text-muted); font-size:13px; line-height:1.4;">${parseWikiLinks(it.label || "")}</span>`;
+          html += `</li>`;
+        } else if (it.type === "progress") {
+          html += `<li style="margin-bottom:5px; display:flex; flex-direction:column; gap:2px;">`;
+          html += `<div style="font-size:12px; color:var(--text-muted); display:flex; justify-content:between;"><span>${it.emoji || "📊"} ${parseWikiLinks(it.label || "")}</span> <span style="font-weight:bold;">${it.value || 0}%</span></div>`;
+          html += `<div style="width:100%; height:6px; background:#222836; border-radius:3px; overflow:hidden;"><div style="width:${it.value || 0}%; height:100%; background:var(--accent);"></div></div>`;
+          html += `</li>`;
+        } else {
+          html += `<li style="margin-bottom:3px; display:flex; align-items:flex-start; gap:6px;">`;
+          html += `<span style="color:var(--accent); flex-shrink:0;">${it.emoji || "•"}</span>`;
+          html += `<span style="color:var(--text-muted); font-size:13px; line-height:1.4;">${parseWikiLinks(it.label || "")}</span>`;
+          html += `</li>`;
+        }
+      });
+      html += `</ul>`;
+    }
+
+    if (n.children && n.children.length) {
+      html += _generateMenuHTML(n.children, slugMap);
+    }
+    html += `</li>`;
+  }
+  html += `</ul>`;
+  return html;
+}
+
+// Global runtime click handler inside the generated export map
+window.toggleTodoInExport = function(todoId) {
+  const elements = document.querySelectorAll(`[data-todo-id="${todoId}"] .todo-sym`);
+  elements.forEach(el => {
+    if (el.textContent.trim() === "⬜") {
+      el.textContent = "✅";
+    } else {
+      el.textContent = "⬜";
+    }
+  });
+};
 
 // ── WINDOW BINDINGS ──
 window.addMenuSection      = addMenuSection;
@@ -301,3 +375,4 @@ window._moveChild          = _moveChild;
 window._slugify            = _slugify;
 window._buildSlugMap       = _buildSlugMap;
 window._findNodeBySlug     = _findNodeBySlug;
+window.exportMenuHTML      = exportMenuHTML;
