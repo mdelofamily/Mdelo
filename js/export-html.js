@@ -21,7 +21,7 @@ function getMenuData() {
       id: n.id, icon: n.icon || "📁", title: n.title,
       items: (n.items || [])
         .map(i => typeof i === "string" ? { type: "text", emoji: "•", label: i } : i)
-        .filter(i => i.label || i.type === "progress"),
+        .filter(i => i.label || i.type === "progress" || i.type === "todo"),
       children: (n.children || []).filter(c => c.title).map(ser)
     };
   }
