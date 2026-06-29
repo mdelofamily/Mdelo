@@ -761,7 +761,7 @@ async function _tmMenuLeaf(args) {
     if (!todoName) { _tmL('ter', 'გამოყენება: /ფოთოლი todo <სახელი>  ან  /ფოთოლი todo ls  ან  /ფოთოლი todo <N>'); return; }
     if (!node.items) node.items = [];
     node.items.push({ type: 'todo', id: 'todo_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), label: todoName, checked: false });
-    _tmL('tok', '+ [' + (node.items.length - 1) + '] ☐ todo დაემატა');
+    _tmL('tok', '+ [' + (node.items.length - 1) + '] ⬜ todo დაემატა');
     await _tmMenuSaveNode(node.id, { items_json: node.items });
   } else {
     _tmL('tdm', _SEP);
@@ -770,7 +770,7 @@ async function _tmMenuLeaf(args) {
     _tmL('tnf', '  ინდიკატორი <სახელი> <%> — progress item');
     _tmL('tnf', '  todo <სახელი>           — todo item');
     _tmL('tnf', '  todo <N>                — toggle item [N]');
-    _tmL('tnf', '  todo ls                 — todos სია ☐/✅');
+    _tmL('tnf', '  todo ls                 — todos სია ⬜/✅');
     _tmL('tdm', _SEP);
   }
 }
@@ -782,7 +782,7 @@ function _tmTodoLs(node) {
   _tmL('tdm', _SEP);
   todos.forEach(function (todo, idx) {
     var realIdx = node.items.findIndex(function (it) { return it === todo; });
-    var status = todo.checked ? '✅' : '☐';
+    var status = todo.checked ? '✅' : '⬜';
     _tmL('tnf', '  [' + realIdx + '] ' + status + ' ' + (todo.label || '(უსახელო)'));
   });
   _tmL('tdm', _SEP);
@@ -796,7 +796,7 @@ async function _tmTodoToggle(node, idx) {
   }
   var todo = node.items[idx];
   todo.checked = !todo.checked;
-  var status = todo.checked ? '✅' : '☐';
+  var status = todo.checked ? '✅' : '⬜';
   _tmL('tok', '[' + idx + '] ' + status + ' განახლდა');
   await _tmMenuSaveNode(node.id, { items_json: node.items });
   if (typeof window.todoSaveChecked === 'function') {
