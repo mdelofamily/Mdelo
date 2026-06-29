@@ -101,6 +101,11 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
 .gm-bar-fill{height:100%;border-radius:4px;background:#4ade80;transition:width .3s;}
 .gm-bar-pct{font:11px monospace;color:#8b949e;min-width:30px;text-align:right;}
 .gm-item{font:14px/1.4 sans-serif;color:rgba(180,190,200,0.88);padding:1px 0;}
+.gm-todo-row{display:flex;align-items:flex-start;gap:8px;padding:4px 0;cursor:pointer;font:14px/1.4 sans-serif;color:rgba(180,190,200,0.88);}
+.gm-todo-row:hover{background:rgba(255,255,255,0.04);border-radius:6px;}
+.gm-todo-box{flex-shrink:0;font-size:15px;line-height:1.4;}
+.gm-todo-label{flex:1;}
+.gm-todo-row.checked .gm-todo-label{color:rgba(140,150,160,0.6);text-decoration:line-through;}
 .info{position:fixed;bottom:7px;right:10px;font:10px monospace;color:rgba(72,79,88,0.6);pointer-events:none;}
 .hotspot{position:absolute;cursor:pointer;z-index:5;overflow:visible;background:none!important;border:none!important;}
 .hs-dot{position:absolute;top:-18px;left:50%;transform:translateX(-50%);width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,0.6);box-shadow:0 0 4px rgba(255,255,255,0.8);pointer-events:none;}
