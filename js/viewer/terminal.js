@@ -15,7 +15,7 @@ var _tmEditMode = null;    // 'dlg' | 'menuItem' | null
 var _tmEditMenuCtx = null; // { node, idx, type } — set only when _tmEditMode === 'menuItem'
 var _tmEditBuf = null;     // raw content buffered from a chain segment, consumed by /შეყვანა
 var _tmEditLabel = null;   // human-readable label shown in cancel/header messages
-var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/marker','/დახურვა','/flag','/nick','/me','/who','/color','/help','/pwd','/ls','/cd','/md','/rm','/edit','/ფოთოლი','/macro','/იზივეი'];
+var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/marker','/დახურვა','/flag','/nick','/me','/who','/color','/help','/pwd','/ls','/cd','/md','/rm','/edit','/ფოთოლი','/macro'];
 
 function toggleTerm() { _tmOpen ? closeTerm() : _tmOpen_(); }
 function _tmOpen_() {
@@ -225,441 +225,6 @@ document.addEventListener('keydown', function (e) {
 
 var _SEP = '────────────────────────────────';
 
-// ── command registry (incremental migration target) ──────────────────────
-// Schema per top-level entry:
-//   {
-//     params: [...], desc: "...", handler: fn   // no sub-actions
-//   }
-//   OR
-//   {
-//     subs: {
-//       <subName>: { params: [...], desc: "...", handler: fn },
-//       ...
-//     }
-//   }
-// `handler` is always called as handler(args) — args is the same space-split
-// array the old `map[cmd](args)` dispatch already passed. Commands that
-// delegate to another module with a different signature (e.g. /flag →
-// unlockHandleCmd) get a thin wrapper here so every registry handler shares
-// one calling convention, regardless of what runs underneath.
-//
-// MIGRATION STATE: registry intentionally starts EMPTY. Nothing has been
-// moved out of the legacy `map` object inside _tmRun yet — this commit only
-// wires up the registry data structure + lookup + dispatcher fallback so the
-// pattern can be verified before any real command moves. See
-// COMMAND_REGISTRY_SCOPE_INSTRUCTION.md for the full migration plan.
-var COMMAND_REGISTRY = {
-  // /flag set|clear|del|check|list|ls|reset <სახელი?> — fully delegates to
-  // unlock.js's unlockHandleCmd, which already does its own sub-action
-  // switch + arg-join internally (parts[1]=sub, parts.slice(2)=arg). Registry
-  // intentionally does NOT expose sub-actions here (see Step 2 design
-  // decision: single source of truth stays in unlock.js, matching its own
-  // header comment). The wrapper only re-prepends the literal "flag" head
-  // unlockHandleCmd expects, exactly as the old _tmFlagDelegate did.
-  flag: {
-    params: [], // unlockHandleCmd parses its own sub-action + arg from the array
-    desc: 'flag სისტემა — set/clear/check/list/reset',
-    // Multi-row /help override — mirrors unlock.js's own header-comment list
-    // of sub-actions exactly (single source of truth stays in unlock.js;
-    // this is just its help-row mirror, same Variant A pattern as elsewhere).
-    helpLines: [
-      ['/flag set <სახელი>',   'flag-ის დაყენება'],
-      ['/flag clear <სახელი>', 'flag-ის წაშლა'],
-      ['/flag check <სახელი>', 'flag-ის შემოწმება'],
-      ['/flag list',           'ყველა flag-ის სია'],
-      ['/flag reset',          'ყველა flag-ის გასუფთავება']
-    ],
-    // Izivei picker hint (IZIVEI_SCOPE design Q2): manually curated parallel
-    // to helpLines above — each `sub` becomes its own structured picker row
-    // with its own param-schema, since internal dispatch (unlockHandleCmd)
-    // doesn't expose sub-actions through the flat `params` array. Must be
-    // kept in sync by hand alongside helpLines — same accepted trade-off.
-    izivei: [
-      { sub: 'set',   params: [{ name: 'სახელი', type: 'text' }] },
-      { sub: 'clear', params: [{ name: 'სახელი', type: 'text' }] },
-      { sub: 'check', params: [{ name: 'სახელი', type: 'text' }] },
-      { sub: 'list',  params: [] },
-      { sub: 'reset', params: [] }
-    ],
-    handler: function (args) {
-      if (typeof unlockHandleCmd !== 'function') {
-        _tmL('ter', '/flag: unlock.js არ არის ჩატვირთული'); return;
-      }
-      return unlockHandleCmd(['flag'].concat(args));
-    }
-  },
-
-  // ── Step 3: filesystem-style menu navigation (pwd/ls/cd/md/rm/edit/ფოთოლი) ──
-  // All seven are thin pass-throughs to their existing _tmMenu* handlers —
-  // same args array shape the old map[cmd](args) dispatch already used.
-  // No behavior change; this step only moves the lookup, not the logic.
-
-  pwd: {
-    params: [],
-    desc: 'მიმდინარე მენიუ-მდებარეობის გამოტანა',
-    handler: function (args) { return _tmMenuPwd(); } // takes no args itself
-  },
-
-  ls: {
-    params: [],
-    desc: 'მიმდინარე მდებარეობის შემცველობის ჩამონათვალი',
-    handler: function (args) { return _tmMenuLs(); } // takes no args itself
-  },
-
-  cd: {
-    params: [
-      { name: 'სახელი|..|/|a/b/c', type: 'text', desc: 'სექციის სახელი, ".." ან slash-path ("/a/b", "a/b")' }
-    ],
-    desc: 'მენიუში გადასვლა — სახელით, ".."-ით root-ზე/მშობელზე ასასვლელად, ან slash-path-ით',
-    handler: function (args) { return _tmMenuCd(args); }
-  },
-
-  md: {
-    params: [
-      { name: 'სახელი', type: 'text', desc: 'ახალი სექციის სახელი' },
-      { name: 'ემოჯი', type: 'text', optional: true, desc: 'ემოჯი (default 📁)' }
-    ],
-    desc: 'ახალი ქვე-სექციის შექმნა მიმდინარე მდებარეობაში',
-    handler: function (args) { return _tmMenuMd(args); }
-  },
-
-  rm: {
-    params: [
-      { name: 'სახელი|N', type: 'text', desc: 'სექციის სახელი ან item-ის რიცხვითი ინდექსი' }
-    ],
-    desc: 'სექციის ან item-ის წაშლა (სახელით ან ინდექსით)',
-    handler: function (args) { return _tmMenuRm(args); }
-  },
-
-  edit: {
-    params: [
-      { name: 'N', type: 'number', desc: 'item-ის ინდექსი (/ls-ში ნანახი)' },
-      { name: '...', type: 'text', optional: true, multiline: true,
-        desc: 'ახალი ტექსტი/% — თუ გამოტოვებული, იხსნება multiline editor' }
-    ],
-    desc: 'item-ის შემცველობის რედაქტირება ინდექსით — inline ან multiline editor-ით',
-    handler: function (args) { return _tmMenuEdit(args); }
-  },
-
-  // /ფოთოლი keeps its own internal sub-action switch (ტექსტი/ინდიკატორი),
-  // exactly mirroring the /flag → unlockHandleCmd pattern (Variant A):
-  // a single registry entry, no `subs` block, internal dispatch untouched.
-  'ფოთოლი': {
-    params: [], // _tmMenuLeaf parses its own sub-action (ტექსტი/ინდიკატორი) + args
-    desc: 'item-ის დამატება მიმდინარე სექციაში — ტექსტი/ინდიკატორი',
-    helpLines: [
-      ['/ფოთოლი ტექსტი|ინდიკატორი [ემოჯი]', 'item-ის დამატება მიმდინარე კვანძში']
-    ],
-    // Izivei picker hint — both sub-actions take an optional leading emoji
-    // plus their own content shape: ტექსტი is free text, ინდიკატორი is a
-    // numeric value (rendered as the progress bar _gmOpenOverlay draws).
-    izivei: [
-      { sub: 'ტექსტი',      params: [
-        { name: 'ემოჯი', type: 'text', optional: true },
-        { name: 'ტექსტი', type: 'text', multiline: true }
-      ] },
-      { sub: 'ინდიკატორი',  params: [
-        { name: 'ემოჯი', type: 'text', optional: true },
-        { name: 'სახელი', type: 'text' },
-        { name: 'მნიშვნელობა', type: 'number' }
-      ] }
-    ],
-    handler: function (args) { return _tmMenuLeaf(args); }
-  },
-
-  // ── Step 4: დახმარება ──
-  // NOTE: _tmHelp's command list is still a hardcoded static array at this
-  // point — auto-generating it FROM the registry is a separate, later step
-  // (scope item 5) that only makes sense once migration is complete and the
-  // registry actually contains every command. This step only moves the
-  // *lookup* for /დახმარება itself into the registry; the list contents are
-  // untouched.
-  'დახმარება': {
-    params: [],
-    desc: 'ბრძანების სია',
-    handler: function (args) { return _tmHelp(); } // takes no args itself
-  },
-
-  // ── Step 5: გასუფთავება ──
-  'გასუფთავება': {
-    params: [],
-    desc: 'კონსოლის გასუფთავება',
-    handler: function (args) { return tmClear(); } // takes no args itself
-  },
-
-  // ── Step 6: 14 simple commands, migrated as one batch ──
-  // All thin pass-throughs to existing handlers — same args array shape the
-  // legacy map[cmd](args) dispatch already used. No behavior change.
-
-  'ინფო': {
-    params: [],
-    desc: 'რუკის ინფორმაცია',
-    handler: function (args) { return _tmInfo(); } // takes no args itself
-  },
-
-  'მასშტაბი': {
-    params: [
-      { name: 'N', type: 'number', desc: 'zoom დონე 0.25–6' }
-    ],
-    desc: 'zoom 0.25–6',
-    handler: function (args) { return _tmZoom(args); }
-  },
-
-  'ზონები': {
-    params: [],
-    desc: 'ზონების სია',
-    handler: function (args) { return _tmAreas(); } // takes no args itself
-  },
-
-  'ობიექტები': {
-    params: [],
-    desc: 'ობიექტები + dialogue სტატუსი',
-    handler: function (args) { return _tmObjects(); } // takes no args itself
-  },
-
-  'დიალოგი': {
-    params: [
-      { name: 'სახელი', type: 'text', optional: true, desc: 'ობიექტის სახელი' }
-    ],
-    desc: 'DSL რედაქტირება · Ctrl+Enter შესანახად',
-    handler: function (args) { return _tmDlgEdit(args); }
-  },
-
-  'წასვლა': {
-    params: [
-      { name: 'N', type: 'text', desc: 'ზონის სახელი' }
-    ],
-    desc: 'ზონაზე ნავიგაცია',
-    handler: function (args) { return _tmGo(args); }
-  },
-
-  // /ლეგენდა keeps its own internal sub-action check (რედაქტირება/edit),
-  // same Variant A pattern as /flag and /ფოთოლი: single entry, no `subs`
-  // block, internal dispatch in _tmLegend untouched.
-  'ლეგენდა': {
-    params: [], // _tmLegend parses its own optional sub-action (რედაქტირება/edit)
-    desc: 'აღწერას ჩვენა/დამალვა · "რედაქტირება" — მთავარი ლეგენდის ტექსტი',
-    helpLines: [
-      ['/ლეგენდა',            'აღწერას ჩვენა/დამალვა'],
-      ['/ლეგენდა რედაქტირება', 'მთავარი ლეგენდის ტექსტის რედაქტირება']
-    ],
-    // Izivei picker hint — plain toggle has no sub/params; რედაქტირება opens
-    // the multiline legend editor, modeled as a single multiline text param
-    // (mirrors what _tmLegendEditOpen + _tmSaveLegend actually do).
-    izivei: [
-      { sub: null,            params: [] },
-      { sub: 'რედაქტირება',  params: [{ name: 'ტექსტი', type: 'text', multiline: true }] }
-    ],
-    handler: function (args) { return _tmLegend(args); }
-  },
-
-  'გახსნა': {
-    params: [],
-    desc: 'ტერმინალის გახსნა (macro/window hook-ისთვის)',
-    handler: function (args) { return _tmOpenCmd(); } // takes no args itself
-  },
-
-  'შეყვანა': {
-    params: [],
-    desc: 'Enter/Send — ღია edit-სესიის submit (macro-chain-ისთვის)',
-    handler: function (args) { return _tmSubmitCmd(); } // takes no args itself
-  },
-
-  'სრული': {
-    params: [],
-    desc: 'სრული ↔ ნახევარი',
-    handler: function (args) { return tmToggleFull(); } // takes no args itself
-  },
-
-  'ისტორია': {
-    params: [],
-    desc: 'ჩატის ისტორიის წაშლა',
-    handler: function (args) { return _histClear(); } // takes no args itself
-  },
-
-  'ვადა': {
-    params: [
-      { name: 'N', type: 'number', optional: true, desc: 'შენახვის ვადა დღეებში (1–365)' }
-    ],
-    desc: 'ისტ. შენახვა N დღე',
-    handler: function (args) { return _tmVada(args); }
-  },
-
-  'ტექსტი': {
-    params: [],
-    desc: 'ჩატ ↔ ბრძანება mode',
-    handler: function (args) { return tmToggleMulti(); } // takes no args itself
-  },
-
-  'დახურვა': {
-    params: [],
-    desc: 'დახურვა [Esc]',
-    handler: function (args) { return closeTerm(); } // takes no args itself
-  },
-
-  // ── Step 7: marker ──
-  // /marker set|reset keeps its own internal sub-action switch (same pattern
-  // as /flag → unlockHandleCmd and /ლეგენდა → _tmLegend): single entry, no
-  // `subs` block, _tmMarkerCmd does its own args[0]=sub / args.slice(1)=rest
-  // extraction exactly as before. Local-only (localStorage), per-device —
-  // unrelated to Supabase-synced notification/menu overrides.
-  marker: {
-    params: [], // _tmMarkerCmd parses its own sub-action (set/reset) + rest
-    desc: 'set|reset <სახელი> [?|!|~|-] — ლოკალური მარკერი (მხ. ეს device)',
-    helpLines: [
-      ['/marker set <სახელი> ?/!/~/-', 'მარკერი — ლოკალური (მხ. შენ)'],
-      ['/marker reset [სახელი]',       'მარკერი → საწყისზე (ერთი ან ყველა)']
-    ],
-    // Izivei picker hint — set takes a name + a select of the 4 marker chars;
-    // reset's name is optional (omitted clears all), matching helpLines above.
-    izivei: [
-      { sub: 'set',   params: [
-        { name: 'სახელი', type: 'text' },
-        { name: 'მარკერი', type: 'select', options: ['?', '!', '~', '-'] }
-      ] },
-      { sub: 'reset', params: [
-        { name: 'სახელი', type: 'text', optional: true }
-      ] }
-    ],
-    handler: function (args) { return _tmMarkerCmd(args); }
-  },
-
-  // ── Step 8: macro ──
-  // /macro has two different things living behind args[0]: a literal
-  // sub-action (ls/rm), OR the scope word (local/საერთო) of a `:=` assignment
-  // — _tmMacro tells them apart itself by re-joining the raw args and looking
-  // for ":=" before treating args[0] as scope. This doesn't fit a clean
-  // registry `subs` split (ls/rm aren't peers of local/საერთო — they're a
-  // separate branch entirely), so same Variant A approach as /flag, /marker,
-  // /ლეგენდა: one entry, no `subs`, full args array passed through untouched.
-  macro: {
-    params: [], // _tmMacro parses ls / rm <scope> <name> / <scope> <name> := cmd;cmd... itself
-    desc: 'local|საერთო <სახელი> := cmd1;cmd2... · ls · rm local|საერთო <სახელი>',
-    helpLines: [
-      ['/macro local <სახელი> := ...',  'პერსონალური შორთკატის შექმნა'],
-      ['/macro საერთო <სახელი> := ...', 'გაზიარებული შორთკატის შექმნა'],
-      ['/macro ls',                     'ყველა შორთკატის სია'],
-      ['/macro rm local|საერთო <სახელი>', 'შორთკატის წაშლა']
-    ],
-    // Izivei picker hint — `local`/`საერთო` both take name + a multiline
-    // chain body (the ";"-joined command list _tmMacro splits itself); `ls`
-    // has no params; `rm` takes a scope select + name, matching the rm
-    // sub-branch _tmMacro itself parses (args[1]=scope, rest=name).
-    izivei: [
-      { sub: 'local',   params: [
-        { name: 'სახელი', type: 'text' },
-        { name: 'ჯაჭვი', type: 'text', multiline: true }
-      ] },
-      { sub: 'საერთო',  params: [
-        { name: 'სახელი', type: 'text' },
-        { name: 'ჯაჭვი', type: 'text', multiline: true }
-      ] },
-      { sub: 'ls',      params: [] },
-      { sub: 'rm',      params: [
-        { name: 'scope', type: 'select', options: ['local', 'საერთო'] },
-        { name: 'სახელი', type: 'text' }
-      ] }
-    ],
-    handler: function (args) { return _tmMacro(args); }
-  },
-
-  // ── Step 9: მენიუ (plain form only) ──
-  // /მენიუ has two structurally different entry points:
-  //   1. Plain "/მენიუ" — toggles the menu panel open/closed (closeTerm +
-  //      toggleMenu). Space-split args shape, fits the registry cleanly.
-  //   2. "/მენიუ/ა/ბ/2" — deep-link path syntax with literal "/" separators.
-  //      This NEVER reaches here as cmd="მენიუ": the whole "მენიუ/ა/ბ/2"
-  //      string is matched by the menuPathM regex earlier in _tmRun (before
-  //      the parts=full.split(/\s+/) line), because there's no whitespace
-  //      to split on — it's one token. That branch opens a leaf as a
-  //      standalone overlay (no menu panel underneath), a genuinely
-  //      different UI state from the plain toggle. It stays a permanent
-  //      regex special-case in _tmRun — literal-path syntax doesn't fit a
-  //      space-split args registry model, structurally (unlike /შეტყობინება,
-  //      whose suffix-glued syntax WAS changed to fit the registry below).
-  'მენიუ': {
-    params: [],
-    desc: 'მენიუ-პანელის გახსნა/დახურვა (deep-link: /მენიუ/სექცია/.../N)',
-    // Second row documents the deep-link syntax even though that syntax is
-    // matched by a separate regex in _tmRun and never reaches this entry's
-    // handler (see comment above) — it's a help-text pairing only.
-    helpLines: [
-      ['/მენიუ',              'მენიუს toggle'],
-      ['/მენიუ/სექცია/.../N', 'პირდაპირი ლინკი ნესტ. სექციაზე ან item-ზე']
-    ],
-    // Izivei picker hint — plain toggle has no params. The deep-link form is
-    // hinted here too even though it's matched by a separate regex in _tmRun
-    // and never reaches this entry's handler (same permanent special-case
-    // noted above) — picker treats it as a single free-text path param.
-    izivei: [
-      { sub: null, params: [] },
-      { sub: 'deep-link', params: [{ name: 'path', type: 'text' }] }
-    ],
-    handler: function (args) { return _tmMenu(); } // takes no args itself
-  },
-
-  // ── Step 10: შეტყობინება — syntax changed to fit the registry ──
-  // OLD syntax (pre-migration): "/შეტყობინება!" — type-char glued directly
-  // onto the command name, no space. That could never resolve via a plain
-  // name-keyed registry lookup (cmd=parts[0] would be "შეტყობინება!", a
-  // different literal string per type-char).
-  // NEW syntax: "/შეტყობინება ! ტექსტი @@ზონა" — type-char is now its own
-  // space-separated token (args[0]), exactly like any other param. This is
-  // an intentional, user-approved breaking change (old "/შეტყობინება!"
-  // glued form no longer works — must now write "/შეტყობინება !").
-  // _tmNotify(typeChar, rest) itself is untouched; only how its two
-  // arguments get extracted from the command line has changed.
-  'შეტყობინება': {
-    params: [
-      { name: 'typeChar', type: 'select', options: ['*', '!', '~', '+', '.'], optional: true,
-        desc: '*ინფო  !გაფრთხ.  ~საფრთხე  +პროექტი  .მზადაა (default: ინფო)' },
-      { name: 'ტექსტი', type: 'text', multiline: true, desc: 'შეტყობინების ტექსტი' },
-      { name: 'ზონა', type: 'text', optional: true, prefix: '@@', desc: 'დაკავშირებული ზონა' }
-    ],
-    desc: 'პირდაპირი შეტყობინების გაგზავნა (Supabase + PWA push)',
-    handler: function (args) {
-      var typeChars = ['*', '!', '~', '+', '.'];
-      var typeChar = '', rest = args;
-      if (args.length && typeChars.indexOf(args[0]) >= 0) {
-        typeChar = args[0];
-        rest = args.slice(1);
-      }
-      return _tmNotify(typeChar, rest.join(' '));
-    }
-  },
-
-  // ── Step 11: იზივეი (window-builder trigger — Variant A, own dispatch) ──
-  // /იზივეი local|საერთო <სახელი> opens the builder for a new/existing window
-  // (creation + collision rules live in _tmIzivei). Opening an ALREADY-SAVED
-  // window by its bare name is NOT this command's job — that's
-  // _tmIziviResolve, checked earlier in _tmRun's dispatch chain, same
-  // precedence rule as macros (local wins over shared on a name clash).
-  'იზივეი': {
-    params: [], // _tmIzivei parses its own scope word + name (+ optional "force")
-    desc: 'local|საერთო <სახელი> — ფანჯრის-ბილდერის გახსნა (ახალი ან ედიტი)',
-    helpLines: [
-      ['/იზივეი local <სახელი>',          'პერსონალური ფანჯრის შექმნა/ედიტი'],
-      ['/იზივეი საერთო <სახელი>',         'გაზიარებული ფანჯრის შექმნა/ედიტი'],
-      ['/იზივეი საერთო <სახელი> force',   'სახელის კონფლიქტის გადაწერა']
-    ],
-    izivei: [
-      { sub: 'local',  params: [{ name: 'სახელი', type: 'text' }] },
-      { sub: 'საერთო', params: [{ name: 'სახელი', type: 'text' }] }
-    ],
-    handler: function (args) { return _tmIzivei(args); }
-  }
-};
-
-// Looks up a command (and optional sub-action) in the registry.
-// Returns the entry { params, desc, handler } or null if not found there
-// (which tells the caller to fall back to the legacy `map` dispatch).
-function _tmRegistryFind(name, sub) {
-  var entry = COMMAND_REGISTRY[name];
-  if (!entry) return null;
-  if (entry.subs) return sub ? (entry.subs[sub] || null) : null;
-  return entry;
-}
-
 function tmInsertSlash() {
   var inp = document.getElementById('tmIn');
   if (inp.value.charAt(0) !== '/') inp.value = '/' + inp.value;
@@ -686,102 +251,108 @@ async function _tmRun(raw) {
     var macroCmds = _tmMacroResolve(full);
     if (macroCmds) { await _tmRunChain(macroCmds); return; }
 
-    // ── exact Izivei-window-name match (local scope wins over shared) —
-    //    same precedence rule as macros, checked right after them so a saved
-    //    window opens by typing its bare name, same as a macro does ──
-    var iziviWin = _tmIziviResolve(full);
-    if (iziviWin) { _tmIziviOpenWindow(iziviWin); return; }
-
     // ── generic ";"-chaining: only splits where ";" is followed by "/",
     //    so a stray ";" inside ordinary item text is left alone ──
     var chainParts = _tmSplitChain(full);
     if (chainParts.length > 1) { await _tmRunChain(chainParts); return; }
   }
 
+  // ── /შეტყობინება[*!~+.] text [@@area] — direct notification send ──
+  var notifM = full.match(/^შეტყობინება([*!~+.]?)(?:\s+([\s\S]*))?$/);
+  if (notifM) { await _tmNotify(notifM[1], notifM[2] || ''); return; }
+
   // /მენიუ/<სექცია>/<სექცია>/.../<ფოთოლი_index?> — deep-link straight to a menu panel/leaf
   var menuPathM = full.match(/^მენიუ\/(.+)$/);
   if (menuPathM) { _tmMenuOpenPath(menuPathM[1].split('/').map(function (s) { return s.trim(); }).filter(Boolean)); return; }
 
   var parts = full.split(/\s+/), cmd = parts[0], args = parts.slice(1);
-
-  // ── registry-first dispatch (incremental migration) ──
-  // Sub-action commands pass their first arg as `sub` for the lookup, then
-  // drop it from the args the handler actually receives (matches how the
-  // legacy map-based handlers already split head/rest themselves below).
-  var regEntry = _tmRegistryFind(cmd, args[0]);
-  var regArgs = args;
-  if (regEntry && COMMAND_REGISTRY[cmd] && COMMAND_REGISTRY[cmd].subs) regArgs = args.slice(1);
-  if (regEntry) { await regEntry.handler(regArgs); return; }
-
-  // ── legacy map dispatch (commands not yet migrated to COMMAND_REGISTRY) ──
-  var map = {};
+  var map = {
+    'დახმარება':   _tmHelp,
+    'გასუფთავება': tmClear,
+    'ინფო':        _tmInfo,
+    'მასშტაბი':    _tmZoom,
+    'ზონები':      _tmAreas,
+    'ობიექტები':   _tmObjects,
+    'დიალოგი':     _tmDlgEdit,
+    'წასვლა':      _tmGo,
+    'ლეგენდა':     _tmLegend,
+    'მენიუ':       _tmMenu,
+    'გახსნა':      _tmOpenCmd,
+    'შეყვანა':     _tmSubmitCmd,
+    'სრული':       tmToggleFull,
+    'ისტორია':     _histClear,
+    'ვადა':        _tmVada,
+    'ტექსტი':      tmToggleMulti,
+    'დახურვა':     closeTerm,
+    'flag':        _tmFlagDelegate,
+    'pwd':         _tmMenuPwd,
+    'ls':          _tmMenuLs,
+    'cd':          _tmMenuCd,
+    'md':          _tmMenuMd,
+    'rm':          _tmMenuRm,
+    'edit':        _tmMenuEdit,
+    'ფოთოლი':      _tmMenuLeaf,
+    'macro':       _tmMacro,
+    'marker':      _tmMarkerCmd
+  };
   var fn = map[cmd];
   if (fn) { await fn(args); return; }
   if (typeof chatHandleInput === 'function' && chatHandleInput(text)) return;
   _tmL('ter', 'უცნობი ბრძანა: "/' + cmd + '" — სცადე: /დახმარება');
 }
 
-// ── /help formatting helper ──────────────────────────────────────────────
-// Turns a registry entry's `params` array into the bracket/angle notation
-// _tmHelp displays, e.g. [{name:'index',type:'number'},{name:'content',
-// optional:true}] → "<index> [content]". A param's own `prefix` (e.g. '@@'
-// on /შეტყობინება's area param) is glued inside its bracket/angle pair;
-// `type:'select'` with `options` renders as a pipe-joined choice list
-// instead of the bare name (e.g. "*|!|~|+|.").
-function _tmFormatParam(p) {
-  var label = (p.type === 'select' && p.options) ? p.options.join('|') : p.name;
-  if (p.prefix) label = p.prefix + label;
-  return p.optional ? ('[' + label + ']') : ('<' + label + '>');
-}
-function _tmFormatCmdRow(name, entry) {
-  var parts = (entry.params || []).map(_tmFormatParam);
-  return '/' + name + (parts.length ? ' ' + parts.join(' ') : '');
-}
-
 // ── built-in commands ──
-// /help is now generated FROM COMMAND_REGISTRY, not a hand-maintained list —
-// adding/changing a command's params/desc/helpLines here automatically
-// updates what /დახმარება prints, with zero risk of the two drifting apart.
-//   - An entry with `helpLines` (Variant A: flag, marker, macro, ლეგენდა,
-//     ფოთოლი, მენიუ) prints those rows verbatim — these are the commands
-//     whose real syntax is an internal sub-action switch that a flat
-//     `params` array can't express as a single row.
-//   - Every other entry prints one auto-formatted row: /name + its params
-//     in <required>/[optional] notation (see _tmFormatCmdRow above).
-// Order follows Object.keys(COMMAND_REGISTRY) insertion order, which mirrors
-// the registry's own step-by-step migration grouping (flag → filesystem-
-// style menu commands → დახმარება/გასუფთავება → the 14-command batch →
-// marker → macro → მენიუ → შეტყობინება → იზივეი) — the same grouping the old
-// hardcoded list followed by hand.
 function _tmHelp() {
-  _tmL('tdm', _SEP);
-  _tmL('tsy', '--- ბრძანები ---');
-  Object.keys(COMMAND_REGISTRY).forEach(function (name) {
-    var entry = COMMAND_REGISTRY[name];
-    if (entry.helpLines) {
-      entry.helpLines.forEach(function (row) { _tmL('tnf', pad(row[0]) + row[1]); });
-    } else {
-      _tmL('tnf', pad(_tmFormatCmdRow(name, entry)) + entry.desc);
-    }
-  });
-  // /nick, /me, /who, /color live in chat.js / chat-hud.js — a separate
-  // subsystem, never migrated into COMMAND_REGISTRY (out of this refactor's
-  // scope) — so these four rows stay static here, exactly as before.
-  _tmL('tnf', pad('/nick სახელი') + 'ნიკნეიმის შეცვლა');
-  _tmL('tnf', pad('/me ტექსტი')   + '* აქშნის მესიჯი');
-  _tmL('tnf', pad('/who')         + 'ონლაინ სია');
-  _tmL('tnf', pad('/color #hex')  + 'ნიკნეიმის ფერი');
+  var list = [
+    ['/დახმარება',        'ბრძანების სია'],
+    ['/გასუფთავება',      'კონსოლის გასუფთავება'],
+    ['/ინფო',             'რუკის ინფორმაცია'],
+    ['/მასშტაბი [N]',     'zoom 0.25–6'],
+    ['/ზონები',           'ზონების სია'],
+    ['/ობიექტები',        'ობიექტები + dialogue სტატუსი'],
+    ['/დიალოგი [სახელი]', 'DSL რედაქტირება · Ctrl+Enter შესანახად'],
+    ['/წასვლა [N]',       'ზონაზე ნავიგაცია'],
+    ['/ლეგენდა',          'აღწერას ჩვენა/დამალვა'],
+    ['/ლეგენდა რედაქტირება', 'მთავარი ლეგენდის ტექსტის რედაქტირება'],
+    ['/მენიუ',            'მენიუს toggle'],
+    ['/მენიუ/სექცია/.../N', 'პირდაპირი ლინკი ნესტ. სექციაზე ან item-ზე'],
+    ['/გახსნა',           'ტერმინალის გახსნა (macro/window hook-ისთვის)'],
+    ['/შეყვანა',          'Enter/Send — ღია edit-სესიის submit (macro-chain-ისთვის)'],
+    ['/სრული',            'სრული ↔ ნახევარი'],
+    ['/ისტორია',          'ჩატის ისტორიის წაშლა'],
+    ['/ვადა [N]',         'ისტ. შენახვა N დღე'],
+    ['/ტექსტი',           'ჩატ ↔ ბრძანება mode'],
+    ['/შეტყობინება[*!~+.] ტექსტი [@@ზონა]', 'შეტყობინების გაგზავნა'],
+    ['/marker set <სახელი> ?/!/~/-', 'მარკერი — ლოკალური (მხ. შენ)'],
+    ['/marker reset [სახელი]', 'მარკერი → საწყისზე (ერთი ან ყველა)'],
+    ['/დახურვა',          'დახურვა  [Esc]'],
+    ['/flag set/clear/list', 'flag სისტემა'],
+    ['/nick სახელი',      'ნიკნეიმის შეცვლა'],
+    ['/me ტექსტი',        '* აქშნის მესიჯი'],
+    ['/who',              'ონლაინ სია'],
+    ['/color #hex',       'ნიკნეიმის ფერი'],
+    ['/pwd',              'მენიუს მიმდინარე გზა'],
+    ['/ls',               'მენიუს კვანძის შემცველობა'],
+    ['/cd [სახელი|..|/|a/b/c]', 'ნავიგაცია — ერთი ნაბიჯი ან slash-path'],
+    ['/md <სახელი> [ემოჯი]', 'ახალი ქვე-სექცია + ავტო-cd (default 📁)'],
+    ['/ფოთოლი ტექსტი|ინდიკატორი [ემოჯი]', 'item-ის დამატება მიმდინარე კვანძში'],
+    ['/rm <სახელი|N>',    'სექციის (სახელით) ან item-ის (ინდექსით) წაშლა'],
+    ['/edit <N>',         'item [N] — multiline რედაქტირება'],
+    ['/edit <N> <...>',   'item [N] — სწრაფი ერთხაზიანი ედიტი'],
+    ['/macro local <სახელი> := ...',  'პერსონალური შორთკატის შექმნა'],
+    ['/macro საერთო <სახელი> := ...', 'გაზიარებული შორთკატის შექმნა'],
+    ['/macro ls',         'ყველა შორთკატის სია'],
+    ['/macro rm local|საერთო <სახელი>', 'შორთკატის წაშლა']
+  ];
+  _tmL('tdm', _SEP); _tmL('tsy', '--- ბრძანები ---');
+  for (var i = 0; i < list.length; i++) {
+    var c = list[i][0], d = list[i][1];
+    var pad = c; while (pad.length < 24) pad += ' ';
+    _tmL('tnf', pad + d);
+  }
   _tmL('tdm', 'Tab — ავტოდასრულება   ↑↓ — ისტორია');
   _tmL('tdm', 'ტექსტი "/" გარეშე → ჩატის მესიჯი');
   _tmL('tdm', _SEP);
-
-  // column-align helper: pads a command string to a fixed width so the
-  // description column lines up — same 24-char width the old hardcoded
-  // list used, so auto-generated rows visually match it.
-  function pad(s) {
-    var W = 24;
-    return s.length >= W ? (s + ' ') : (s + new Array(W - s.length + 1).join(' '));
-  }
 }
 function _tmInfo() {
   var d = _CFG;
@@ -1047,7 +618,7 @@ var _TM_NOTIFY_SYMS  = { info: '💬', warning: '⚠', danger: '❗', done: '✅
 async function _tmNotify(typeChar, rest) {
   rest = (rest || '').trim();
   if (!rest) {
-    _tmL('tnf', 'გამოყენება: /შეტყობინება [*!~+.] ტექსტი [@@ზონა]');
+    _tmL('tnf', 'გამოყენება: /შეტყობინება[*!~+.] ტექსტი [@@ზონა]');
     _tmL('tdm', '*ინფო  !გაფრთხ.  ~საფრთხე  +პროექტი  .მზადაა');
     return;
   }
@@ -1212,11 +783,8 @@ async function _tmSaveDlg(dsl) {
 }
 
 // ── /flag command ──
-// DEAD CODE as of Step 2 migration — superseded by COMMAND_REGISTRY.flag.handler
-// (same logic, same delegation to unlockHandleCmd). Left in place rather than
-// deleted, consistent with the low-priority dead-code-cleanup convention used
-// elsewhere (e.g. runtime.js's btn.markers/btn.flags/btn.notify blocks).
-// Safe to remove in a future cleanup pass once all migrations are verified.
+// Delegates entirely to unlock.js's unlockHandleCmd (set/clear/check/list/reset).
+// terminal.js no longer reimplements flag logic — single source of truth in unlock.js.
 function _tmFlagDelegate(args) {
   if (typeof unlockHandleCmd !== 'function') {
     _tmL('ter', '/flag: unlock.js არ არის ჩატვირთული'); return;
@@ -1551,7 +1119,7 @@ async function _tmMenuSaveNode(nodeId, fields) {
 // A macro IS a brand-new command: once saved, typing its exact name (with /) runs
 // the whole stored chain. Local scope takes precedence over shared on a name clash.
 var _TM_RESERVED = ['macro','marker','cd','md','rm','ls','pwd','edit','ფოთოლი','flag','nick','me','who','color','help',
-  'დახმარება','გასუფთავება','ინფო','მასშტაბი','ზონები','ობიექტები','დიალოგი','წასვლა','ლეგენდა','მენიუ','გახსნა','შეყვანა','სრული','ისტორია','ვადა','ტექსტი','შეტყობინება','დახურვა','იზივეი'];
+  'დახმარება','გასუფთავება','ინფო','მასშტაბი','ზონები','ობიექტები','დიალოგი','წასვლა','ლეგენდა','მენიუ','გახსნა','შეყვანა','სრული','ისტორია','ვადა','ტექსტი','შეტყობინება','დახურვა'];
 
 // Split a raw (no leading "/") command line on ";" — only where ";" is followed
 // (after optional whitespace) by "/", so semicolons inside ordinary text are safe.
@@ -1732,358 +1300,3 @@ window.runMacro = function (name) {
   _tmRunChain(cmds);
   return true;
 };
-
-// ── Izivei window-builder engine (step 2: trigger command + storage layer) ──
-// Mirrors the macro engine's duality pattern exactly:
-//   local   — localStorage, this device only, instant, no Supabase round-trip
-//   საერთო  — Supabase (izivei_windows table), every viewer sees it on next load
-// A saved window IS a brand-new command too: typing its exact name (with /)
-// opens it, same precedence rule as macros (local wins over shared on a name
-// clash) — see _tmRun's dispatch chain above, right after _tmMacroResolve.
-//
-// Window-builder UI (field/widget rendering, button-chain editor) is step 3
-// — DONE: real render lives in runtime.js as _tmIziviOpenWindow (same
-// cross-file convention as toggleMenu/applyScale — terminal.js calls it,
-// runtime.js owns the DOM). The step-2 placeholder that used to live here
-// has been removed now that the real implementation exists.
-
-function _tmIziviLocalKey() { return 'mdelo_izivei_local_' + ((typeof _CFG !== 'undefined' && _CFG && _CFG.title) || 'map'); }
-function _tmIziviLocalAll() {
-  try { return JSON.parse(localStorage.getItem(_tmIziviLocalKey()) || '{}'); } catch (e) { return {}; }
-}
-function _tmIziviLocalSave(all) {
-  try { localStorage.setItem(_tmIziviLocalKey(), JSON.stringify(all)); return true; } catch (e) { return false; }
-}
-
-// Exact-name lookup across both scopes. Returns a window-JSON object or null.
-// Same precedence as _tmMacroResolve: local always wins over shared.
-function _tmIziviResolve(full) {
-  var name = (full || '').trim();
-  if (!name) return null;
-  var locals = _tmIziviLocalAll();
-  if (locals[name]) return locals[name];
-  if (window._tmIziviShared && window._tmIziviShared[name]) return window._tmIziviShared[name];
-  return null;
-}
-
-// /იზივეი local|საერთო <სახელი>
-// Opens the builder for a brand-new window (or re-opens an existing one of
-// the same scope+name to edit it — builder UI itself is step 3). This
-// command only handles creation/lookup + the collision rules below; it does
-// NOT open a window by bare name — that's _tmIziviResolve's job, checked
-// earlier in _tmRun's dispatch chain.
-//
-// Collision rules (IZIVEI_SCOPE design discussion):
-//   local create, name already used by another LOCAL window → silent overwrite
-//     (same as macro's local scope — no confirmation, matches user's own
-//     instant/no-round-trip expectation for local scope)
-//   local create, name already used by a SHARED window → not a collision —
-//     local precedence on resolve means this is fine, the global window is
-//     simply shadowed for this device when typing the bare name; the shared
-//     row itself is untouched.
-//   საერთო create, name already used by another SHARED window → CANNOT
-//     silently overwrite. Warn the person the name already exists globally,
-//     and require them to either pick a new name or explicitly confirm they
-//     want to overwrite (re-issue the same command with `force` as a 3rd
-//     arg). Permission-check on *who* is allowed to overwrite a global
-//     window is a STUB here — real access control is out of this scope
-//     (PROGRESSION_ENGINE_SCOPE_V1.md), so for now any viewer can force an
-//     overwrite once warned.
-//   საერთო create, name already used by a LOCAL window (for this device) →
-//     not a collision either, by the same local-precedence logic — the
-//     shared window is created normally; this device just won't see it by
-//     bare name (its own local one shadows it), a known macro-engine-style
-//     trade-off, not specially handled.
-async function _tmIzivei(args) {
-  var scope = (args[0] || '').trim();
-  var rest = args.slice(1);
-  var force = false;
-  if (rest.length && rest[rest.length - 1] === 'force') { force = true; rest = rest.slice(0, -1); }
-  var name = rest.join(' ').trim();
-
-  if (scope !== 'local' && scope !== 'საერთო') {
-    _tmL('ter', 'მითხარი scope: /იზივეი local <სახელი>  ან  /იზივეი საერთო <სახელი>');
-    return;
-  }
-  if (!name) { _tmL('ter', 'სახელი არ მიუთითე'); return; }
-  if (_TM_RESERVED.indexOf(name) >= 0) { _tmL('ter', '✗ "' + name + '" დაცული სახელია — სხვა აარჩიე'); return; }
-
-  if (scope === 'local') {
-    var locAll = _tmIziviLocalAll();
-    var isOverwrite = !!locAll[name];
-    // silent overwrite — no confirmation needed for local scope
-    _tmIziviBuilderOpen(scope, name, locAll[name] || null);
-    if (isOverwrite) _tmL('tdm', '("' + name + '" — local ფანჯარა უკვე არსებობს, ედიტში გადააწერ)');
-    return;
-  }
-
-  // საერთო — check for an existing SHARED window under this name first
-  var shared = window._tmIziviShared || {};
-  if (shared[name] && !force) {
-    _tmL('ter', '✗ "' + name + '" სახელი უკვე არსებობს გლობალურად');
-    _tmL('tdm', 'მოიფიქრე ახალი სახელი, ან დაადასტურე: /იზივეი საერთო ' + name + ' force');
-    return;
-  }
-  if (shared[name] && force) {
-    // STUB: real permission check belongs here once access-control exists
-    // (PROGRESSION_ENGINE_SCOPE_V1.md). For now, force always succeeds.
-    _tmL('tdm', '⚠️ გლობალური "' + name + '" — გადაწერად ეხსნება ედიტში');
-  }
-  _tmIziviBuilderOpen(scope, name, shared[name] || null);
-}
-
-// ── Izivei Builder UI (step 4) ────────────────────────────────────────────
-// Replaces the step-3 placeholder. Opens the SAME #izWin popup that
-// _tmIziviOpenWindow (runtime.js) uses for normal viewing, but in "edit
-// mode": instead of rendering fields[] as live widgets, it renders an
-// editor that lets the person assemble fields[] in the first place.
-//
-// Design decision (confirmed in chat): field-type selection is NEVER free
-// text. The person picks a command from a dropdown (collected from
-// COMMAND_REGISTRY's `izivei` hints), then a sub-action if that command has
-// one, and the param-schema for that exact sub-action is what gets rendered
-// as the value-inputs — exactly the same shape _tmIziviOpenWindow already
-// knows how to render and run. The person never types a "type" or a
-// "label" by hand; the registry already defines those.
-
-// Flattens COMMAND_REGISTRY into a picker-friendly list of
-// { cmd, sub, label, params } rows. `იზივეი` itself is excluded — letting a
-// button open the window-builder from inside a window is circular and not
-// useful. Commands with params:[] and no izivei hint (e.g. /გასუფთავება)
-// still get one param-less row, since those are valid single-link chains
-// too (a button that just clears the console, for instance).
-function _tmIziviCollectSchema() {
-  var rows = [];
-  Object.keys(COMMAND_REGISTRY).forEach(function (cmd) {
-    if (cmd === 'იზივეი') return; // no circular builder-inside-builder
-    var entry = COMMAND_REGISTRY[cmd];
-    if (entry.izivei && entry.izivei.length) {
-      entry.izivei.forEach(function (row) {
-        rows.push({
-          cmd: cmd,
-          sub: row.sub || null,
-          label: '/' + cmd + (row.sub ? ' ' + row.sub : ''),
-          params: row.params || []
-        });
-      });
-    } else if (!entry.params || !entry.params.length) {
-      rows.push({ cmd: cmd, sub: null, label: '/' + cmd, params: [] });
-    }
-    // commands with a flat params[] but no izivei hint and no sub-actions
-    // (rare — most either have one or the other) fall through unrepresented
-    // here; they're reachable via the raw-string escape hatch if ever added.
-  });
-  return rows;
-}
-
-// existing is the prior window-JSON if this is an edit/overwrite, else null.
-function _tmIziviBuilderOpen(scope, name, existing) {
-  closeHsPopup(); closeAreaPopup();
-  var schema = _tmIziviCollectSchema();
-  var draft = {
-    title: (existing && existing.title) || name,
-    fields: (existing && existing.fields) ? JSON.parse(JSON.stringify(existing.fields)) : []
-  };
-
-  document.getElementById('izWinTitle').textContent =
-    '🛠 ' + (existing ? 'ედიტი' : 'ახალი') + ' — ' + (scope === 'local' ? 'პერსონალური' : 'საერთო');
-  var body = document.getElementById('izWinBody');
-  body.innerHTML = '';
-  body._izFields = null; // builder mode — not the run-mode value cache
-
-  // --- title field ---
-  var titleRow = document.createElement('div');
-  titleRow.className = 'iz-field';
-  var titleLbl = document.createElement('label'); titleLbl.textContent = 'ფანჯრის სათაური';
-  var titleInp = document.createElement('input'); titleInp.type = 'text'; titleInp.value = draft.title;
-  titleInp.oninput = function () { draft.title = titleInp.value; };
-  titleRow.appendChild(titleLbl); titleRow.appendChild(titleInp);
-  body.appendChild(titleRow);
-
-  var fieldsContainer = document.createElement('div');
-  fieldsContainer.style.display = 'flex'; fieldsContainer.style.flexDirection = 'column'; fieldsContainer.style.gap = '8px';
-  body.appendChild(fieldsContainer);
-
-  function renderFieldsList() {
-    fieldsContainer.innerHTML = '';
-    draft.fields.forEach(function (field, idx) {
-      fieldsContainer.appendChild(_tmIziviBuilderFieldRow(field, idx, draft, renderFieldsList));
-    });
-  }
-  renderFieldsList();
-
-  // --- add-field control: command dropdown -> sub dropdown -> commit ---
-  var addRow = document.createElement('div');
-  addRow.className = 'iz-field';
-  var addLbl = document.createElement('label'); addLbl.textContent = '+ ღილაკის დამატება';
-  var addSel = document.createElement('select');
-  var placeholderOpt = document.createElement('option');
-  placeholderOpt.value = ''; placeholderOpt.textContent = '— ბრძანების ამორჩევა —';
-  addSel.appendChild(placeholderOpt);
-  schema.forEach(function (row, i) {
-    var o = document.createElement('option');
-    o.value = String(i); o.textContent = row.label;
-    addSel.appendChild(o);
-  });
-  addSel.onchange = function () {
-    if (addSel.value === '') return;
-    var picked = schema[+addSel.value];
-    draft.fields.push({
-      type: 'button',
-      label: '', // intentionally empty — see _tmIziviBuilderFieldRow's lblInp:
-                 // the button's display text and its underlying /command are
-                 // two separate things, and starting the label pre-filled
-                 // with the command string made that hard to see at a glance
-      chain: [{ cmd: picked.cmd, sub: picked.sub, params: picked.params, values: picked.params.map(function () { return ''; }) }]
-    });
-    addSel.value = '';
-    renderFieldsList();
-  };
-  addRow.appendChild(addLbl); addRow.appendChild(addSel);
-  body.appendChild(addRow);
-
-  // --- save / cancel ---
-  var saveBtn = document.createElement('button');
-  saveBtn.className = 'iz-btn';
-  saveBtn.textContent = '💾 შენახვა';
-  saveBtn.onclick = function () { _tmIziviBuilderSave(scope, name, draft); };
-  body.appendChild(saveBtn);
-
-  var cancelBtn = document.createElement('button');
-  cancelBtn.className = 'iz-btn';
-  cancelBtn.style.opacity = '0.7';
-  cancelBtn.textContent = 'გაუქმება';
-  cancelBtn.onclick = function () { _tmIziviCloseWindow(); };
-  body.appendChild(cancelBtn);
-
-  var pw = Math.min(window.innerWidth * 0.92, 380);
-  var popup = document.getElementById('izWin');
-  popup.style.cssText = 'left:' + ((window.innerWidth - pw) / 2) + 'px;top:' + Math.max(60, window.innerHeight * 0.12) + 'px;max-width:' + pw + 'px;max-height:' + (window.innerHeight * 0.8) + 'px;';
-  popup.classList.add('show');
-  wrap.style.overflow = 'hidden';
-}
-
-// Renders one already-added button-field as an editable row: its label,
-// each chain-link's param value-inputs (rendered straight from that link's
-// own params[] — same render logic _tmIziviOpenWindow's value-inputs use,
-// just inline here instead of in run-mode), and a remove control.
-// onChange is called after any edit so the parent can decide whether to
-// re-render (only needed on remove, to keep indices in sync).
-function _tmIziviBuilderFieldRow(field, idx, draft, onStructuralChange) {
-  var card = document.createElement('div');
-  card.className = 'iz-field';
-  card.style.border = '1px solid rgba(88,166,255,0.25)';
-  card.style.borderRadius = '8px';
-  card.style.padding = '8px';
-
-  var lblRow = document.createElement('div');
-  lblRow.style.display = 'flex'; lblRow.style.justifyContent = 'space-between'; lblRow.style.alignItems = 'center';
-  // permanent, read-only context: WHICH command this button runs. Never
-  // touched by label edits below — keeps "what it does" visually separate
-  // from "what it's called", so the two are never mistaken for each other.
-  var cmdCtx = (field.chain && field.chain[0]) ? ('/' + field.chain[0].cmd + (field.chain[0].sub ? ' ' + field.chain[0].sub : '')) : '';
-  var lblTxt = document.createElement('span');
-  lblTxt.style.fontSize = '11px'; lblTxt.style.color = '#8b949e';
-  lblTxt.textContent = '⚙ ' + cmdCtx;
-  var rmBtn = document.createElement('button');
-  rmBtn.textContent = '✕'; rmBtn.style.background = 'none'; rmBtn.style.border = 'none';
-  rmBtn.style.color = '#8b949e'; rmBtn.style.cursor = 'pointer';
-  rmBtn.onclick = function () { draft.fields.splice(idx, 1); onStructuralChange(); };
-  lblRow.appendChild(lblTxt); lblRow.appendChild(rmBtn);
-  card.appendChild(lblRow);
-
-  // button-label override (what the person sees on the actual window button)
-  // — starts EMPTY (see addSel.onchange), with a placeholder explaining
-  // what it's for, so it's never visually confused with cmdCtx above.
-  var lblInp = document.createElement('input');
-  lblInp.type = 'text'; lblInp.value = field.label;
-  lblInp.placeholder = 'ღილაკის წარწერა (მაგ: "კარის გახსნა")';
-  lblInp.style.marginTop = '4px';
-  lblInp.oninput = function () { field.label = lblInp.value; };
-  card.appendChild(lblInp);
-
-
-  // each chain-link's params, rendered from that link's own schema
-  field.chain.forEach(function (link) {
-    (link.params || []).forEach(function (p, pIdx) {
-      var pRow = document.createElement('div');
-      pRow.className = 'iz-field';
-      pRow.style.marginTop = '6px';
-      var pLbl = document.createElement('label'); pLbl.textContent = p.name + (p.optional ? ' (არასავალდებულო)' : '');
-      pRow.appendChild(pLbl);
-      var pInput;
-      if (p.type === 'select') {
-        pInput = document.createElement('select');
-        (p.options || []).forEach(function (opt) {
-          var o = document.createElement('option'); o.value = opt; o.textContent = opt;
-          pInput.appendChild(o);
-        });
-      } else if (p.multiline) {
-        pInput = document.createElement('textarea');
-      } else {
-        pInput = document.createElement('input');
-        pInput.type = (p.type === 'number') ? 'number' : 'text';
-      }
-      pInput.value = link.values[pIdx] || '';
-      pInput.oninput = function () { link.values[pIdx] = pInput.value; };
-      pRow.appendChild(pInput);
-      card.appendChild(pRow);
-    });
-    if (!link.params || !link.params.length) {
-      var noParam = document.createElement('div');
-      noParam.style.fontSize = '11px'; noParam.style.color = '#8b949e'; noParam.style.marginTop = '4px';
-      noParam.textContent = '(ეს ბრძანება პარამეტრს არ ითხოვს)';
-      card.appendChild(noParam);
-    }
-  });
-
-  return card;
-}
-
-// Resolves every chain-link's {cmd, sub, params, values} into a concrete
-// command string (e.g. "/flag set quest1"), producing the final fields[]
-// shape _tmIziviOpenWindow already knows how to render and run — builder
-// output and run-mode input are the exact same JSON shape.
-function _tmIziviBuilderResolveChain(field) {
-  return field.chain.map(function (link) {
-    var parts = ['/' + link.cmd];
-    if (link.sub) parts.push(link.sub);
-    (link.values || []).forEach(function (v) { if (v !== '') parts.push(v); });
-    return parts.join(' ');
-  });
-}
-
-function _tmIziviBuilderSave(scope, name, draft) {
-  var finalFields = draft.fields.map(function (f) {
-    var link0 = f.chain && f.chain[0];
-    var fallbackLabel = link0 ? ('/' + link0.cmd + (link0.sub ? ' ' + link0.sub : '')) : 'გაშვება';
-    return { type: 'button', label: (f.label || '').trim() || fallbackLabel, chain: _tmIziviBuilderResolveChain(f) };
-  });
-  var winJson = { title: draft.title, fields: finalFields };
-
-  if (scope === 'local') {
-    var all = _tmIziviLocalAll();
-    all[name] = winJson;
-    _tmIziviLocalSave(all);
-    _tmL('tok', '✓ "' + name + '" — შენახულია (local)');
-    _tmIziviCloseWindow();
-    return;
-  }
-
-  // scope === 'საერთო'
-  if (typeof window.iziviOverrideSave !== 'function') {
-    _tmL('ter', '✗ Supabase save ფუნქცია არ არის ჩატვირთული (runtime.js)');
-    return;
-  }
-  window.iziviOverrideSave(name, { scope: 'shared', title: winJson.title, fields_json: winJson.fields })
-    .then(function (res) {
-      if (res === true) {
-        _tmL('tok', '✓ "' + name + '" — შენახულია (საერთო)');
-        _tmIziviCloseWindow();
-      } else {
-        _tmL('ter', '✗ შენახვა ჩავარდა: ' + ((res && res.msg) || 'უცნობი შეცდომა'));
-      }
-    });
-}
-
-
