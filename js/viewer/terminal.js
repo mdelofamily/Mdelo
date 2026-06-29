@@ -13,9 +13,8 @@ var _tmBooted = false;
 var _tmEditObj = null;     // truthy sentinel while an edit session is open (dlg objKey, or menu node id)
 var _tmEditMode = null;    // 'dlg' | 'menuItem' | null
 var _tmEditMenuCtx = null; // { node, idx, type } — set only when _tmEditMode === 'menuItem'
-var _tmEditBuf = null;     // raw content buffered from a chain segment, consumed by /შეყვანა
 var _tmEditLabel = null;   // human-readable label shown in cancel/header messages
-var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/marker','/დახურვა','/flag','/nick','/me','/who','/color','/help','/pwd','/ls','/cd','/md','/rm','/edit','/ფოთოლი','/macro'];
+var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/სრული','/ისტორია','/ვადა','/ტექსტი','/დახურვა','/flag','/nick','/me','/who','/color','/help','/pwd','/ls','/cd','/md','/rm','/edit','/ფოთოლი','/macro'];
 
 function toggleTerm() { _tmOpen ? closeTerm() : _tmOpen_(); }
 function _tmOpen_() {
@@ -26,7 +25,7 @@ function _tmOpen_() {
 }
 function closeTerm() {
   // cancel edit mode silently on close
-  if (_tmEditObj) { _tmEditObj = null; _tmEditMode = null; _tmEditMenuCtx = null; _tmEditLabel = null; _tmEditBuf = null; document.getElementById('tmTa').value = ''; if (_tmMulti) tmToggleMulti(); }
+  if (_tmEditObj) { _tmEditObj = null; _tmEditMode = null; _tmEditMenuCtx = null; _tmEditLabel = null; document.getElementById('tmTa').value = ''; if (_tmMulti) tmToggleMulti(); }
   _tmOpen = false; _tmFull = false;
   var t = document.getElementById('mdlTerm');
   t.classList.remove('open', 'tmfull');
@@ -257,14 +256,6 @@ async function _tmRun(raw) {
     if (chainParts.length > 1) { await _tmRunChain(chainParts); return; }
   }
 
-  // ── /შეტყობინება[*!~+.] text [@@area] — direct notification send ──
-  var notifM = full.match(/^შეტყობინება([*!~+.]?)(?:\s+([\s\S]*))?$/);
-  if (notifM) { await _tmNotify(notifM[1], notifM[2] || ''); return; }
-
-  // /მენიუ/<სექცია>/<სექცია>/.../<ფოთოლი_index?> — deep-link straight to a menu panel/leaf
-  var menuPathM = full.match(/^მენიუ\/(.+)$/);
-  if (menuPathM) { _tmMenuOpenPath(menuPathM[1].split('/').map(function (s) { return s.trim(); }).filter(Boolean)); return; }
-
   var parts = full.split(/\s+/), cmd = parts[0], args = parts.slice(1);
   var map = {
     'დახმარება':   _tmHelp,
@@ -277,14 +268,12 @@ async function _tmRun(raw) {
     'წასვლა':      _tmGo,
     'ლეგენდა':     _tmLegend,
     'მენიუ':       _tmMenu,
-    'გახსნა':      _tmOpenCmd,
-    'შეყვანა':     _tmSubmitCmd,
     'სრული':       tmToggleFull,
     'ისტორია':     _histClear,
     'ვადა':        _tmVada,
     'ტექსტი':      tmToggleMulti,
     'დახურვა':     closeTerm,
-    'flag':        _tmFlagDelegate,
+    'flag':        _tmFlag,
     'pwd':         _tmMenuPwd,
     'ls':          _tmMenuLs,
     'cd':          _tmMenuCd,
@@ -292,8 +281,7 @@ async function _tmRun(raw) {
     'rm':          _tmMenuRm,
     'edit':        _tmMenuEdit,
     'ფოთოლი':      _tmMenuLeaf,
-    'macro':       _tmMacro,
-    'marker':      _tmMarkerCmd
+    'macro':       _tmMacro
   };
   var fn = map[cmd];
   if (fn) { await fn(args); return; }
@@ -315,16 +303,10 @@ function _tmHelp() {
     ['/ლეგენდა',          'აღწერას ჩვენა/დამალვა'],
     ['/ლეგენდა რედაქტირება', 'მთავარი ლეგენდის ტექსტის რედაქტირება'],
     ['/მენიუ',            'მენიუს toggle'],
-    ['/მენიუ/სექცია/.../N', 'პირდაპირი ლინკი ნესტ. სექციაზე ან item-ზე'],
-    ['/გახსნა',           'ტერმინალის გახსნა (macro/window hook-ისთვის)'],
-    ['/შეყვანა',          'Enter/Send — ღია edit-სესიის submit (macro-chain-ისთვის)'],
     ['/სრული',            'სრული ↔ ნახევარი'],
     ['/ისტორია',          'ჩატის ისტორიის წაშლა'],
     ['/ვადა [N]',         'ისტ. შენახვა N დღე'],
     ['/ტექსტი',           'ჩატ ↔ ბრძანება mode'],
-    ['/შეტყობინება[*!~+.] ტექსტი [@@ზონა]', 'შეტყობინების გაგზავნა'],
-    ['/marker set <სახელი> ?/!/~/-', 'მარკერი — ლოკალური (მხ. შენ)'],
-    ['/marker reset [სახელი]', 'მარკერი → საწყისზე (ერთი ან ყველა)'],
     ['/დახურვა',          'დახურვა  [Esc]'],
     ['/flag set/clear/list', 'flag სისტემა'],
     ['/nick სახელი',      'ნიკნეიმის შეცვლა'],
@@ -334,8 +316,8 @@ function _tmHelp() {
     ['/pwd',              'მენიუს მიმდინარე გზა'],
     ['/ls',               'მენიუს კვანძის შემცველობა'],
     ['/cd [სახელი|..|/|a/b/c]', 'ნავიგაცია — ერთი ნაბიჯი ან slash-path'],
-    ['/md <სახელი> [ემოჯი]', 'ახალი ქვე-სექცია + ავტო-cd (default 📁)'],
-    ['/ფოთოლი ტექსტი|ინდიკატორი [ემოჯი]', 'item-ის დამატება მიმდინარე კვანძში'],
+    ['/md <სახელი>',      'ახალი ქვე-სექცია + ავტო-cd'],
+    ['/ფოთოლი ტექსტი|ინდიკატორი|todo', 'item-ის დამატება მიმდინარე კვანძში'],
     ['/rm <სახელი|N>',    'სექციის (სახელით) ან item-ის (ინდექსით) წაშლა'],
     ['/edit <N>',         'item [N] — multiline რედაქტირება'],
     ['/edit <N> <...>',   'item [N] — სწრაფი ერთხაზიანი ედიტი'],
@@ -443,7 +425,7 @@ async function _tmSaveLegend(text) {
   }
 
   var label = _tmEditLabel;
-  _tmEditObj = null; _tmEditMode = null; _tmEditMenuCtx = null; _tmEditLabel = null; _tmEditBuf = null;
+  _tmEditObj = null; _tmEditMode = null; _tmEditMenuCtx = null; _tmEditLabel = null;
   document.getElementById('tmTa').value = '';
   if (_tmMulti) tmToggleMulti();
 
@@ -457,198 +439,6 @@ async function _tmSaveLegend(text) {
   else _tmL('ter', '✗ Supabase: ' + (res && res.msg ? res.msg : 'უცნობი'));
 }
 function _tmMenu() { closeTerm(); toggleMenu(); }
-
-// ── /მენიუ/<section>/<section>/.../<leaf-item-index?> — deep link ──
-// Drills the visible game-menu UI (runtime.js's _gmShowPanel/_gmOpenOverlay)
-// straight to a nested section or a specific item inside a leaf, instead of
-// making the person tap through each level by hand.
-function _tmMenuOpenPath(segs) {
-  if (!segs.length) { _tmMenu(); return; }
-  if (!_gmCfg) _gmCfg = _CFG;
-
-  var itemIdx = null;
-  if (/^\d+$/.test(segs[segs.length - 1])) { itemIdx = parseInt(segs[segs.length - 1]); segs = segs.slice(0, -1); }
-  if (!segs.length) { _tmMenu(); return; }
-
-  var nodes = _gmCfg.menu || [], path = [], node = null;
-  for (var i = 0; i < segs.length; i++) {
-    node = nodes.find(function (n) { return (n.title || '').trim() === segs[i]; });
-    if (!node) { _tmL('ter', 'მენიუში ვერ მოიძებნა: "' + segs[i] + '"'); return; }
-    if (i < segs.length - 1) {
-      if (!node.children || !node.children.length) { _tmL('ter', '"' + node.title + '" — ქვესექციები არ აქვს'); return; }
-      path.push({ title: node.title, nodes: node.children });
-      nodes = node.children;
-    }
-  }
-
-  var gm = document.getElementById('gameMenu');
-  var wasOpen = gm.classList.contains('open');
-  if (!wasOpen) toggleMenu();
-
-  if (node.items && node.items.length) {
-    _gmOpenOverlay(node, nodes, path, !wasOpen);
-    if (itemIdx != null) {
-      setTimeout(function () {
-        var body = document.getElementById('gmOverlayBody');
-        var el = body.children[itemIdx];
-        if (!el) { _tmL('ter', 'item [' + itemIdx + '] არ არსებობს'); return; }
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        var orig = el.style.backgroundColor;
-        el.style.transition = 'background-color .3s';
-        el.style.backgroundColor = 'rgba(0,255,136,.25)';
-        setTimeout(function () { el.style.backgroundColor = orig; }, 1200);
-      }, 80);
-    }
-  } else if (node.children && node.children.length) {
-    _gmShowPanel(node.children, path.concat([{ title: node.title, nodes: node.children }]));
-  } else {
-    _gmShowPanel(nodes, path);
-  }
-  _tmL('tok', '☰ → ' + segs.join('/') + (itemIdx != null ? '/' + itemIdx : ''));
-}
-function _tmOpenCmd() {
-  if (!_tmOpen) _tmOpen_();
-  _tmL('tok', 'ტერმინალი გახსნილია');
-}
-
-// ── /შეყვანა — Enter/Send equivalent for macro chains ──
-// Submits content into whichever edit session is currently open (dlg/menuItem/
-// legend), exactly as pressing the ➤ button would. Content comes from either
-// a buffered chain segment (_tmEditBuf, set by _tmRunChain) or, if typed
-// directly rather than via a macro, whatever's already sitting in #tmTa.
-function _tmSubmitCmd() {
-  if (!_tmEditObj) { _tmL('ter', '/შეყვანა: ღია edit-სესია არ მოიძებნა'); return; }
-  var v = (_tmEditBuf != null) ? _tmEditBuf : document.getElementById('tmTa').value.trim();
-  _tmEditBuf = null;
-  if (!v) { _tmL('ter', '/შეყვანა: შესანახი ტექსტი არ მოიძებნა'); return; }
-  if (_tmEditMode === 'menuItem') { _tmSaveMenuItem(v); return; }
-  if (_tmEditMode === 'legend')   { _tmSaveLegend(v); return; }
-  _tmSaveDlg(v);
-}
-
-// ── /marker set|reset — local-only marker override (personal exploration) ──
-// Reuses _applyMarkerDom / _markerSave / _mkRestoring / _MK_KEY from runtime.js — zero new infra.
-// Visible only on this device; community/Supabase state never touched.
-//   ?  →  '?'   (badge "?"   class q)    — აღებული ქუესტი
-//   !  →  '!'   (badge "!"   class exc)  — quest
-//   ~  →  '💬'  (badge "..." class chat) — ჩატი
-//   -  →  ''    (hs-dot "•")             — ნეიტრალური
-var _TM_MK_SYM = { '?': '?', '!': '!', '~': '💬', '-': '' };
-
-// Find hotspot by name — same dual-path lookup as /დიალოგი (data-title, then .lb fallback by oi).
-function _tmFindHotspot(name) {
-  var hs = document.querySelector('.hotspot[data-title="' + name.replace(/"/g, '\\"') + '"]:not(.hs-area):not(.no-interact)');
-  if (!hs && typeof _OBJS !== 'undefined') {
-    for (var _i = 0; _i < _OBJS.length; _i++) {
-      if (_OBJS[_i] && _OBJS[_i].lb === name) {
-        var _c = document.querySelector('.hotspot[data-oi="' + _i + '"]:not(.hs-area):not(.no-interact)');
-        if (_c) { hs = _c; break; }
-      }
-    }
-  }
-  return hs || null;
-}
-
-// Original (export/Supabase-baked) marker for an object, converted to _applyMarkerDom's input domain.
-function _tmOrigMk(oi) {
-  var raw = (typeof _OBJS !== 'undefined' && _OBJS[+oi] && _OBJS[+oi].marker) || '';
-  return raw === '...' ? '💬' : raw;
-}
-
-async function _tmMarkerCmd(args) {
-  var sub = (args[0] || '').toLowerCase();
-
-  if (sub === 'set') {
-    var rest = args.slice(1).join(' ').trim();
-    var m = rest.match(/^([\s\S]+?)\s+([?!~-])$/);
-    if (!m) {
-      _tmL('ter', 'გამოყენება: /marker set <სახელი> ?|!|~|-');
-      _tmL('tdm', '?ქუესტი  !აღებული  ~ჩატი(...)  -ნეიტრალური(•)');
-      return;
-    }
-    var name = m[1].trim(), sym = m[2];
-    var hs = _tmFindHotspot(name);
-    if (!hs) { _tmL('ter', 'ობიექტი ვერ მოიძებნა: "' + name + '"'); return; }
-    _applyMarkerDom(hs, _TM_MK_SYM[sym]);
-    _tmL('tok', name + ' — მარკერი "' + sym + '" (ლოკალური, მხ. შენ)');
-    return;
-  }
-
-  if (sub === 'reset') {
-    var name2 = args.slice(1).join(' ').trim();
-
-    if (!name2) {
-      try {
-        var s = JSON.parse(localStorage.getItem(_MK_KEY) || '{}');
-        _mkRestoring = true;
-        Object.keys(s).forEach(function (oi) {
-          var el = document.querySelector('.hotspot[data-oi="' + oi + '"]:not(.hs-area)');
-          if (el) _applyMarkerDom(el, _tmOrigMk(oi));
-        });
-        _mkRestoring = false;
-        localStorage.removeItem(_MK_KEY);
-        _tmL('tok', 'ყველა მარკერი — საწყის მდგომარეობაზე დაბრუნდა');
-      } catch (e) { _mkRestoring = false; _tmL('ter', 'შეცდომა: ' + e.message); }
-      return;
-    }
-
-    var hs2 = _tmFindHotspot(name2);
-    if (!hs2) { _tmL('ter', 'ობიექტი ვერ მოიძებნა: "' + name2 + '"'); return; }
-    var oi2 = hs2.dataset.oi;
-    _mkRestoring = true;
-    _applyMarkerDom(hs2, _tmOrigMk(oi2));
-    _mkRestoring = false;
-    try {
-      var s2 = JSON.parse(localStorage.getItem(_MK_KEY) || '{}');
-      delete s2[oi2];
-      localStorage.setItem(_MK_KEY, JSON.stringify(s2));
-    } catch (e) {}
-    _tmL('tok', name2 + ' — საწყის მდგომარეობაზე დაბრუნდა');
-    return;
-  }
-
-  _tmL('ter', 'გამოყენება: /marker set|reset <სახელი> [?|!|~|-]');
-}
-
-// ── /შეტყობინება — direct send to Supabase `notifications` table ──
-// type chars match bulk-parser.js _NOTIFY_TYPES:  * info  ! warning  ~ danger  + project  . done
-var _TM_NOTIFY_TYPES = { '*': 'info', '!': 'warning', '~': 'danger', '+': 'project', '.': 'done', '': 'info' };
-var _TM_NOTIFY_SYMS  = { info: '💬', warning: '⚠', danger: '❗', done: '✅', project: '🚀' };
-
-async function _tmNotify(typeChar, rest) {
-  rest = (rest || '').trim();
-  if (!rest) {
-    _tmL('tnf', 'გამოყენება: /შეტყობინება[*!~+.] ტექსტი [@@ზონა]');
-    _tmL('tdm', '*ინფო  !გაფრთხ.  ~საფრთხე  +პროექტი  .მზადაა');
-    return;
-  }
-
-  // optional trailing @@area
-  var area = '';
-  var areaM = rest.match(/^(.*?)\s*@@(.+?)\s*$/);
-  if (areaM) { area = areaM[2].trim(); rest = areaM[1].trim(); }
-  if (!rest) { _tmL('ter', 'ტექსტი ცარიელია'); return; }
-
-  var type   = _TM_NOTIFY_TYPES[typeChar] || 'info';
-  var sym    = _TM_NOTIFY_SYMS[type];
-  var sender = localStorage.getItem('mdelo_sender') || (typeof _CFG !== 'undefined' && _CFG && _CFG.title) || 'ანონიმი';
-
-  try {
-    var r = await fetch(SUPA_URL + '/rest/v1/notifications', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Prefer': 'return=minimal' },
-      body: JSON.stringify({ type: type, symbol: sym, text: rest, sender: sender, linked_area: area })
-    });
-    if (r.ok) {
-      _tmL('tok', sym + ' შეტყობინება გაიგზავნა');
-      if (typeof loadNotifs === 'function') loadNotifs();
-    } else {
-      _tmL('ter', 'შეცდომა: ' + r.status);
-    }
-  } catch (e) {
-    _tmL('ter', 'კავშირის შეცდომა');
-  }
-}
 function _tmVada(args) {
   var n = parseInt(args[0]);
   if (!args.length || isNaN(n) || n < 1 || n > 365) {
@@ -719,7 +509,6 @@ function _tmEditCancel() {
   _tmEditMode = null;
   _tmEditMenuCtx = null;
   _tmEditLabel = null;
-  _tmEditBuf = null;
   document.getElementById('tmTa').value = '';
   if (_tmMulti) tmToggleMulti();
   _tmL('tdm', label + ' — გაუქმდა');
@@ -771,7 +560,6 @@ async function _tmSaveDlg(dsl) {
     _tmEditObj = null;
     _tmEditMode = null;
     _tmEditLabel = null;
-    _tmEditBuf = null;
     document.getElementById('tmTa').value = '';
     if (_tmMulti) tmToggleMulti();
     _tmL('tok', title + ' — შენახულია ✓  (ყველა viewer განახლდება)');
@@ -783,13 +571,51 @@ async function _tmSaveDlg(dsl) {
 }
 
 // ── /flag command ──
-// Delegates entirely to unlock.js's unlockHandleCmd (set/clear/check/list/reset).
-// terminal.js no longer reimplements flag logic — single source of truth in unlock.js.
-function _tmFlagDelegate(args) {
-  if (typeof unlockHandleCmd !== 'function') {
-    _tmL('ter', '/flag: unlock.js არ არის ჩატვირთული'); return;
+// Usage:
+//   /flag set <name>    — set a flag
+//   /flag clear <name>  — clear a flag
+//   /flag check <name>  — check if flag is set
+//   /flag list          — list all set flags
+//   /flag reset         — clear all flags
+function _tmFlag(args) {
+  var sub = (args[0] || '').toLowerCase();
+  var name = args.slice(1).join(' ').trim();
+
+  if (typeof window._flagSet !== 'function') {
+    _tmL('ter', '/flag: flag სისტემა არ არის ჩატვირთული (runtime.js?)'); return;
   }
-  unlockHandleCmd(['flag'].concat(args));
+
+  if (sub === 'set') {
+    if (!name) { _tmL('ter', 'გამოყენება: /flag set <სახელი>'); return; }
+    window._flagSet(name);
+    _tmL('tok', '▸ flag სეტი: ' + name);
+  } else if (sub === 'clear') {
+    if (!name) { _tmL('ter', 'გამოყენება: /flag clear <სახელი>'); return; }
+    window._flagClear(name);
+    _tmL('tok', '▸ flag წაიშალა: ' + name);
+  } else if (sub === 'check') {
+    if (!name) { _tmL('ter', 'გამოყენება: /flag check <სახელი>'); return; }
+    var val = window._flagCheck(name);
+    _tmL(val ? 'tok' : 'tnf', '▸ ' + name + ': ' + (val ? '✓ სეტია' : '✗ არ არის სეტი'));
+  } else if (sub === 'list') {
+    var flags = window._flagList();
+    _tmL('tdm', _SEP);
+    if (!flags.length) { _tmL('tdm', 'flag-ები: ცარიელია'); }
+    else { _tmL('tsy', 'სეტი flag-ები (' + flags.length + '):'); flags.forEach(function(f) { _tmL('tnf', '  ▸ ' + f); }); }
+    _tmL('tdm', _SEP);
+  } else if (sub === 'reset') {
+    window._flagReset();
+    _tmL('tok', '▸ ყველა flag გასუფთავდა');
+  } else {
+    _tmL('tdm', _SEP);
+    _tmL('tsy', '/flag ბრძანებები:');
+    _tmL('tnf', '  set <name>   — flag-ის სეტი');
+    _tmL('tnf', '  clear <name> — flag-ის წაშლა');
+    _tmL('tnf', '  check <name> — flag-ის შემოწმება');
+    _tmL('tnf', '  list         — ყველა flag-ის სია');
+    _tmL('tnf', '  reset        — ყველა flag-ის გასუფთავება');
+    _tmL('tdm', _SEP);
+  }
 }
 
 // ── menu CLI — filesystem-style navigation/editing over _CFG.menu ──
@@ -888,32 +714,18 @@ function _tmMenuCdPath(path) {
   _tmL('tok', _tmMenuPathStr());
 }
 
-// Detects whether a trailing arg token is a custom icon/emoji override rather
-// than part of the name/text itself — short (<=2 unicode chars, covers most
-// single emoji incl. variation selectors) and containing no ordinary letters
-// or digits, so a real word/number is never mistaken for an icon.
-function _tmIsIconToken(tok) {
-  if (!tok) return false;
-  return Array.from(tok).length <= 2 && !/[a-zA-Zა-ჿ0-9]/.test(tok);
-}
-
 async function _tmMenuMd(args) {
-  var icon = '📁';
-  if (args.length > 1 && _tmIsIconToken(args[args.length - 1])) {
-    icon = args[args.length - 1];
-    args = args.slice(0, -1);
-  }
   var name = args.join(' ').trim();
-  if (!name) { _tmL('ter', 'გამოყენება: /md <სახელი> [ემოჯი]'); return; }
+  if (!name) { _tmL('ter', 'გამოყენება: /md <სახელი>'); return; }
   var parent = _tmMenuCwdNode();
   var list   = _tmMenuCwdList();
   if (list.find(function (n) { return (n.title || '').trim() === name; })) {
     _tmL('ter', 'უკვე არსებობს: "' + name + '"'); return;
   }
-  var node = { id: 'nd_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), icon: icon, title: name, items: [], children: [] };
+  var node = { id: 'nd_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), icon: '📁', title: name, items: [], children: [] };
   list.push(node);
   _tmMenuStack.push(node);
-  _tmL('tok', icon + ' ' + name + '  →  ' + _tmMenuPathStr());
+  _tmL('tok', '+ ' + name + '  →  ' + _tmMenuPathStr());
   await _tmMenuSaveNode(node.id, { parent_id: parent ? parent.id : null, icon: node.icon, title: node.title, items_json: [] });
 }
 
@@ -923,40 +735,72 @@ async function _tmMenuLeaf(args) {
   if (!node) { _tmL('ter', 'root-ში ფოთლები არ შეიძლება — /cd <სახელი> შედი სექციაში'); return; }
 
   if (sub === 'ტექსტი') {
-    var rest = args.slice(1);
-    var emoji = '•';
-    if (rest.length > 1 && _tmIsIconToken(rest[rest.length - 1])) {
-      emoji = rest[rest.length - 1];
-      rest = rest.slice(0, -1);
-    }
-    var text = rest.join(' ').trim();
-    if (!text) { _tmL('ter', 'გამოყენება: /ფოთოლი ტექსტი <ტექსტი> [ემოჯი]'); return; }
+    var text = args.slice(1).join(' ').trim();
+    if (!text) { _tmL('ter', 'გამოყენება: /ფოთოლი ტექსტი <ტექსტი>'); return; }
     if (!node.items) node.items = [];
-    node.items.push({ type: 'text', emoji: emoji, label: text });
-    _tmL('tok', '+ [' + (node.items.length - 1) + '] ' + emoji + ' ტექსტი დაემატა');
+    node.items.push({ type: 'text', emoji: '•', label: text });
+    _tmL('tok', '+ [' + (node.items.length - 1) + '] ტექსტი დაემატა');
     await _tmMenuSaveNode(node.id, { items_json: node.items });
   } else if (sub === 'ინდიკატორი') {
-    var rest2  = args.slice(1);
-    var emoji2 = '📊';
-    if (rest2.length > 1 && _tmIsIconToken(rest2[rest2.length - 1])) {
-      emoji2 = rest2[rest2.length - 1];
-      rest2 = rest2.slice(0, -1);
-    }
-    var pct    = parseInt(rest2[rest2.length - 1]);
-    var hasPct = !isNaN(pct) && rest2.length > 1;
-    var label  = (hasPct ? rest2.slice(0, -1) : rest2).join(' ').trim();
-    if (!label) { _tmL('ter', 'გამოყენება: /ფოთოლი ინდიკატორი <სახელი> <%> [ემოჯი]'); return; }
+    var rest   = args.slice(1);
+    var pct    = parseInt(rest[rest.length - 1]);
+    var hasPct = !isNaN(pct) && rest.length > 1;
+    var label  = (hasPct ? rest.slice(0, -1) : rest).join(' ').trim();
+    if (!label) { _tmL('ter', 'გამოყენება: /ფოთოლი ინდიკატორი <სახელი> <%>'); return; }
     var val = hasPct ? Math.max(0, Math.min(100, pct)) : 100;
     if (!node.items) node.items = [];
-    node.items.push({ type: 'progress', emoji: emoji2, label: label, value: val });
-    _tmL('tok', '+ [' + (node.items.length - 1) + '] ' + emoji2 + ' ინდიკატორი დაემატა (' + val + '%)');
+    node.items.push({ type: 'progress', emoji: '📊', label: label, value: val });
+    _tmL('tok', '+ [' + (node.items.length - 1) + '] ინდიკატორი დაემატა (' + val + '%)');
+    await _tmMenuSaveNode(node.id, { items_json: node.items });
+  } else if (sub === 'todo') {
+    var todoSub = (args[1] || '').trim();
+    if (todoSub === 'ls') { _tmTodoLs(node); return; }
+    var todoIdx = parseInt(todoSub);
+    if (!isNaN(todoIdx)) { await _tmTodoToggle(node, todoIdx); return; }
+    var todoName = args.slice(1).join(' ').trim();
+    if (!todoName) { _tmL('ter', 'გამოყენება: /ფოთოლი todo <სახელი>  ან  /ფოთოლი todo ls  ან  /ფოთოლი todo <N>'); return; }
+    if (!node.items) node.items = [];
+    node.items.push({ type: 'todo', id: 'todo_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), label: todoName, checked: false });
+    _tmL('tok', '+ [' + (node.items.length - 1) + '] ☐ todo დაემატა');
     await _tmMenuSaveNode(node.id, { items_json: node.items });
   } else {
     _tmL('tdm', _SEP);
     _tmL('tsy', '/ფოთოლი ბრძანებები:');
-    _tmL('tnf', '  ტექსტი <ტექსტი> [ემოჯი]         — ტექსტური item (default •)');
-    _tmL('tnf', '  ინდიკატორი <სახელი> <%> [ემოჯი] — progress item (default 📊)');
+    _tmL('tnf', '  ტექსტი <ტექსტი>         — ტექსტური item');
+    _tmL('tnf', '  ინდიკატორი <სახელი> <%> — progress item');
+    _tmL('tnf', '  todo <სახელი>           — todo item');
+    _tmL('tnf', '  todo <N>                — toggle item [N]');
+    _tmL('tnf', '  todo ls                 — todos სია ☐/✅');
     _tmL('tdm', _SEP);
+  }
+}
+
+// List all todos in current node with checked status
+function _tmTodoLs(node) {
+  var todos = (node.items || []).filter(function (it) { return it.type === 'todo'; });
+  if (!todos.length) { _tmL('tdm', '(todos არ არსებობს)'); return; }
+  _tmL('tdm', _SEP);
+  todos.forEach(function (todo, idx) {
+    var realIdx = node.items.findIndex(function (it) { return it === todo; });
+    var status = todo.checked ? '✅' : '☐';
+    _tmL('tnf', '  [' + realIdx + '] ' + status + ' ' + (todo.label || '(უსახელო)'));
+  });
+  _tmL('tdm', _SEP);
+}
+
+// Toggle todo [idx] in current node and sync to Supabase
+async function _tmTodoToggle(node, idx) {
+  if (!node.items || !node.items[idx] || node.items[idx].type !== 'todo') {
+    _tmL('ter', 'todo [' + idx + '] ვერ მოიძებნა — /ფოთოლი todo ls');
+    return;
+  }
+  var todo = node.items[idx];
+  todo.checked = !todo.checked;
+  var status = todo.checked ? '✅' : '☐';
+  _tmL('tok', '[' + idx + '] ' + status + ' განახლდა');
+  await _tmMenuSaveNode(node.id, { items_json: node.items });
+  if (typeof window.todoSaveChecked === 'function') {
+    await window.todoSaveChecked(node.id, todo.id, todo.checked);
   }
 }
 
@@ -1073,7 +917,7 @@ async function _tmSaveMenuItem(text) {
   var node = ctx.node, idx = ctx.idx;
   if (!node.items || !node.items[idx]) {
     _tmL('ter', '✗ item [' + idx + '] აღარ არსებობს');
-    _tmEditObj = null; _tmEditMode = null; _tmEditMenuCtx = null; _tmEditLabel = null; _tmEditBuf = null;
+    _tmEditObj = null; _tmEditMode = null; _tmEditMenuCtx = null; _tmEditLabel = null;
     document.getElementById('tmTa').value = '';
     if (_tmMulti) tmToggleMulti();
     return;
@@ -1090,7 +934,7 @@ async function _tmSaveMenuItem(text) {
   node.items[idx] = itObj;
 
   var label = _tmEditLabel;
-  _tmEditObj = null; _tmEditMode = null; _tmEditMenuCtx = null; _tmEditLabel = null; _tmEditBuf = null;
+  _tmEditObj = null; _tmEditMode = null; _tmEditMenuCtx = null; _tmEditLabel = null;
   document.getElementById('tmTa').value = '';
   if (_tmMulti) tmToggleMulti();
 
@@ -1118,47 +962,13 @@ async function _tmMenuSaveNode(nodeId, fields) {
 //   საერთო  — Supabase (terminal_macros table), every viewer sees it on next load
 // A macro IS a brand-new command: once saved, typing its exact name (with /) runs
 // the whole stored chain. Local scope takes precedence over shared on a name clash.
-var _TM_RESERVED = ['macro','marker','cd','md','rm','ls','pwd','edit','ფოთოლი','flag','nick','me','who','color','help',
-  'დახმარება','გასუფთავება','ინფო','მასშტაბი','ზონები','ობიექტები','დიალოგი','წასვლა','ლეგენდა','მენიუ','გახსნა','შეყვანა','სრული','ისტორია','ვადა','ტექსტი','შეტყობინება','დახურვა'];
+var _TM_RESERVED = ['macro','cd','md','rm','ls','pwd','edit','ფოთოლი','flag','nick','me','who','color','help',
+  'დახმარება','გასუფთავება','ინფო','მასშტაბი','ზონები','ობიექტები','დიალოგი','წასვლა','ლეგენდა','მენიუ','სრული','ისტორია','ვადა','ტექსტი','დახურვა'];
 
 // Split a raw (no leading "/") command line on ";" — only where ";" is followed
 // (after optional whitespace) by "/", so semicolons inside ordinary text are safe.
-// Splits a chain on ";" — but only when ";" is followed by "/" (so a stray
-// ";" inside ordinary command args is left alone) — PLUS treats any [...]
-// block as its own atomic segment: content inside brackets is never split
-// on ";" no matter what follows, and the brackets force a boundary on both
-// sides. This lets a macro safely carry free-form multi-word content (e.g.
-// the body for /edit + /შეყვანა) without it bleeding into a neighboring
-// command's args or being torn apart by a literal ";" in the text itself.
-//   /edit 0; [თავის ტექსტი; შესაძლოა ; აქაც]; /შეყვანა
 function _tmSplitChain(full) {
-  var parts = [], buf = '', i = 0, n = full.length;
-  while (i < n) {
-    var ch = full[i];
-    if (ch === '[') {
-      if (buf.trim()) parts.push(buf);
-      buf = '';
-      var j = full.indexOf(']', i + 1);
-      if (j === -1) j = n;
-      parts.push(full.slice(i + 1, j));
-      i = j + 1;
-      while (i < n && /[\s;]/.test(full[i])) i++;
-      continue;
-    }
-    if (ch === ';') {
-      var rest = full.slice(i + 1).replace(/^\s+/, '');
-      if (rest.charAt(0) === '/' || rest.charAt(0) === '[') {
-        if (buf.trim()) parts.push(buf);
-        buf = '';
-        i++;
-        continue;
-      }
-    }
-    buf += ch;
-    i++;
-  }
-  if (buf.trim()) parts.push(buf);
-  return parts.map(function (s) { return s.trim(); }).filter(Boolean);
+  return full.split(/;\s*(?=\/)/).map(function (s) { return s.trim(); }).filter(Boolean);
 }
 
 // Run a list of command strings (each with or without a leading "/") in order,
@@ -1167,16 +977,6 @@ async function _tmRunChain(cmds) {
   for (var i = 0; i < cmds.length; i++) {
     var c = (cmds[i] || '').trim();
     if (!c) continue;
-
-    // While an edit session is open (_tmEditObj truthy), a segment that isn't
-    // an explicit "/" command is raw content for that session — buffer it for
-    // /შეყვანა to submit, instead of force-dispatching it as an unknown command.
-    if (_tmEditObj && c.charAt(0) !== '/') {
-      _tmEditBuf = c;
-      _tmL('ti', c);
-      continue;
-    }
-
     if (c.charAt(0) !== '/') c = '/' + c;
     _tmL('ti', c);
     await _tmRun(c);
