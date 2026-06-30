@@ -798,7 +798,21 @@ function renderNotifBar() {
   }
 }
 
-function _ncardDeleteConfirm(card, n) {
+async function _ncardDeleteConfirm(card, n) {
+  if (n.type === 'consensus' && n.quorum_count) {
+    const total = await _consensusVoteCount(n.id);
+    if (total < n.quorum_count) {
+      const ov = _ncardOverlay(card, '🔒', '#8b949e');
+      ov.style.flexDirection = 'column'; ov.style.gap = '2px'; ov.innerHTML = '';
+      const lockIcon = document.createElement('div'); lockIcon.textContent = '🔒'; lockIcon.style.fontSize = '16px';
+      const lockMsg = document.createElement('div');
+      lockMsg.style.cssText = 'font-size:9px;color:#fff;text-align:center;padding:0 4px;';
+      lockMsg.textContent = 'ხმის მიცემა არ დასრულებულა (' + total + '/' + n.quorum_count + ')';
+      ov.appendChild(lockIcon); ov.appendChild(lockMsg);
+      setTimeout(() => ov.remove(), 1600);
+      return;
+    }
+  }
   const type = n.type || 'info';
   if (type === 'emergency') {
     const ov = _ncardOverlay(card, '🔒', '#8b949e');
@@ -854,6 +868,16 @@ async function _ncardDoDelete(ov, n) {
     if (r.ok) await loadNotifs();
     else ov.remove();
   } catch (e) { ov.remove(); }
+}
+
+async function _consensusVoteCount(notifId) {
+  try {
+    const r = await fetch(SUPA_URL + '/rest/v1/consensus_votes?notification_id=eq.' + notifId + '&select=id',
+      { headers: { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY } });
+    if (!r.ok) return 0;
+    const rows = await r.json();
+    return rows.length;
+  } catch (e) { return 0; }
 }
 
 function _startRealtime() {
@@ -940,10 +964,9 @@ function closeConsensusPopup() {
 }
 
 function _setConsensusToggle(vote) {
-  const t = document.getElementById('cpToggle');
-  if (vote === true) t.textContent = '🔘';
-  else if (vote === false) t.textContent = '⚫';
-  else t.textContent = '⚪';
+  const yes = document.getElementById('cpYes'), no = document.getElementById('cpNo');
+  yes.classList.toggle('sel', vote === true);
+  no.classList.toggle('sel', vote === false);
 }
 
 async function loadConsensusVotes(notifId) {
@@ -966,7 +989,7 @@ function _renderConsensusFeed() {
     _consensusVotes.forEach(v => {
       const row = document.createElement('div');
       row.className = 'cp-feed-row';
-      row.innerHTML = '<span>' + (v.vote ? '🔘' : '⚫') + '</span><span>' + (v.voter_name || '') + '</span>';
+      row.innerHTML = '<span>' + (v.vote ? '🔘' : '❌') + '</span><span>' + (v.voter_name || '') + '</span>';
       feed.appendChild(row);
     });
   }
@@ -975,18 +998,15 @@ function _renderConsensusFeed() {
   _setConsensusToggle(mine ? mine.vote : null);
 }
 
-async function castConsensusVote() {
+async function castConsensusVote(vote) {
   if (!_curConsensusNotif) return;
-  if (document.getElementById('cpToggle').style.pointerEvents === 'none') return;
   let name = localStorage.getItem('mdelo_sender');
   if (!name) {
     name = prompt('შენი სახელი?');
     if (!name) return;
     localStorage.setItem('mdelo_sender', name);
   }
-  const current = _consensusVotes.find(v => v.voter_name === name);
-  const newVote = current ? !current.vote : true;
-  _setConsensusToggle(newVote); // optimistic
+  _setConsensusToggle(vote); // optimistic
   try {
     await fetch(SUPA_URL + '/rest/v1/consensus_votes', {
       method: 'POST',
@@ -998,7 +1018,7 @@ async function castConsensusVote() {
       body: JSON.stringify({
         notification_id: _curConsensusNotif.id,
         voter_name: name,
-        vote: newVote,
+        vote: vote,
         voted_at: new Date().toISOString()
       })
     });
@@ -1010,25 +1030,14 @@ function _evaluateConsensusState() {
   const n = _curConsensusNotif;
   if (!n) return;
   const statusEl = document.getElementById('cpStatus');
-  const toggleEl = document.getElementById('cpToggle');
   const total = _consensusVotes.length;
   const quorum = n.quorum_count || 0;
-  const deadline = n.deadline ? new Date(n.deadline) : null;
-  const expired = !!(deadline && Date.now() > deadline.getTime());
-  const quorumMet = !quorum || total >= quorum;
+  const quorumMet = !!quorum && total >= quorum;
+  n._allVoted = quorumMet; // used by delete-guard on the notif card
 
-  let status = 'open';
-  if (total > 0 && quorumMet && _consensusVotes.every(v => v.vote === true)) status = 'approved';
-  else if (total > 0 && quorumMet && _consensusVotes.every(v => v.vote === false)) status = 'rejected';
-  else if (expired && !quorumMet) status = 'expired';
-
-  const labels = { open: '🟡 ღიაა', approved: '✅ მიღებულია', rejected: '❌ უარყოფილია', expired: '⌛ ვადაგასულია' };
-  let extra = quorum ? (' · ' + total + '/' + quorum + ' ხმა') : (' · ' + total + ' ხმა');
-  statusEl.textContent = labels[status] + extra;
-
-  const open = status === 'open';
-  toggleEl.style.pointerEvents = open ? 'auto' : 'none';
-  toggleEl.style.opacity = open ? '1' : '0.4';
+  let extra = quorum ? (total + '/' + quorum + ' ხმა') : (total + ' ხმა');
+  let label = quorumMet ? '✅ ყველამ მისცა ხმა' : '📜 განხილვა მიმდინარეობს';
+  statusEl.textContent = label + ' · ' + extra;
 }
 
 function _subscribeConsensusVotes(notifId) {
