@@ -21,6 +21,7 @@ textarea{resize:none;min-height:80px;}
 .type-btn[data-type="danger"]{--c:#fb8f44;}
 .type-btn[data-type="done"]{--c:#4ade80;}
 .type-btn[data-type="project"]{--c:#c084fc;}
+.type-btn[data-type="consensus"]{--c:#2dd4bf;}
 .send-btn{width:100%;padding:14px;background:#f0a500;color:#000;font-size:15px;font-weight:700;border:none;border-radius:10px;cursor:pointer;margin-top:4px;}
 .send-btn:active{opacity:0.8;}
 .send-btn:disabled{background:#30363d;color:#8b949e;cursor:default;}
@@ -53,11 +54,12 @@ textarea{resize:none;min-height:80px;}
       <div class="type-btn" data-type="danger">❗ სასწრაფო</div>
       <div class="type-btn" data-type="done">✅ მზადაა</div>
       <div class="type-btn" data-type="project">🚀 პროექტი</div>
+      <div class="type-btn" data-type="consensus">🗳️ კონსენსუსი</div>
     </div>
   </div>
 
   <div>
-    <label>მთავარი ტექსტი</label>
+    <label id="textLabel">მთავარი ტექსტი</label>
     <input type="text" id="text" placeholder="კატის საჭმელი იწურება" maxlength="100">
   </div>
 
@@ -69,6 +71,17 @@ textarea{resize:none;min-height:80px;}
   <div>
     <label>მიბმული ადგილი (არასავალდებულო)</label>
     <input type="text" id="linked_area" placeholder="მაგ: main_field, gate..." maxlength="50">
+  </div>
+
+  <div id="consensusFields" style="display:none;flex-direction:column;gap:14px;">
+    <div>
+      <label>ვადა (არასავალდებულო)</label>
+      <input type="datetime-local" id="deadline">
+    </div>
+    <div>
+      <label>კვორუმი — რამდენი ხმაა საჭირო (არასავალდებულო)</label>
+      <input type="number" id="quorum_count" min="1" placeholder="მაგ: 5">
+    </div>
   </div>
 
   <button class="send-btn" id="sendBtn" onclick="send()">გაგზავნა 🚀</button>
@@ -86,7 +99,7 @@ const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 
 const SYMBOLS = {
   info: "💬", warning: "⚠", danger: "❗",
-  done: "✅", project: "🚀"
+  done: "✅", project: "🚀", consensus: "🗳️"
 };
 
 const HEADERS = {
@@ -113,6 +126,10 @@ document.querySelectorAll(".type-btn").forEach(btn => {
     document.querySelectorAll(".type-btn").forEach(b => b.classList.remove("sel"));
     btn.classList.add("sel");
     selType = btn.dataset.type;
+    const isConsensus = selType === "consensus";
+    document.getElementById("consensusFields").style.display = isConsensus ? "flex" : "none";
+    document.getElementById("textLabel").textContent = isConsensus ? "კითხვა (talking circle)" : "მთავარი ტექსტი";
+    document.getElementById("text").placeholder = isConsensus ? "ვაშენებთ ხიდს დასავლეთ მინდორზე?" : "კატის საჭმელი იწურება";
   };
 });
 
@@ -181,6 +198,9 @@ async function send() {
   const text   = document.getElementById("text").value.trim();
   const detail = document.getElementById("detail").value.trim();
   const linked = document.getElementById("linked_area").value.trim();
+  const isConsensus = selType === "consensus";
+  const deadlineRaw = document.getElementById("deadline").value;
+  const quorumRaw   = document.getElementById("quorum_count").value;
 
   if (!sender) { toast("⚠ სახელი შეიყვანე"); return; }
   if (!selType) { toast("⚠ ტიპი აირჩიე"); return; }
@@ -192,17 +212,23 @@ async function send() {
   btn.disabled = true; btn.textContent = "იგზავნება...";
 
   try {
+    const body = {
+      type:        selType,
+      symbol:      SYMBOLS[selType],
+      text:        text,
+      detail:      detail || null,
+      sender:      sender,
+      linked_area: linked || ''
+    };
+    if (isConsensus) {
+      body.deadline = deadlineRaw ? new Date(deadlineRaw).toISOString() : null;
+      body.quorum_count = quorumRaw ? parseInt(quorumRaw, 10) : null;
+    }
+
     const res = await fetch(SUPABASE_URL + "/rest/v1/notifications", {
       method: "POST",
       headers: { ...HEADERS, "Prefer": "return=minimal" },
-      body: JSON.stringify({
-        type:        selType,
-        symbol:      SYMBOLS[selType],
-        text:        text,
-        detail:      detail || null,
-        sender:      sender,
-        linked_area: linked || ''
-      })
+      body: JSON.stringify(body)
     });
 
     if (res.ok) {
@@ -221,6 +247,10 @@ async function send() {
       document.getElementById("text").value = "";
       document.getElementById("detail").value = "";
       document.getElementById("linked_area").value = "";
+      document.getElementById("deadline").value = "";
+      document.getElementById("quorum_count").value = "";
+      document.getElementById("consensusFields").style.display = "none";
+      document.getElementById("textLabel").textContent = "მთავარი ტექსტი";
       document.querySelectorAll(".type-btn").forEach(b => b.classList.remove("sel"));
       selType = null;
       loadMyNotifs(sender);
