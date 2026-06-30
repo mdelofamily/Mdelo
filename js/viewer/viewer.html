@@ -145,6 +145,18 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
 #notifPopup .np-text{font-size:14px;font-weight:600;color:#fff;margin-bottom:6px;}
 #notifPopup .np-detail{font-size:12px;color:rgba(180,200,220,0.85);}
 #notifPopup .np-area{margin-top:10px;padding:6px 10px;background:rgba(240,165,0,0.1);border:1px solid rgba(240,165,0,0.3);border-radius:6px;font-size:12px;color:#f0a500;cursor:pointer;text-align:center;}
+#consensusPopup{display:none;position:fixed;inset:0;z-index:90;background:rgba(13,17,23,0.86);backdrop-filter:blur(4px);flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;opacity:0;transition:opacity .2s;}
+#consensusPopup.show{opacity:1;}
+#consensusPopup #cpClose{position:absolute;top:18px;right:18px;background:none;border:1px solid #30363d;color:#e6edf3;border-radius:8px;width:32px;height:32px;font-size:14px;cursor:pointer;}
+#consensusPopup .cp-logo{width:56px;height:56px;border-radius:14px;object-fit:cover;}
+#consensusPopup .cp-question{font-size:16px;font-weight:700;color:#fff;text-align:center;max-width:340px;}
+#consensusPopup .cp-detail{font-size:12px;color:#8b949e;text-align:center;max-width:340px;margin-top:-6px;}
+#consensusPopup .cp-toggle{width:88px;height:88px;border-radius:50%;border:3px solid #2dd4bf;background:#161b22;font-size:36px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .15s;}
+#consensusPopup .cp-toggle:active{transform:scale(0.92);}
+#consensusPopup .cp-status{font-size:12px;color:#2dd4bf;font-weight:600;}
+#consensusPopup .cp-feed{width:100%;max-width:320px;max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;}
+#consensusPopup .cp-feed-row{display:flex;align-items:center;gap:8px;font-size:12px;color:#e6edf3;background:#161b22;border:1px solid #30363d;border-radius:6px;padding:6px 10px;}
+#consensusPopup .cp-feed-empty{font-size:11px;color:#8b949e;text-align:center;}
 #notifClose{position:absolute;top:10px;right:12px;background:none;border:none;color:#8b949e;font-size:18px;cursor:pointer;line-height:1;}
 #spotLinkPopup{display:none;position:fixed;z-index:60;background:rgba(22,27,34,0.97);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid #58a6ff;border-radius:10px;padding:11px 13px;width:200px;flex-direction:column;gap:7px;box-shadow:0 4px 24px rgba(0,0,0,0.5);}
 #spotLinkPopup.show{display:flex;}
@@ -204,6 +216,15 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
   <div class="np-text" id="npText"></div>
   <div class="np-detail" id="npDetail"></div>
   <div class="np-area" id="npArea" style="display:none" onclick="goToArea()">🗺 რუკაზე ნახვა →</div>
+</div>
+<div id="consensusPopup">
+  <button id="cpClose" onclick="closeConsensusPopup()">✕</button>
+  <img class="cp-logo" src="logo.png" alt="" onerror="this.style.display='none'">
+  <div class="cp-question" id="cpQuestion"></div>
+  <div class="cp-detail" id="cpDetail" style="display:none"></div>
+  <button class="cp-toggle" id="cpToggle" onclick="castConsensusVote()">⚪</button>
+  <div class="cp-status" id="cpStatus"></div>
+  <div class="cp-feed" id="cpFeed"></div>
 </div>
 <button id="menuBtn" onclick="toggleMenu()">☰</button>
 <div id="gameMenu"><button class="gmClose" onclick="toggleMenu()">✕</button><div id="gmContent"><div id="gmBreadcrumb"></div><div id="gmPanel"></div></div><div id="gmOverlay"><div id="gmOverlayHdr"><span id="gmOverlayTitle"></span><button id="gmOverlayClose">✕</button></div><div id="gmOverlayBody"></div></div></div>

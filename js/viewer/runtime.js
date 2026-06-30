@@ -758,7 +758,7 @@ function applyAreaHash() {
 }
 
 // ── notifications ──
-const TYPE_LABELS = { info: 'ინფო', warning: 'გაფრთხილება', danger: 'საფრთხე', emergency: 'განგაში', done: 'მზადაა', project: 'პროექტი' };
+const TYPE_LABELS = { info: 'ინფო', warning: 'გაფრთხილება', danger: 'საფრთხე', emergency: 'განგაში', done: 'მზადაა', project: 'პროექტი', consensus: 'კონსენსუსი' };
 let _notifs = [], _curNotif = null;
 
 async function loadNotifs() {
@@ -778,7 +778,7 @@ function renderNotifBar() {
     const c = document.createElement('div');
     c.className = 'ncard' + (n.type === 'emergency' ? ' pulse' : '');
     c.dataset.type = n.type || 'info'; c.title = n.text || ''; c.textContent = n.symbol || '💬';
-    c.onclick = () => openNotifPopup(n);
+    c.onclick = () => { if (n.type === 'consensus') openConsensusPopup(n); else openNotifPopup(n); };
     let _lt = null;
     c.addEventListener('touchstart', e => {
       _lt = setTimeout(() => {
@@ -900,7 +900,7 @@ function openNotifList() {
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(48,54,61,0.4);cursor:pointer;';
     row.innerHTML = '<span style="font-size:16px;">' + (n.symbol || '💬') + '</span><span style="font-size:12px;color:#e6edf3;flex:1;">' + (n.text || '') + '</span>';
-    row.onclick = () => openNotifPopup(n); body.appendChild(row);
+    row.onclick = () => { if (n.type === 'consensus') openConsensusPopup(n); else openNotifPopup(n); }; body.appendChild(row);
   });
   document.getElementById('npDetail').textContent = ''; document.getElementById('npDetail').style.display = 'none';
   document.getElementById('npArea').style.display = 'none';
@@ -909,6 +909,143 @@ function openNotifList() {
   p.classList.add('show');
 }
 function closeNotifPopup() { const p = document.getElementById('notifPopup'); p.classList.remove('show'); p.style.display = 'none'; }
+
+// ── consensus notification ("talking circle") ──
+let _curConsensusNotif = null, _consensusVotes = [], _consensusChannel = null;
+
+function openConsensusPopup(n) {
+  closeNotifPopup();
+  _curConsensusNotif = n;
+  _consensusVotes = [];
+  const p = document.getElementById('consensusPopup');
+  document.getElementById('cpQuestion').textContent = n.text || '';
+  const detEl = document.getElementById('cpDetail');
+  if (n.detail) { detEl.textContent = n.detail; detEl.style.display = 'block'; }
+  else { detEl.textContent = ''; detEl.style.display = 'none'; }
+  document.getElementById('cpStatus').textContent = '';
+  _setConsensusToggle(null);
+  document.getElementById('cpFeed').innerHTML = '';
+  p.style.display = 'flex';
+  requestAnimationFrame(() => p.classList.add('show'));
+  loadConsensusVotes(n.id);
+  _subscribeConsensusVotes(n.id);
+}
+
+function closeConsensusPopup() {
+  const p = document.getElementById('consensusPopup');
+  p.classList.remove('show');
+  setTimeout(() => { if (!p.classList.contains('show')) p.style.display = 'none'; }, 200);
+  if (_consensusChannel) { try { _consensusChannel.unsubscribe(); } catch (e) {} _consensusChannel = null; }
+  _curConsensusNotif = null;
+}
+
+function _setConsensusToggle(vote) {
+  const t = document.getElementById('cpToggle');
+  if (vote === true) t.textContent = '🔘';
+  else if (vote === false) t.textContent = '⚫';
+  else t.textContent = '⚪';
+}
+
+async function loadConsensusVotes(notifId) {
+  try {
+    const r = await fetch(SUPA_URL + '/rest/v1/consensus_votes?notification_id=eq.' + notifId + '&order=voted_at.asc',
+      { headers: { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY } });
+    if (!r.ok) return;
+    _consensusVotes = await r.json();
+    _renderConsensusFeed();
+    _evaluateConsensusState();
+  } catch (e) {}
+}
+
+function _renderConsensusFeed() {
+  const feed = document.getElementById('cpFeed');
+  feed.innerHTML = '';
+  if (!_consensusVotes.length) {
+    feed.innerHTML = '<div class="cp-feed-empty">ჯერ არავის უხმია</div>';
+  } else {
+    _consensusVotes.forEach(v => {
+      const row = document.createElement('div');
+      row.className = 'cp-feed-row';
+      row.innerHTML = '<span>' + (v.vote ? '🔘' : '⚫') + '</span><span>' + (v.voter_name || '') + '</span>';
+      feed.appendChild(row);
+    });
+  }
+  const myName = localStorage.getItem('mdelo_sender');
+  const mine = myName && _consensusVotes.find(v => v.voter_name === myName);
+  _setConsensusToggle(mine ? mine.vote : null);
+}
+
+async function castConsensusVote() {
+  if (!_curConsensusNotif) return;
+  if (document.getElementById('cpToggle').style.pointerEvents === 'none') return;
+  let name = localStorage.getItem('mdelo_sender');
+  if (!name) {
+    name = prompt('შენი სახელი?');
+    if (!name) return;
+    localStorage.setItem('mdelo_sender', name);
+  }
+  const current = _consensusVotes.find(v => v.voter_name === name);
+  const newVote = current ? !current.vote : true;
+  _setConsensusToggle(newVote); // optimistic
+  try {
+    await fetch(SUPA_URL + '/rest/v1/consensus_votes', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY,
+        'Prefer': 'resolution=merge-duplicates,return=minimal'
+      },
+      body: JSON.stringify({
+        notification_id: _curConsensusNotif.id,
+        voter_name: name,
+        vote: newVote,
+        voted_at: new Date().toISOString()
+      })
+    });
+    loadConsensusVotes(_curConsensusNotif.id);
+  } catch (e) {}
+}
+
+function _evaluateConsensusState() {
+  const n = _curConsensusNotif;
+  if (!n) return;
+  const statusEl = document.getElementById('cpStatus');
+  const toggleEl = document.getElementById('cpToggle');
+  const total = _consensusVotes.length;
+  const quorum = n.quorum_count || 0;
+  const deadline = n.deadline ? new Date(n.deadline) : null;
+  const expired = !!(deadline && Date.now() > deadline.getTime());
+  const quorumMet = !quorum || total >= quorum;
+
+  let status = 'open';
+  if (total > 0 && quorumMet && _consensusVotes.every(v => v.vote === true)) status = 'approved';
+  else if (total > 0 && quorumMet && _consensusVotes.every(v => v.vote === false)) status = 'rejected';
+  else if (expired && !quorumMet) status = 'expired';
+
+  const labels = { open: '🟡 ღიაა', approved: '✅ მიღებულია', rejected: '❌ უარყოფილია', expired: '⌛ ვადაგასულია' };
+  let extra = quorum ? (' · ' + total + '/' + quorum + ' ხმა') : (' · ' + total + ' ხმა');
+  statusEl.textContent = labels[status] + extra;
+
+  const open = status === 'open';
+  toggleEl.style.pointerEvents = open ? 'auto' : 'none';
+  toggleEl.style.opacity = open ? '1' : '0.4';
+}
+
+function _subscribeConsensusVotes(notifId) {
+  if (typeof supabase === 'undefined') return;
+  if (_consensusChannel) { try { _consensusChannel.unsubscribe(); } catch (e) {} _consensusChannel = null; }
+  try {
+    const client = supabase.createClient(SUPA_URL, SUPA_KEY);
+    _consensusChannel = client.channel('consensus-' + notifId)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'consensus_votes', filter: 'notification_id=eq.' + notifId },
+        () => loadConsensusVotes(notifId))
+      .subscribe();
+  } catch (e) {}
+}
+window.openConsensusPopup = openConsensusPopup;
+window.closeConsensusPopup = closeConsensusPopup;
+window.castConsensusVote = castConsensusVote;
+
 function goToArea() {
   if (!_curNotif || !_curNotif.linked_area) return;
   closeNotifPopup();
