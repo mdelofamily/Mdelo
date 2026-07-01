@@ -166,10 +166,8 @@ async function doExportHTML() {
     const dialogsJS = 'window.DIALOGS = ' + JSON.stringify(_dialogsMap) + ';';
 
     // load viewer assets (all inlined)
-    const [tmpl, runtimeJS, terminalJS, canvasRendererJS, bulkParserJS, unlockJS] = await Promise.all([
+    const [tmpl, canvasRendererJS, bulkParserJS, unlockJS] = await Promise.all([
       _fetchViewerAsset('js/viewer/viewer.html'),
-      _fetchViewerAsset('js/viewer/runtime.js'),
-      _fetchViewerAsset('js/viewer/terminal.js'),
       _fetchViewerAsset('js/viewer/canvas-renderer.js'),
       _fetchViewerAsset('js/bulk-parser.js'),
       _fetchViewerAsset('js/viewer/unlock.js'),
@@ -203,11 +201,9 @@ async function doExportHTML() {
       .replace(/{{OBJS_DATA}}/g,       JSON.stringify(objsData))
       .replace(/{{TS}}/g,              String(TS))
       .replace(/{{CANVAS_RENDERER}}/g, canvasRendererBlock)
-      .replace(/{{RUNTIME_JS}}/g,      runtimeJS)
       .replace(/{{DIALOGS_JS}}/g,      dialogsJS)
       .replace(/{{UNLOCK_JS}}/g,       unlockJS)
-      .replace(/{{BULK_PARSER_JS}}/g,  bulkParserJS)
-      .replace(/{{TERMINAL_JS}}/g,     terminalJS);
+      .replace(/{{BULK_PARSER_JS}}/g,  bulkParserJS);
 
     downloadFile(html, fname + ".html", "text/html");
     toast("🌐 " + fname + ".html — მზადაა!");
