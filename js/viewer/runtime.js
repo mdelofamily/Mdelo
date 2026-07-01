@@ -888,15 +888,15 @@ function _ncardOverlay(card, icon, color) {
 }
 
 async function _ncardDoDelete(ov, n) {
-  ov.textContent = '…';
+  if (ov) ov.textContent = '…';
   try {
     const r = await fetch(SUPA_URL + '/rest/v1/notifications?id=eq.' + n.id, {
       method: 'DELETE',
       headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
     });
     if (r.ok) await loadNotifs();
-    else ov.remove();
-  } catch (e) { ov.remove(); }
+    else if (ov) ov.remove();
+  } catch (e) { if (ov) ov.remove(); }
 }
 
 async function _consensusVoteCount(notifId) {
