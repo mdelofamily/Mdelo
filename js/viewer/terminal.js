@@ -275,7 +275,7 @@ async function _tmRun(raw) {
     return;
   }
 
-  var notifM = full.match(/^შეტყობინება([*!~+.]?)(?:\s+([\s\S]*))?$/);
+  var notifM = full.match(/^შეტყობინება([*!~+.^]?)(?:\s+([\s\S]*))?$/);
   if (notifM) { await _tmNotify(notifM[1], notifM[2] || ''); return; }
 
   // /მენიუ/<სექცია>/<სექცია>/.../<ფოთოლი_index?> — deep-link straight to a menu panel/leaf
@@ -340,7 +340,7 @@ function _tmHelp() {
     ['/ისტორია',          'ჩატის ისტორიის წაშლა'],
     ['/ვადა [N]',         'ისტ. შენახვა N დღე'],
     ['/ტექსტი',           'ჩატ ↔ ბრძანება mode'],
-    ['/შეტყობინება[*!~+.] ტექსტი [@@ზონა]', 'შეტყობინების გაგზავნა'],
+    ['/შეტყობინება[*!~+.^] ტექსტი [@@ზონა]', 'შეტყობინების გაგზავნა  (^=კონსენსუსი ::დეტ ##N)'],
     ['/marker set <სახელი> ?/!/~/-', 'მარკერი — ლოკალური (მხ. შენ)'],
     ['/marker reset [სახელი]', 'მარკერი → საწყისზე (ერთი ან ყველა)'],
     ['/დახურვა',          'დახურვა  [Esc]'],
@@ -648,14 +648,15 @@ async function _tmMarkerCmd(args) {
 
 // ── /შეტყობინება — direct send to Supabase `notifications` table ──
 // type chars match bulk-parser.js _NOTIFY_TYPES:  * info  ! warning  ~ danger  + project  . done
-var _TM_NOTIFY_TYPES = { '*': 'info', '!': 'warning', '~': 'danger', '+': 'project', '.': 'done', '': 'info' };
-var _TM_NOTIFY_SYMS  = { info: '💬', warning: '⚠', danger: '❗', done: '✅', project: '🚀' };
+var _TM_NOTIFY_TYPES = { '*': 'info', '!': 'warning', '~': 'danger', '+': 'project', '.': 'done', '^': 'consensus', '': 'info' };
+var _TM_NOTIFY_SYMS  = { info: '💬', warning: '⚠', danger: '❗', done: '✅', project: '🚀', consensus: '🗳' };
 
 async function _tmNotify(typeChar, rest) {
   rest = (rest || '').trim();
   if (!rest) {
-    _tmL('tnf', 'გამოყენება: /შეტყობინება[*!~+.] ტექსტი [@@ზონა]');
+    _tmL('tnf', 'გამოყენება: /შეტყობინება[*!~+.^] ტექსტი [@@ზონა]');
     _tmL('tdm', '*ინფო  !გაფრთხ.  ~საფრთხე  +პროექტი  .მზადაა');
+    _tmL('tdm', '^კონსენსუსი: /შეტყობინება^ კითხვა [::დეტალი] [##N] [@@ზონა]');
     return;
   }
 
@@ -663,27 +664,55 @@ async function _tmNotify(typeChar, rest) {
   var area = '';
   var areaM = rest.match(/^(.*?)\s*@@(.+?)\s*$/);
   if (areaM) { area = areaM[2].trim(); rest = areaM[1].trim(); }
-  if (!rest) { _tmL('ter', 'ტექსტი ცარიელია'); return; }
 
   var type   = _TM_NOTIFY_TYPES[typeChar] || 'info';
   var sym    = _TM_NOTIFY_SYMS[type];
   var sender = localStorage.getItem('mdelo_sender') || (typeof _CFG !== 'undefined' && _CFG && _CFG.title) || 'ანონიმი';
 
+  // ── consensus branch ──
+  if (type === 'consensus') {
+    // /შეტყობინება^ კითხვა [::დეტალი] [##N] [@@ზონა]
+    // ::detail — optional context text (shown below the question)
+    // ##N      — optional quorum (minimum vote count to resolve)
+    var detail = '', quorum = null;
+    var detM = rest.match(/^(.*?)\s*::(.+?)(?:\s*##\d+)?\s*$/);
+    if (detM) { detail = detM[2].trim(); rest = detM[1].trim(); }
+    var qM = rest.match(/^(.*?)\s*##(\d+)\s*$/);
+    if (!qM) qM = (detail + ' ' + rest).match(/##(\d+)/);
+    if (qM) { quorum = parseInt(qM[qM.length - 1]); rest = rest.replace(/\s*##\d+/, '').trim(); }
+    if (!rest) { _tmL('ter', 'კონსენსუსი: კითხვა ცარიელია'); return; }
+
+    var body = { type: 'consensus', symbol: sym, text: rest, sender: sender, linked_area: area };
+    if (detail)  body.detail       = detail;
+    if (quorum)  body.quorum_count = quorum;
+
+    try {
+      var r = await fetch(SUPA_URL + '/rest/v1/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Prefer': 'return=minimal' },
+        body: JSON.stringify(body)
+      });
+      if (r.ok) {
+        _tmL('tok', sym + ' კონსენსუსი გაიხსნა: ' + rest + (quorum ? '  (quorum: ' + quorum + ')' : ''));
+        if (typeof loadNotifs === 'function') loadNotifs();
+      } else { _tmL('ter', 'შეცდომა: ' + r.status); }
+    } catch (e) { _tmL('ter', 'კავშირის შეცდომა'); }
+    return;
+  }
+
+  // ── standard notification branch ──
+  if (!rest) { _tmL('ter', 'ტექსტი ცარიელია'); return; }
   try {
-    var r = await fetch(SUPA_URL + '/rest/v1/notifications', {
+    var r2 = await fetch(SUPA_URL + '/rest/v1/notifications', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Prefer': 'return=minimal' },
       body: JSON.stringify({ type: type, symbol: sym, text: rest, sender: sender, linked_area: area })
     });
-    if (r.ok) {
+    if (r2.ok) {
       _tmL('tok', sym + ' შეტყობინება გაიგზავნა');
       if (typeof loadNotifs === 'function') loadNotifs();
-    } else {
-      _tmL('ter', 'შეცდომა: ' + r.status);
-    }
-  } catch (e) {
-    _tmL('ter', 'კავშირის შეცდომა');
-  }
+    } else { _tmL('ter', 'შეცდომა: ' + r2.status); }
+  } catch (e) { _tmL('ter', 'კავშირის შეცდომა'); }
 }
 function _tmVada(args) {
   var n = parseInt(args[0]);
