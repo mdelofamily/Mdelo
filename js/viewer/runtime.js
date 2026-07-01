@@ -1050,7 +1050,7 @@ async function castConsensusVote(vote) {
   // persist to Supabase in background
   _voteWritePending = true;
   try {
-    await fetch(SUPA_URL + '/rest/v1/consensus_votes', {
+    await fetch(SUPA_URL + '/rest/v1/consensus_votes?on_conflict=notification_id,voter_name', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
