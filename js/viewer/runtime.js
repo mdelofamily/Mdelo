@@ -820,23 +820,33 @@ async function _ncardDeleteConfirm(card, n) {
     return;
   }
   if (type === 'danger' || type === 'warning') {
-    const ov = _ncardOverlay(card, '?', { danger: '#fb8f44', warning: '#f0a500' }[type]);
+    const color = { danger: '#fb8f44', warning: '#f0a500' }[type];
+    const ov = _ncardOverlay(card, '', color);
     ov.style.flexDirection = 'column';
-    ov.style.gap = '4px';
+    ov.style.gap = '6px';
+    ov.style.padding = '8px 6px';
+    ov.style.justifyContent = 'center';
+    ov.style.alignItems = 'center';
     ov.innerHTML = '';
+
     const msg = document.createElement('div');
-    msg.style.cssText = 'font-size:10px;color:#fff;text-align:center;';
+    msg.style.cssText = 'font-size:12px;font-weight:700;color:#fff;text-align:center;line-height:1.3;letter-spacing:0.01em;';
     msg.textContent = 'წაიშალოს?';
-    const yes = document.createElement('button');
-    yes.style.cssText = 'background:#f85149;border:none;color:#fff;border-radius:5px;padding:2px 8px;font-size:11px;cursor:pointer;';
-    yes.textContent = 'კი';
-    const no = document.createElement('button');
-    no.style.cssText = 'background:#30363d;border:none;color:#ccc;border-radius:5px;padding:2px 8px;font-size:11px;cursor:pointer;';
-    no.textContent = 'არა';
+
     const row = document.createElement('div');
-    row.style.cssText = 'display:flex;gap:4px;';
+    row.style.cssText = 'display:flex;gap:5px;justify-content:center;';
+
+    const yes = document.createElement('button');
+    yes.style.cssText = 'background:#f85149;border:none;color:#fff;border-radius:6px;padding:4px 12px;font-size:12px;font-weight:600;cursor:pointer;';
+    yes.textContent = 'კი';
+
+    const no = document.createElement('button');
+    no.style.cssText = 'background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:6px;padding:4px 12px;font-size:12px;font-weight:600;cursor:pointer;';
+    no.textContent = 'არა';
+
     row.appendChild(yes); row.appendChild(no);
     ov.appendChild(msg); ov.appendChild(row);
+
     yes.addEventListener('click', async e => { e.stopPropagation(); await _ncardDoDelete(ov, n); });
     no.addEventListener('click',  e => { e.stopPropagation(); ov.remove(); });
     return;
@@ -1006,7 +1016,18 @@ async function castConsensusVote(vote) {
     if (!name) return;
     localStorage.setItem('mdelo_sender', name);
   }
-  _setConsensusToggle(vote); // optimistic
+
+  // optimistic: update local array immediately, no flicker
+  const existing = _consensusVotes.findIndex(v => v.voter_name === name);
+  if (existing >= 0) {
+    _consensusVotes[existing] = { ..._consensusVotes[existing], vote: vote, voted_at: new Date().toISOString() };
+  } else {
+    _consensusVotes.push({ notification_id: _curConsensusNotif.id, voter_name: name, vote: vote, voted_at: new Date().toISOString() });
+  }
+  _renderConsensusFeed();
+  _evaluateConsensusState();
+
+  // persist to Supabase in background
   try {
     await fetch(SUPA_URL + '/rest/v1/consensus_votes', {
       method: 'POST',
@@ -1022,7 +1043,8 @@ async function castConsensusVote(vote) {
         voted_at: new Date().toISOString()
       })
     });
-    loadConsensusVotes(_curConsensusNotif.id);
+    // delayed re-fetch to confirm DB state without racing against the write
+    setTimeout(() => { if (_curConsensusNotif) loadConsensusVotes(_curConsensusNotif.id); }, 600);
   } catch (e) {}
 }
 
@@ -1037,6 +1059,7 @@ function _evaluateConsensusState() {
 
   let extra = quorum ? (total + '/' + quorum + ' ხმა') : (total + ' ხმა');
   let label = quorumMet ? '✅ ყველამ მისცა ხმა' : '📜 განხილვა მიმდინარეობს';
+  statusEl.style.color = quorumMet ? '#4ade80' : '#55aa33';
   statusEl.textContent = label + ' · ' + extra;
 }
 
