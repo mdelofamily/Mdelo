@@ -1079,11 +1079,19 @@ function _evaluateConsensusState() {
   const total = _consensusVotes.length;
   const quorum = n.quorum_count || 0;
   const quorumMet = !!quorum && total >= quorum;
-  n._allVoted = quorumMet; // used by delete-guard on the notif card
+  n._allVoted = quorumMet;
 
   let extra = quorum ? (total + '/' + quorum + ' ხმა') : (total + ' ხმა');
-  let label = quorumMet ? '✅ ყველამ მისცა ხმა' : '📜 განხილვა მიმდინარეობს';
-  statusEl.style.color = quorumMet ? '#4ade80' : '#55aa33';
+  let label, color;
+  if (quorumMet) {
+    const allAgree = _consensusVotes.every(v => v.vote === true);
+    label = allAgree ? '✅ კონსენსუსი შედგა!' : '🚫 კონსენსუსი არ შედგა!';
+    color = allAgree ? '#4ade80' : '#f85149';
+  } else {
+    label = '📜 განხილვა მიმდინარეობს';
+    color = '#55aa33';
+  }
+  statusEl.style.color = color;
   statusEl.textContent = label + ' · ' + extra;
 }
 
