@@ -82,6 +82,10 @@ textarea{resize:none;min-height:80px;}
       <label>კვორუმი — რამდენი ხმაა საჭირო (არასავალდებულო)</label>
       <input type="number" id="quorum_count" min="1" placeholder="მაგ: 5">
     </div>
+    <div>
+      <label>ტერმინალის ბრძანება დადებით შედეგზე (არასავალდებულო)</label>
+      <input type="text" id="terminal_cmd" placeholder="მაგ: /macro village_start ან /cd სოფელი; /open კარი">
+    </div>
   </div>
 
   <button class="send-btn" id="sendBtn" onclick="send()">გაგზავნა 🚀</button>
@@ -227,8 +231,10 @@ async function send() {
       linked_area: linked || ''
     };
     if (hasVoting) {
-      body.deadline = deadlineRaw ? new Date(deadlineRaw).toISOString() : null;
+      body.deadline     = deadlineRaw ? new Date(deadlineRaw).toISOString() : null;
       body.quorum_count = quorumRaw ? parseInt(quorumRaw, 10) : null;
+      const tcmd = document.getElementById("terminal_cmd").value.trim();
+      if (tcmd) body.terminal_cmd = tcmd;
     }
 
     const res = await fetch(SUPABASE_URL + "/rest/v1/notifications", {
@@ -255,6 +261,7 @@ async function send() {
       document.getElementById("linked_area").value = "";
       document.getElementById("deadline").value = "";
       document.getElementById("quorum_count").value = "";
+      document.getElementById("terminal_cmd").value = "";
       document.getElementById("consensusFields").style.display = "none";
       document.getElementById("textLabel").textContent = "მთავარი ტექსტი";
       document.querySelectorAll(".type-btn").forEach(b => b.classList.remove("sel"));
