@@ -126,10 +126,16 @@ document.querySelectorAll(".type-btn").forEach(btn => {
     document.querySelectorAll(".type-btn").forEach(b => b.classList.remove("sel"));
     btn.classList.add("sel");
     selType = btn.dataset.type;
-    const isConsensus = selType === "consensus";
-    document.getElementById("consensusFields").style.display = isConsensus ? "flex" : "none";
-    document.getElementById("textLabel").textContent = isConsensus ? "კითხვა (talking circle)" : "მთავარი ტექსტი";
-    document.getElementById("text").placeholder = isConsensus ? "ვაშენებთ ხიდს დასავლეთ მინდორზე?" : "კატის საჭმელი იწურება";
+    const hasVoting = ['consensus', 'project', 'done'].includes(selType);
+    document.getElementById("consensusFields").style.display = hasVoting ? "flex" : "none";
+    const labels = {
+      consensus: ["კითხვა (talking circle)", "ვაშენებთ ხიდს დასავლეთ მინდორზე?"],
+      project:   ["პროექტის სათაური",        "სარწყავი არხის პროექტი"],
+      done:      ["დასრულებული პროექტი",      "სარწყავი არხი დასრულდა"],
+    };
+    const [lbl, ph] = labels[selType] || ["მთავარი ტექსტი", "კატის საჭმელი იწურება"];
+    document.getElementById("textLabel").textContent = lbl;
+    document.getElementById("text").placeholder = ph;
   };
 });
 
@@ -198,7 +204,7 @@ async function send() {
   const text   = document.getElementById("text").value.trim();
   const detail = document.getElementById("detail").value.trim();
   const linked = document.getElementById("linked_area").value.trim();
-  const isConsensus = selType === "consensus";
+  const hasVoting = ['consensus', 'project', 'done'].includes(selType);
   const deadlineRaw = document.getElementById("deadline").value;
   const quorumRaw   = document.getElementById("quorum_count").value;
 
@@ -220,7 +226,7 @@ async function send() {
       sender:      sender,
       linked_area: linked || ''
     };
-    if (isConsensus) {
+    if (hasVoting) {
       body.deadline = deadlineRaw ? new Date(deadlineRaw).toISOString() : null;
       body.quorum_count = quorumRaw ? parseInt(quorumRaw, 10) : null;
     }
