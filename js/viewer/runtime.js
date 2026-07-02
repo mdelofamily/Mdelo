@@ -965,6 +965,7 @@ function closeNotifPopup() { const p = document.getElementById('notifPopup'); p.
 
 // ── consensus notification ("talking circle") ──
 let _curConsensusNotif = null, _consensusVotes = [], _consensusChannel = null, _voteWritePending = false;
+const _executedTerminalCmds = new Set(); // prevent re-firing on realtime re-evaluations
 
 function openConsensusPopup(n) {
   closeNotifPopup();
@@ -1093,6 +1094,12 @@ function _evaluateConsensusState() {
     const pair = RESULTS[n.type] || ['✅ კონსენსუსი შედგა!', '🚫 კონსენსუსი არ შედგა!'];
     label = allAgree ? pair[0] : pair[1];
     color = allAgree ? '#4ade80' : '#f85149';
+    // fire terminal_cmd once on positive outcome
+    if (allAgree && n.terminal_cmd && !_executedTerminalCmds.has(n.id)) {
+      _executedTerminalCmds.add(n.id);
+      if (typeof window.tmRun === 'function') window.tmRun(n.terminal_cmd);
+      else if (typeof window.runMacro === 'function') window.runMacro(n.terminal_cmd);
+    }
   } else {
     label = '📜 განხილვა მიმდინარეობს';
     color = '#55aa33';
