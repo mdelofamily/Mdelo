@@ -245,14 +245,7 @@ async function _tmRun(raw) {
   // resolver/splitter below tear it apart before it reaches _tmMacro.
   var isMacroDef = /^macro\s+(local|საერთო)\s+/.test(full) && full.indexOf(':=') >= 0;
 
-  // A /შეტყობინება line owns its own body too — this matters most for the
-  // consensus {accept-chain} block (see _tmNotify), which may freely contain
-  // ";", "[...]", "::" or "@@" and must reach _tmNotify untouched instead of
-  // being torn into separate top-level commands by the generic chain-splitter
-  // below (which forces a split on every "[...]" it sees, chain or no chain).
-  var isNotifyDef = /^შეტყობინება[*!~+.^]?(\s|$)/.test(full);
-
-  if (!isMacroDef && !isNotifyDef) {
+  if (!isMacroDef) {
     // ── exact macro-name match (local scope wins over shared) — checked before
     //    normal dispatch, so a saved shortcut behaves like a brand-new command ──
     var macroCmds = _tmMacroResolve(full);
@@ -347,7 +340,7 @@ function _tmHelp() {
     ['/ისტორია',          'ჩატის ისტორიის წაშლა'],
     ['/ვადა [N]',         'ისტ. შენახვა N დღე'],
     ['/ტექსტი',           'ჩატ ↔ ბრძანება mode'],
-    ['/შეტყობინება[*!~+.^] ტექსტი [@@ზონა]', 'შეტყობინების გაგზავნა  (^=კონსენსუსი {chain} ::დეტ ##N)'],
+    ['/შეტყობინება[*!~+.^] ტექსტი [@@ზონა]', 'შეტყობინების გაგზავნა  (^=კონსენსუსი ::დეტ ##N)'],
     ['/marker set <სახელი> ?/!/~/-', 'მარკერი — ლოკალური (მხ. შენ)'],
     ['/marker reset [სახელი]', 'მარკერი → საწყისზე (ერთი ან ყველა)'],
     ['/დახურვა',          'დახურვა  [Esc]'],
@@ -663,33 +656,8 @@ async function _tmNotify(typeChar, rest) {
   if (!rest) {
     _tmL('tnf', 'გამოყენება: /შეტყობინება[*!~+.^] ტექსტი [@@ზონა]');
     _tmL('tdm', '*ინფო  !გაფრთხ.  ~საფრთხე  +პროექტი  .მზადაა');
-    _tmL('tdm', '^კონსენსუსი: /შეტყობინება^ კითხვა [{chain}] [::დეტალი] [##N] [@@ზონა]');
-    _tmL('tdm', '  {chain} — quorum მიღწევისას (accepted) ეშვება ეს ბრძანებათა ჯაჭვი, cmd1; cmd2; ...');
+    _tmL('tdm', '^კონსენსუსი: /შეტყობინება^ კითხვა [::დეტალი] [##N] [@@ზონა]');
     return;
-  }
-
-  var type   = _TM_NOTIFY_TYPES[typeChar] || 'info';
-  var sym    = _TM_NOTIFY_SYMS[type];
-  var sender = localStorage.getItem('mdelo_sender') || (typeof _CFG !== 'undefined' && _CFG && _CFG.title) || 'ანონიმი';
-
-  // ── consensus-only: pull the {accept-chain} block out of `rest` FIRST,
-  // before @@area/##N/::detail parsing touches it. Its contents may freely
-  // contain ";", "[...]", "::" or "@@" without being mistaken for those
-  // tokens, and it's exactly the same chain-text format _tmSplitChain already
-  // understands (see window.runChainText below) — no new parser needed.
-  var acceptChain = '';
-  if (type === 'consensus') {
-    var bOpen = rest.indexOf('{');
-    if (bOpen !== -1) {
-      var depth = 0, bClose = -1;
-      for (var k = bOpen; k < rest.length; k++) {
-        if (rest[k] === '{') depth++;
-        else if (rest[k] === '}') { depth--; if (depth === 0) { bClose = k; break; } }
-      }
-      if (bClose === -1) { _tmL('ter', 'კონსენსუსი: "{" დახურული არაა "}"-ით'); return; }
-      acceptChain = rest.slice(bOpen + 1, bClose).trim();
-      rest = (rest.slice(0, bOpen) + rest.slice(bClose + 1)).replace(/\s+/g, ' ').trim();
-    }
   }
 
   // optional trailing @@area
@@ -697,9 +665,13 @@ async function _tmNotify(typeChar, rest) {
   var areaM = rest.match(/^(.*?)\s*@@(.+?)\s*$/);
   if (areaM) { area = areaM[2].trim(); rest = areaM[1].trim(); }
 
+  var type   = _TM_NOTIFY_TYPES[typeChar] || 'info';
+  var sym    = _TM_NOTIFY_SYMS[type];
+  var sender = localStorage.getItem('mdelo_sender') || (typeof _CFG !== 'undefined' && _CFG && _CFG.title) || 'ანონიმი';
+
   // ── consensus branch ──
   if (type === 'consensus') {
-    // /შეტყობინება^ კითხვა [{chain}] [::დეტალი] [##N] [@@ზონა]
+    // /შეტყობინება^ კითხვა [::დეტალი] [##N] [@@ზონა]
     // Parse order: ##N first (from full rest), then ::detail, so neither swallows the other.
     var detail = '', quorum = null;
 
@@ -714,15 +686,8 @@ async function _tmNotify(typeChar, rest) {
     if (!rest) { _tmL('ter', 'კონსენსუსი: კითხვა ცარიელია'); return; }
 
     var body = { type: 'consensus', symbol: sym, text: rest, sender: sender, linked_area: area };
-    if (detail)      body.detail       = detail;
-    if (quorum)      body.quorum_count = quorum;
-    // NEW — raw chain text (same format a macro body uses). Meant to be run
-    // via window.runChainText(row.accept_chain) once quorum is reached with
-    // an accepted result; rejected/expired never runs it. That trigger point
-    // lives outside terminal.js (runtime.js vote-watcher), and `notifications`
-    // needs a matching `accept_chain` text column in Supabase — both out of
-    // this file's scope.
-    if (acceptChain) body.accept_chain = acceptChain;
+    if (detail)  body.detail       = detail;
+    if (quorum)  body.quorum_count = quorum;
 
     try {
       var r = await fetch(SUPA_URL + '/rest/v1/notifications', {
@@ -731,7 +696,7 @@ async function _tmNotify(typeChar, rest) {
         body: JSON.stringify(body)
       });
       if (r.ok) {
-        _tmL('tok', sym + ' კონსენსუსი გაიხსნა: ' + rest + (quorum ? '  (quorum: ' + quorum + ')' : '') + (acceptChain ? '  [chain ✓]' : ''));
+        _tmL('tok', sym + ' კონსენსუსი გაიხსნა: ' + rest + (quorum ? '  (quorum: ' + quorum + ')' : ''));
         if (typeof loadNotifs === 'function') loadNotifs();
       } else { _tmL('ter', 'შეცდომა: ' + r.status); }
     } catch (e) { _tmL('ter', 'კავშირის შეცდომა'); }
@@ -740,27 +705,14 @@ async function _tmNotify(typeChar, rest) {
 
   // ── standard notification branch ──
   if (!rest) { _tmL('ter', 'ტექსტი ცარიელია'); return; }
-
-  // Optional ::detail and ##N (same parse order as consensus branch)
-  var stdDetail = '', stdQuorum = null;
-  var sqM = rest.match(/##(\d+)/);
-  if (sqM) { stdQuorum = parseInt(sqM[1]); rest = rest.replace(/\s*##\d+/, '').trim(); }
-  var sdIdx = rest.indexOf('::');
-  if (sdIdx !== -1) { stdDetail = rest.slice(sdIdx + 2).trim(); rest = rest.slice(0, sdIdx).trim(); }
-  if (!rest) { _tmL('ter', 'ტექსტი ცარიელია'); return; }
-
-  var body2 = { type: type, symbol: sym, text: rest, sender: sender, linked_area: area };
-  if (stdDetail) body2.detail       = stdDetail;
-  if (stdQuorum) body2.quorum_count = stdQuorum;
-
   try {
     var r2 = await fetch(SUPA_URL + '/rest/v1/notifications', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Prefer': 'return=minimal' },
-      body: JSON.stringify(body2)
+      body: JSON.stringify({ type: type, symbol: sym, text: rest, sender: sender, linked_area: area })
     });
     if (r2.ok) {
-      _tmL('tok', sym + ' შეტყობინება გაიგზავნა' + (stdQuorum ? '  (quorum: ' + stdQuorum + ')' : ''));
+      _tmL('tok', sym + ' შეტყობინება გაიგზავნა');
       if (typeof loadNotifs === 'function') loadNotifs();
     } else { _tmL('ter', 'შეცდომა: ' + r2.status); }
   } catch (e) { _tmL('ter', 'კავშირის შეცდომა'); }
@@ -1458,15 +1410,6 @@ window.runMacro = function (name) {
   return true;
 };
 
-// Cross-file hook — for RAW chain text that isn't a saved macro name, e.g. a
-// consensus notification's accept_chain column (see _tmNotify's {chain}
-// syntax). runtime.js calls this once, when its vote-watcher sees quorum
-// reached with an accepted result: window.runChainText(row.accept_chain).
-// Reuses the exact same split/run pair a macro body uses — cmd1; cmd2; [free
-// text]; ... — so no separate parser exists for this path.
-window.runChainText = function (text) {
-  var cmds = _tmSplitChain((text || '').trim());
-  if (!cmds.length) return false;
-  _tmRunChain(cmds);
-  return true;
-};
+// Expose raw command/chain execution for runtime.js (consensus terminal_cmd field).
+// Accepts a single command or a semicolon-separated chain.
+window.tmRun = function (raw) { if (raw) _tmRun(raw); };
