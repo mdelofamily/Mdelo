@@ -705,14 +705,27 @@ async function _tmNotify(typeChar, rest) {
 
   // ── standard notification branch ──
   if (!rest) { _tmL('ter', 'ტექსტი ცარიელია'); return; }
+
+  // Optional ::detail and ##N (same parse order as consensus branch)
+  var stdDetail = '', stdQuorum = null;
+  var sqM = rest.match(/##(\d+)/);
+  if (sqM) { stdQuorum = parseInt(sqM[1]); rest = rest.replace(/\s*##\d+/, '').trim(); }
+  var sdIdx = rest.indexOf('::');
+  if (sdIdx !== -1) { stdDetail = rest.slice(sdIdx + 2).trim(); rest = rest.slice(0, sdIdx).trim(); }
+  if (!rest) { _tmL('ter', 'ტექსტი ცარიელია'); return; }
+
+  var body2 = { type: type, symbol: sym, text: rest, sender: sender, linked_area: area };
+  if (stdDetail) body2.detail       = stdDetail;
+  if (stdQuorum) body2.quorum_count = stdQuorum;
+
   try {
     var r2 = await fetch(SUPA_URL + '/rest/v1/notifications', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Prefer': 'return=minimal' },
-      body: JSON.stringify({ type: type, symbol: sym, text: rest, sender: sender, linked_area: area })
+      body: JSON.stringify(body2)
     });
     if (r2.ok) {
-      _tmL('tok', sym + ' შეტყობინება გაიგზავნა');
+      _tmL('tok', sym + ' შეტყობინება გაიგზავნა' + (stdQuorum ? '  (quorum: ' + stdQuorum + ')' : ''));
       if (typeof loadNotifs === 'function') loadNotifs();
     } else { _tmL('ter', 'შეცდომა: ' + r2.status); }
   } catch (e) { _tmL('ter', 'კავშირის შეცდომა'); }
