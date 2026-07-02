@@ -778,7 +778,7 @@ function renderNotifBar() {
     const c = document.createElement('div');
     c.className = 'ncard' + (n.type === 'emergency' ? ' pulse' : '');
     c.dataset.type = n.type || 'info'; c.title = n.text || ''; c.textContent = n.symbol || '💬';
-    c.onclick = () => { if (n.type === 'consensus') openConsensusPopup(n); else openNotifPopup(n); };
+    c.onclick = () => { if (['consensus','project','done'].includes(n.type) && n.quorum_count) openConsensusPopup(n); else openNotifPopup(n); };
     let _lt = null;
     c.addEventListener('touchstart', e => {
       _lt = setTimeout(() => {
@@ -953,7 +953,7 @@ function openNotifList() {
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(48,54,61,0.4);cursor:pointer;';
     row.innerHTML = '<span style="font-size:16px;">' + (n.symbol || '💬') + '</span><span style="font-size:12px;color:#e6edf3;flex:1;">' + (n.text || '') + '</span>';
-    row.onclick = () => { if (n.type === 'consensus') openConsensusPopup(n); else openNotifPopup(n); }; body.appendChild(row);
+    row.onclick = () => { if (['consensus','project','done'].includes(n.type) && n.quorum_count) openConsensusPopup(n); else openNotifPopup(n); }; body.appendChild(row);
   });
   document.getElementById('npDetail').textContent = ''; document.getElementById('npDetail').style.display = 'none';
   document.getElementById('npArea').style.display = 'none';
@@ -971,6 +971,7 @@ function openConsensusPopup(n) {
   _curConsensusNotif = n;
   _consensusVotes = [];
   const p = document.getElementById('consensusPopup');
+  document.getElementById('cpLogo').textContent = n.symbol || '🗳️';
   document.getElementById('cpQuestion').textContent = n.text || '';
   const detEl = document.getElementById('cpDetail');
   if (n.detail) { detEl.textContent = n.detail; detEl.style.display = 'block'; }
@@ -1081,11 +1082,16 @@ function _evaluateConsensusState() {
   const quorumMet = !!quorum && total >= quorum;
   n._allVoted = quorumMet;
 
-  let extra = quorum ? (total + '/' + quorum + ' ხმა') : (total + ' ხმა');
+  const extra = quorum ? (total + '/' + quorum + ' ხმა') : (total + ' ხმა');
   let label, color;
   if (quorumMet) {
     const allAgree = _consensusVotes.every(v => v.vote === true);
-    label = allAgree ? '✅ კონსენსუსი შედგა!' : '🚫 კონსენსუსი არ შედგა!';
+    const RESULTS = {
+      project: ['✅ პროექტი მხარდაჭერილია!', '🚫 პროექტი უარყოფილია!'],
+      done:    ['✅ პროექტი შესრულდა!',       '🚫 პროექტი შეჩერდა!'],
+    };
+    const pair = RESULTS[n.type] || ['✅ კონსენსუსი შედგა!', '🚫 კონსენსუსი არ შედგა!'];
+    label = allAgree ? pair[0] : pair[1];
     color = allAgree ? '#4ade80' : '#f85149';
   } else {
     label = '📜 განხილვა მიმდინარეობს';
