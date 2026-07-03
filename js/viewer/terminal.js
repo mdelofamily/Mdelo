@@ -340,7 +340,7 @@ function _tmHelp() {
     ['/ისტორია',          'ჩატის ისტორიის წაშლა'],
     ['/ვადა [N]',         'ისტ. შენახვა N დღე'],
     ['/ტექსტი',           'ჩატ ↔ ბრძანება mode'],
-    ['/შეტყობინება[*!~+.^] ტექსტი [@@ზონა]', 'შეტყობინების გაგზავნა  (^=კონსენსუსი ::დეტ ##N {ბრძანება})'],
+    ['/შეტყობინება[*!~+.^] ტექსტი [@@ზონა]', 'შეტყობინების გაგზავნა  (^+. =ხმის მიცემა ::დეტ ##N {ბრძანება})'],
     ['/marker set <სახელი> ?/!/~/-', 'მარკერი — ლოკალური (მხ. შენ)'],
     ['/marker reset [სახელი]', 'მარკერი → საწყისზე (ერთი ან ყველა)'],
     ['/დახურვა',          'დახურვა  [Esc]'],
@@ -651,13 +651,24 @@ async function _tmMarkerCmd(args) {
 var _TM_NOTIFY_TYPES = { '*': 'info', '!': 'warning', '~': 'danger', '+': 'project', '.': 'done', '^': 'consensus', '': 'info' };
 var _TM_NOTIFY_SYMS  = { info: '💬', warning: '⚠', danger: '❗', done: '✅', project: '🚀', consensus: '🗳' };
 
+// Vote-capable types: they all share the ::detail / ##N(quorum) / {ბრძანება} syntax
+// and post through the same consensus_votes pipeline — only the wording of the
+// "opened" confirmation and the yes/no outcome differ per type.
+var _TM_VOTE_TYPES = { consensus: true, project: true, done: true };
+var _TM_NOTIFY_VOTE_LABEL = {
+  consensus: { open: 'კონსენსუსი გაიხსნა',             yes: 'თანხმობა',  no: '' },
+  project:   { open: 'პროექტის ხმის მიცემა გაიხსნა',   yes: 'მიღებულია', no: 'უარყოფილია' },
+  done:      { open: 'დასრულების ხმის მიცემა გაიხსნა', yes: 'დასრულდა',  no: 'არ დასრულებულა' }
+};
+
 async function _tmNotify(typeChar, rest) {
   rest = (rest || '').trim();
   if (!rest) {
     _tmL('tnf', 'გამოყენება: /შეტყობინება[*!~+.^] ტექსტი [@@ზონა]');
-    _tmL('tdm', '*ინფო  !გაფრთხ.  ~საფრთხე  +პროექტი  .მზადაა');
-    _tmL('tdm', '^კონსენსუსი: /შეტყობინება^ კითხვა [::დეტალი] [##N] [@@ზონა] [{ბრძანება}]');
-    _tmL('tdm', '  {ბრძანება} — quorum-ის მიღწევისას (ერთსულოვანი "თანხმობა") გაეშვება window.tmRun()-ით');
+    _tmL('tdm', '*ინფო  !გაფრთხ.  ~საფრთხე');
+    _tmL('tdm', 'ხმის მიცემა: /შეტყობინება[^+.] კითხვა [::დეტალი] [##N] [@@ზონა] [{ბრძანება}]');
+    _tmL('tdm', '  ^კონსენსუსი(თანხმობა) · +პროექტი(მიღებულია/უარყოფილია) · .დასრულება(დასრულდა/არ დასრულებულა)');
+    _tmL('tdm', '  {ბრძანება} — quorum-ის მიღწევისას (დადებითი შედეგისას) გაეშვება window.tmRun()-ით');
     return;
   }
 
@@ -681,9 +692,11 @@ async function _tmNotify(typeChar, rest) {
   var sym    = _TM_NOTIFY_SYMS[type];
   var sender = localStorage.getItem('mdelo_sender') || (typeof _CFG !== 'undefined' && _CFG && _CFG.title) || 'ანონიმი';
 
-  // ── consensus branch ──
-  if (type === 'consensus') {
-    // /შეტყობინება^ კითხვა [::დეტალი] [##N] [@@ზონა] [{ბრძანება}]
+  // ── vote branch: consensus ^ / project + / done . ──
+  // All three share identical parsing and Supabase payload shape; only the
+  // confirmation wording (via _TM_NOTIFY_VOTE_LABEL) differs per type.
+  if (_TM_VOTE_TYPES[type]) {
+    // /შეტყობინება[^+.] კითხვა [::დეტალი] [##N] [@@ზონა] [{ბრძანება}]
     // {ბრძანება} already stripped above (before @@area extraction) into cmdField.
     // Parse order here: ##N first (from full rest), then ::detail, so neither swallows the other.
     var detail = '', quorum = null;
@@ -696,9 +709,9 @@ async function _tmNotify(typeChar, rest) {
     var dcIdx = rest.indexOf('::');
     if (dcIdx !== -1) { detail = rest.slice(dcIdx + 2).trim(); rest = rest.slice(0, dcIdx).trim(); }
 
-    if (!rest) { _tmL('ter', 'კონსენსუსი: კითხვა ცარიელია'); return; }
+    if (!rest) { _tmL('ter', 'ხმის მიცემა: კითხვა ცარიელია'); return; }
 
-    var body = { type: 'consensus', symbol: sym, text: rest, sender: sender, linked_area: area };
+    var body = { type: type, symbol: sym, text: rest, sender: sender, linked_area: area };
     if (detail)   body.detail       = detail;
     if (quorum)   body.quorum_count = quorum;
     if (cmdField) body.terminal_cmd = cmdField;
@@ -710,16 +723,17 @@ async function _tmNotify(typeChar, rest) {
         body: JSON.stringify(body)
       });
       if (r.ok) {
-        _tmL('tok', sym + ' კონსენსუსი გაიხსნა: ' + rest + (quorum ? '  (quorum: ' + quorum + ')' : '') + (cmdField ? '  ⚙ ' + cmdField : ''));
+        var vl = _TM_NOTIFY_VOTE_LABEL[type] || _TM_NOTIFY_VOTE_LABEL.consensus;
+        _tmL('tok', sym + ' ' + vl.open + ': ' + rest + (quorum ? '  (quorum: ' + quorum + ')' : '') + (cmdField ? '  ⚙ ' + cmdField : ''));
         if (typeof loadNotifs === 'function') loadNotifs();
       } else { _tmL('ter', 'შეცდომა: ' + r.status); }
     } catch (e) { _tmL('ter', 'კავშირის შეცდომა'); }
     return;
   }
 
-  // ── standard notification branch ──
+  // ── standard notification branch (info / warning / danger) ──
   if (!rest) { _tmL('ter', 'ტექსტი ცარიელია'); return; }
-  if (cmdField) _tmL('tdm', '{ბრძანება} მხოლოდ ^კონსენსუსზე მუშაობს — იგნორირებულია');
+  if (cmdField) _tmL('tdm', '{ბრძანება} მუშაობს მხოლოდ ^/+/. ტიპებზე — იგნორირებულია');
   try {
     var r2 = await fetch(SUPA_URL + '/rest/v1/notifications', {
       method: 'POST',
