@@ -972,7 +972,13 @@ function openConsensusPopup(n) {
   _curConsensusNotif = n;
   _consensusVotes = [];
   const p = document.getElementById('consensusPopup');
-  document.getElementById('cpLogo').textContent = n.symbol || '🗳️';
+  const logoEl = document.getElementById('cpLogo');
+  if (n.type === 'consensus') {
+    logoEl.innerHTML = '<img src="logo.png" style="width:100%;height:100%;border-radius:18px;object-fit:cover;" onerror="this.style.display=\'none\'">';
+  } else {
+    logoEl.innerHTML = '';
+    logoEl.textContent = n.symbol || '🗳️';
+  }
   document.getElementById('cpQuestion').textContent = n.text || '';
   const detEl = document.getElementById('cpDetail');
   if (n.detail) { detEl.textContent = n.detail; detEl.style.display = 'block'; }
