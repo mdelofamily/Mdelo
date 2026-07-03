@@ -972,13 +972,7 @@ function openConsensusPopup(n) {
   _curConsensusNotif = n;
   _consensusVotes = [];
   const p = document.getElementById('consensusPopup');
-  const logoEl = document.getElementById('cpLogo');
-  if (n.type === 'consensus') {
-    logoEl.innerHTML = '<img src="logo.png" style="width:100%;height:100%;border-radius:18px;object-fit:cover;" onerror="this.style.display=\'none\'">';
-  } else {
-    logoEl.innerHTML = '';
-    logoEl.textContent = n.symbol || '🗳️';
-  }
+  document.getElementById('cpLogo').textContent = n.symbol || '🗳️';
   document.getElementById('cpQuestion').textContent = n.text || '';
   const detEl = document.getElementById('cpDetail');
   if (n.detail) { detEl.textContent = n.detail; detEl.style.display = 'block'; }
@@ -993,11 +987,24 @@ function openConsensusPopup(n) {
 }
 
 function closeConsensusPopup() {
+  const n = _curConsensusNotif;
   const p = document.getElementById('consensusPopup');
   p.classList.remove('show');
   setTimeout(() => { if (!p.classList.contains('show')) p.style.display = 'none'; }, 200);
   if (_consensusChannel) { try { _consensusChannel.unsubscribe(); } catch (e) {} _consensusChannel = null; }
   _curConsensusNotif = null;
+  // if voting was complete when user closed — auto-delete the notification
+  if (n && n._allVoted) _autoDeleteVotingNotif(n);
+}
+
+async function _autoDeleteVotingNotif(n) {
+  try {
+    const r = await fetch(SUPA_URL + '/rest/v1/notifications?id=eq.' + n.id, {
+      method: 'DELETE',
+      headers: { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY }
+    });
+    if (r.ok) loadNotifs();
+  } catch (e) {}
 }
 
 function _setConsensusToggle(vote) {
