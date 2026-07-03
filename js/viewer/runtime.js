@@ -972,7 +972,15 @@ function openConsensusPopup(n) {
   _curConsensusNotif = n;
   _consensusVotes = [];
   const p = document.getElementById('consensusPopup');
-  document.getElementById('cpLogo').innerHTML = '<img src="logo.png" alt="Logo" style="width: 48px; height: 48px; object-fit: contain; vertical-align: middle;">';
+  
+  const logoEl = document.getElementById('cpLogo');
+  if (n.type === 'consensus') {
+    logoEl.innerHTML = '<img src="logo.png" alt="Logo" style="width: 144px; height: 144px; object-fit: contain; vertical-align: middle;">';
+  } else {
+    logoEl.innerHTML = '';
+    logoEl.textContent = n.symbol;
+  }
+  
   document.getElementById('cpQuestion').textContent = n.text || '';
   const detEl = document.getElementById('cpDetail');
   if (n.detail) { detEl.textContent = n.detail; detEl.style.display = 'block'; }
@@ -985,6 +993,7 @@ function openConsensusPopup(n) {
   loadConsensusVotes(n.id);
   _subscribeConsensusVotes(n.id);
 }
+
 
 function closeConsensusPopup() {
   const n = _curConsensusNotif;
