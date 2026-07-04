@@ -15,7 +15,7 @@ var _tmEditMode = null;    // 'dlg' | 'menuItem' | null
 var _tmEditMenuCtx = null; // { node, idx, type } — set only when _tmEditMode === 'menuItem'
 var _tmEditLabel = null;   // human-readable label shown in cancel/header messages
 var _tmEditBuf = null;     // raw content buffered from a chain segment, consumed by /შეყვანა
-var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/marker','/დახურვა','/flag','/nick','/me','/who','/color','/help','/pwd','/ls','/cd','/md','/rm','/edit','/ფოთოლი','/macro'];
+var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/marker','/დახურვა','/flag','/nick','/me','/who','/color','/help','/pwd','/ls','/cd','/md','/rm','/edit','/ფოთოლი','/macro','/ლოგინი'];
 
 function toggleTerm() { _tmOpen ? closeTerm() : _tmOpen_(); }
 function _tmOpen_() {
@@ -310,7 +310,8 @@ async function _tmRun(raw) {
     'edit':        _tmMenuEdit,
     'ფოთოლი':      _tmMenuLeaf,
     'macro':       _tmMacro,
-    'marker':      _tmMarkerCmd
+    'marker':      _tmMarkerCmd,
+    'ლოგინი':      _tmLogin
   };
   var fn = map[cmd];
   if (fn) { await fn(args); return; }
@@ -360,7 +361,9 @@ function _tmHelp() {
     ['/macro local <სახელი> := ...',  'პერსონალური შორთკატის შექმნა'],
     ['/macro საერთო <სახელი> := ...', 'გაზიარებული შორთკატის შექმნა'],
     ['/macro ls',         'ყველა შორთკატის სია'],
-    ['/macro rm local|საერთო <სახელი>', 'შორთკატის წაშლა']
+    ['/macro rm local|საერთო <სახელი>', 'შორთკატის წაშლა'],
+    ['/ლოგინი ელფოსტა@მაგ.com', 'magic link — შესვლა/რეგისტრაცია'],
+    ['/ლოგინი',           '(არგუმენტის გარეშე) — მაჩვენე ჩემი სტატუსი']
   ];
   _tmL('tdm', _SEP); _tmL('tsy', '--- ბრძანები ---');
   for (var i = 0; i < list.length; i++) {
@@ -415,6 +418,29 @@ function _tmObjects() {
     _tmL('tnf', '◆ ' + displayName + suffix);
   });
   _tmL('tdm', _SEP);
+}
+
+// /ლოგინი                — მაჩვენე ჩემი სტატუსი, ან (თუ არ ხარ login) გახსენი prompt()
+//                           email-სთვის — ეს არის ბრძანება, რომელსაც ღილაკი (parser-ით
+//                           მიბმული) რეალურად უშვებს, ამიტომ თავად უნდა მოითხოვოს email,
+//                           ღილაკს ხომ ტექსტის შეყვანა არ შეუძლია.
+// /ლოგინი ელფოსტა@მაგ.com — direct, ტერმინალიდან ხელით — prompt-ის გარეშე
+async function _tmLogin(args) {
+  var email = (args || []).join(' ').trim();
+  if (!email) {
+    if (typeof window.isLoggedIn === 'function' && window.isLoggedIn()) {
+      _tmL('tok', '✓ ავტორიზებული ხარ, როგორც ' + window.myDisplayName() + '  (tier: ' + window.myTier() + ')');
+      return;
+    }
+    email = prompt('შენი ელფოსტა (login ბმულს გამოგიგზავნით):');
+    if (!email) return; // გააუქმა prompt — არაფერს ვაკეთებთ
+  }
+  if (typeof window.requestMagicLink !== 'function') { _tmL('ter', '✗ auth engine ვერ მოიძებნა (runtime.js?)'); return; }
+  _tmL('ti', '/ლოგინი ' + email);
+  _tmL('tdm', 'იგზავნება login ბმული "' + email + '"-ზე...');
+  var res = await window.requestMagicLink(email);
+  if (res === true) _tmL('tok', '✓ შეამოწმე ელფოსტა — login ბმული გამოგზავნილია');
+  else _tmL('ter', '✗ ვერ გაიგზავნა: ' + (res && res.msg ? res.msg : 'უცნობი შეცდომა'));
 }
 
 function _tmGo(args) {
@@ -719,7 +745,7 @@ async function _tmNotify(typeChar, rest) {
     try {
       var r = await fetch(SUPA_URL + '/rest/v1/notifications', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Prefer': 'return=minimal' },
+        headers: Object.assign({ 'Content-Type': 'application/json', 'Prefer': 'return=minimal' }, _authHeaders()),
         body: JSON.stringify(body)
       });
       if (r.ok) {
@@ -737,7 +763,7 @@ async function _tmNotify(typeChar, rest) {
   try {
     var r2 = await fetch(SUPA_URL + '/rest/v1/notifications', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Prefer': 'return=minimal' },
+      headers: Object.assign({ 'Content-Type': 'application/json', 'Prefer': 'return=minimal' }, _authHeaders()),
       body: JSON.stringify({ type: type, symbol: sym, text: rest, sender: sender, linked_area: area })
     });
     if (r2.ok) {

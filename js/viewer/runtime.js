@@ -55,6 +55,193 @@ const SUPA_URL = 'https://miqenmsgwkkmtxwwbxzo.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1pcWVubXNnd2trbXR4d3dieHpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzMDc0NzYsImV4cCI6MjA5NDg4MzQ3Nn0.VfJgVoPC-ZbjlcuwMriYrNXb-3E2OgC92nOR9hOPgKI';
 window.SUPABASE_URL = SUPA_URL; window.SUPABASE_ANON_KEY = SUPA_KEY; window.MDELO_ROOM_ID = 'mdelo-chat';
 
+// ══════════════════════════════════════════════════════════════
+// ── auth (magic link, PKCE) — raw GoTrue REST, no supabase-js ──
+// PKCE (not implicit/hash flow) is deliberate: the redirect lands with
+// ?code=... in the query string, never in the URL hash — so it can never
+// collide with this app's existing #area=/#spot= hash navigation
+// (see applyAreaHash/applySpotHash below).
+// All map exports live on one origin (mdeloviewer), so one localStorage
+// session is visible from every page/map without any cross-tab relay.
+// ══════════════════════════════════════════════════════════════
+const AUTH_URL = SUPA_URL + '/auth/v1';
+const _AUTH_SESSION_KEY  = 'mdelo_auth_session';   // {access_token, refresh_token, expires_at, user}
+const _AUTH_VERIFIER_KEY = 'mdelo_pkce_verifier';  // transient, cleared once exchanged
+const _TIER_RANK = { visitor: 0, caretaker: 1, resident: 2, shadow_admin: 3 };
+
+function _authGetSession() {
+  try { return JSON.parse(localStorage.getItem(_AUTH_SESSION_KEY) || 'null'); } catch (e) { return null; }
+}
+function _authSetSession(sess) {
+  try { sess ? localStorage.setItem(_AUTH_SESSION_KEY, JSON.stringify(sess)) : localStorage.removeItem(_AUTH_SESSION_KEY); } catch (e) {}
+}
+window.isLoggedIn = function () {
+  const s = _authGetSession();
+  return !!(s && s.access_token && s.expires_at > Date.now());
+};
+
+// Headers for Supabase calls — real user JWT when logged in, anon key otherwise.
+// `to authenticated` RLS policies reject the anon key outright by design:
+// a logged-out visitor simply can't write, which matches the UI-gating model
+// (the button/command never appears for them in the first place).
+function _authHeaders() {
+  const s = _authGetSession();
+  const tok = (s && s.access_token) ? s.access_token : SUPA_KEY;
+  return { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + tok };
+}
+window._authHeaders = _authHeaders;
+
+function _b64url(bytes) {
+  return btoa(String.fromCharCode.apply(null, bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function _randVerifier() {
+  const arr = new Uint8Array(64);
+  crypto.getRandomValues(arr);
+  return _b64url(arr);
+}
+async function _codeChallenge(verifier) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  return _b64url(new Uint8Array(digest));
+}
+
+// Sends the magic-link email. Redirect target = current page (origin + path,
+// no query/hash) so the person lands back exactly where they clicked from.
+window.requestMagicLink = async function (email) {
+  try {
+    const verifier = _randVerifier();
+    localStorage.setItem(_AUTH_VERIFIER_KEY, verifier);
+    const challenge = await _codeChallenge(verifier);
+    const redirectTo = window.location.origin + window.location.pathname;
+    const r = await fetch(AUTH_URL + '/otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY },
+      body: JSON.stringify({
+        email: email,
+        create_user: true,
+        code_challenge: challenge,
+        code_challenge_method: 'S256',
+        options: { email_redirect_to: redirectTo }
+      })
+    });
+    if (r.ok) return true;
+    const body = await r.text().catch(() => '');
+    return { ok: false, status: r.status, msg: body.slice(0, 150) };
+  } catch (e) { return { ok: false, status: 0, msg: e.message }; }
+};
+
+async function _authExchangeCode(code) {
+  const verifier = localStorage.getItem(_AUTH_VERIFIER_KEY);
+  if (!verifier) return null;
+  try {
+    const r = await fetch(AUTH_URL + '/token?grant_type=pkce', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY },
+      body: JSON.stringify({ auth_code: code, code_verifier: verifier })
+    });
+    localStorage.removeItem(_AUTH_VERIFIER_KEY);
+    return r.ok ? await r.json() : null;
+  } catch (e) { return null; }
+}
+
+async function _authRefresh(refresh_token) {
+  try {
+    const r = await fetch(AUTH_URL + '/token?grant_type=refresh_token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY },
+      body: JSON.stringify({ refresh_token: refresh_token })
+    });
+    return r.ok ? await r.json() : null;
+  } catch (e) { return null; }
+}
+
+function _authStoreFromTokenResponse(data) {
+  if (!data || !data.access_token) return null;
+  const sess = {
+    access_token: data.access_token,
+    refresh_token: data.refresh_token,
+    expires_at: Date.now() + ((data.expires_in || 3600) * 1000),
+    user: data.user
+  };
+  _authSetSession(sess);
+  return sess;
+}
+
+window.signOut = function () {
+  _authSetSession(null);
+  window._myTier = null;
+  if (typeof toast === 'function') toast('გამოხვედი სისტემიდან');
+};
+
+// ── tier cache (one row per user in user_tiers) ──
+window._myTier = null; // { user_id, tier, view_mode, display_name } once loaded
+
+async function _authLoadTier() {
+  const s = _authGetSession();
+  if (!s || !s.user) { window._myTier = null; return null; }
+  try {
+    const r = await fetch(SUPA_URL + '/rest/v1/user_tiers?user_id=eq.' + s.user.id + '&select=*', { headers: _authHeaders() });
+    const rows = r.ok ? await r.json() : [];
+    if (rows[0]) { window._myTier = rows[0]; return rows[0]; }
+    // first login for this account — create the row; DB default tier='visitor'
+    const c = await fetch(SUPA_URL + '/rest/v1/user_tiers', {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json', 'Prefer': 'return=representation' }, _authHeaders()),
+      body: JSON.stringify({ user_id: s.user.id })
+    });
+    const created = c.ok ? await c.json() : null;
+    window._myTier = (created && created[0]) || { user_id: s.user.id, tier: 'visitor' };
+    return window._myTier;
+  } catch (e) { window._myTier = null; return null; }
+}
+window.myTier = function () { return window._myTier ? window._myTier.tier : 'visitor'; };
+window.myUserId = function () { const s = _authGetSession(); return (s && s.user && s.user.id) || null; };
+window.myDisplayName = function () {
+  return (window._myTier && window._myTier.display_name) || localStorage.getItem('mdelo_nick') || 'მოგზაური';
+};
+// tier-order check used by dialogue buttons / menu gating — e.g. _tierAtLeast('resident')
+window._tierAtLeast = function (min) { return (_TIER_RANK[window.myTier()] || 0) >= (_TIER_RANK[min] || 0); };
+
+// Sets display_name on first login — replaces /nick for authenticated users.
+// (Anonymous /nick in terminal.js is untouched for now; that consolidation
+// is a separate, later step.)
+window.setDisplayName = async function (name) {
+  const s = _authGetSession();
+  if (!s || !s.user || !name) return false;
+  try {
+    const r = await fetch(SUPA_URL + '/rest/v1/user_tiers?user_id=eq.' + s.user.id, {
+      method: 'PATCH',
+      headers: Object.assign({ 'Content-Type': 'application/json', 'Prefer': 'return=minimal' }, _authHeaders()),
+      body: JSON.stringify({ display_name: name })
+    });
+    if (r.ok && window._myTier) window._myTier.display_name = name;
+    return r.ok;
+  } catch (e) { return false; }
+};
+
+// Handles the ?code=... redirect on load, or silently refreshes/restores an
+// existing session. Awaited from window.addEventListener('load', ...) below,
+// before anything that might want to know the person's tier.
+async function _authBoot() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  if (code) {
+    const data = await _authExchangeCode(code);
+    if (data) _authStoreFromTokenResponse(data);
+    params.delete('code');
+    const clean = window.location.pathname + (params.toString() ? '?' + params.toString() : '') + window.location.hash;
+    history.replaceState(null, '', clean);
+    if (data && typeof toast === 'function') toast('✓ ავტორიზებული ხარ');
+  } else {
+    const s = _authGetSession();
+    if (s && s.refresh_token && s.expires_at < Date.now() + 60000) {
+      const data = await _authRefresh(s.refresh_token);
+      if (data) _authStoreFromTokenResponse(data); else _authSetSession(null);
+    }
+  }
+  if (window.isLoggedIn()) await _authLoadTier();
+}
+window._authBoot = _authBoot;
+
 // ── link parser ──
 function parseLinks(t) {
   let o = '', i = 0;
@@ -548,6 +735,9 @@ function _dlgShowNode(nodeId, selectedLabel) {
     if (!btnWrap) return;
     (node.buttons || []).forEach(btn => {
       if (!btn.label) return;
+      // tier-gated visibility: a button past the person's authorization
+      // simply never renders — no disabled/greyed state, per the UI-gating model
+      if (btn.minTier && !window._tierAtLeast(btn.minTier)) return;
       const b = document.createElement('button');
       b.textContent = btn.label;
       b.style.cssText = 'width:100%;height:32px;background:rgba(22,27,34,0.2);border:1px solid rgba(88,166,255,0.4);color:#e6edf3;font-size:13px;border-radius:8px;cursor:pointer;text-align:center;';
@@ -559,7 +749,7 @@ function _dlgShowNode(nodeId, selectedLabel) {
           const nSymbol = { info: '💬', warning: '⚠️', danger: '🔴', project: '🚀', done: '✅' }[nType] || '💬';
           fetch(SUPA_URL + '/rest/v1/notifications', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Prefer': 'return=minimal' },
+            headers: Object.assign({ 'Content-Type': 'application/json', 'Prefer': 'return=minimal' }, _authHeaders()),
             body: JSON.stringify({ type: nType, symbol: nSymbol, text: notifyTxt, sender: sender, linked_area: btn.area || '' })
           }).catch(() => {});
           // push-fetch (Scope C) — non-blocking, independent of the notifications insert above
@@ -892,7 +1082,7 @@ async function _ncardDoDelete(ov, n) {
   try {
     const r = await fetch(SUPA_URL + '/rest/v1/notifications?id=eq.' + n.id, {
       method: 'DELETE',
-      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
+      headers: _authHeaders()
     });
     if (r.ok) await loadNotifs();
     else if (ov) ov.remove();
@@ -1010,7 +1200,7 @@ async function _autoDeleteVotingNotif(n) {
   try {
     const r = await fetch(SUPA_URL + '/rest/v1/notifications?id=eq.' + n.id, {
       method: 'DELETE',
-      headers: { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY }
+      headers: _authHeaders()
     });
     if (r.ok) loadNotifs();
   } catch (e) {}
@@ -1047,26 +1237,30 @@ function _renderConsensusFeed() {
       feed.appendChild(row);
     });
   }
-  const myName = localStorage.getItem('mdelo_sender');
-  const mine = myName && _consensusVotes.find(v => v.voter_name === myName);
+  const myName = window.myDisplayName ? window.myDisplayName() : localStorage.getItem('mdelo_sender');
+  const myUid  = window.myUserId ? window.myUserId() : null;
+  const mine = myUid && _consensusVotes.find(v => v.user_id === myUid);
   _setConsensusToggle(mine ? mine.vote : null);
 }
 
+// Voting requires login now — RLS enforces auth.uid() = user_id on write, and
+// per the tier decisions, voting itself is resident+ only (caretaker never
+// gets this UI surfaced in the first place — see cpYes/cpNo gating upstream).
 async function castConsensusVote(vote) {
   if (!_curConsensusNotif) return;
-  let name = localStorage.getItem('mdelo_sender');
-  if (!name) {
-    name = prompt('შენი სახელი?');
-    if (!name) return;
-    localStorage.setItem('mdelo_sender', name);
+  if (typeof window.isLoggedIn !== 'function' || !window.isLoggedIn()) {
+    if (typeof toast === 'function') toast('⚠️ ხმის მისაცემად საჭიროა შესვლა — სცადე /ლოგინი');
+    return;
   }
+  const uid = window.myUserId();
+  const name = window.myDisplayName();
 
   // optimistic: update local array immediately, no flicker
-  const existing = _consensusVotes.findIndex(v => v.voter_name === name);
+  const existing = _consensusVotes.findIndex(v => v.user_id === uid);
   if (existing >= 0) {
     _consensusVotes[existing] = { ..._consensusVotes[existing], vote: vote, voted_at: new Date().toISOString() };
   } else {
-    _consensusVotes.push({ notification_id: _curConsensusNotif.id, voter_name: name, vote: vote, voted_at: new Date().toISOString() });
+    _consensusVotes.push({ notification_id: _curConsensusNotif.id, user_id: uid, voter_name: name, vote: vote, voted_at: new Date().toISOString() });
   }
   _renderConsensusFeed();
   _evaluateConsensusState();
@@ -1074,15 +1268,15 @@ async function castConsensusVote(vote) {
   // persist to Supabase in background
   _voteWritePending = true;
   try {
-    await fetch(SUPA_URL + '/rest/v1/consensus_votes?on_conflict=notification_id,voter_name', {
+    await fetch(SUPA_URL + '/rest/v1/consensus_votes?on_conflict=notification_id,user_id', {
       method: 'POST',
-      headers: {
+      headers: Object.assign({
         'Content-Type': 'application/json',
-        apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY,
         'Prefer': 'resolution=merge-duplicates,return=minimal'
-      },
+      }, _authHeaders()),
       body: JSON.stringify({
         notification_id: _curConsensusNotif.id,
+        user_id: uid,
         voter_name: name,
         vote: vote,
         voted_at: new Date().toISOString()
@@ -1284,12 +1478,10 @@ async function _gmSaveTodoState(todoId, checked) {
   try {
     const r = await fetch(SUPA_URL + '/rest/v1/menu_todo_state?on_conflict=map_id,todo_id', {
       method: 'POST',
-      headers: {
+      headers: Object.assign({
         'Content-Type': 'application/json',
-        'apikey': SUPA_KEY,
-        'Authorization': 'Bearer ' + SUPA_KEY,
         'Prefer': 'resolution=merge-duplicates,return=minimal'
-      },
+      }, _authHeaders()),
       body: JSON.stringify({
         map_id: _MAP_ID,
         todo_id: todoId,
@@ -1320,12 +1512,10 @@ async function _gmSaveTodoState(todoId, checked) {
   try {
     await fetch(SUPA_URL + '/rest/v1/menu_todo_state', {
       method: 'POST',
-      headers: {
+      headers: Object.assign({
         'Content-Type': 'application/json',
-        'apikey': SUPA_KEY,
-        'Authorization': 'Bearer ' + SUPA_KEY,
         'Prefer': 'resolution=merge-duplicates,return=minimal'
-      },
+      }, _authHeaders()),
       body: JSON.stringify({ map_id: _MAP_ID, todo_id: todoId, checked: checked, updated_at: new Date().toISOString() })
     });
   } catch (e) {}
@@ -1355,12 +1545,10 @@ window.dlgOverrideSave = async function(objTitle, nodesJson, dsl) {
     });
     var r = await fetch(SUPA_URL + '/rest/v1/dialogue_overrides', {
       method: 'POST',
-      headers: {
+      headers: Object.assign({
         'Content-Type': 'application/json',
-        'apikey': SUPA_KEY,
-        'Authorization': 'Bearer ' + SUPA_KEY,
         'Prefer': 'resolution=merge-duplicates,return=minimal'
-      },
+      }, _authHeaders()),
       body: body
     });
     if (r.ok) {
@@ -1484,12 +1672,10 @@ window.menuOverrideSave = async function (nodeId, fields) {
     var body = Object.assign({ map_id: _MAP_ID, node_id: nodeId, updated_at: new Date().toISOString() }, fields);
     var r = await fetch(SUPA_URL + '/rest/v1/menu_overrides', {
       method: 'POST',
-      headers: {
+      headers: Object.assign({
         'Content-Type': 'application/json',
-        'apikey': SUPA_KEY,
-        'Authorization': 'Bearer ' + SUPA_KEY,
         'Prefer': 'resolution=merge-duplicates,return=minimal'
-      },
+      }, _authHeaders()),
       body: JSON.stringify(body)
     });
     if (r.ok) return true;
@@ -1524,12 +1710,10 @@ window.macroOverrideSave = async function (name, commands) {
     var body = { map_id: _MAP_ID, name: name, commands_json: commands, updated_at: new Date().toISOString() };
     var r = await fetch(SUPA_URL + '/rest/v1/terminal_macros', {
       method: 'POST',
-      headers: {
+      headers: Object.assign({
         'Content-Type': 'application/json',
-        'apikey': SUPA_KEY,
-        'Authorization': 'Bearer ' + SUPA_KEY,
         'Prefer': 'resolution=merge-duplicates,return=minimal'
-      },
+      }, _authHeaders()),
       body: JSON.stringify(body)
     });
     if (r.ok) { window._tmMacroShared[name] = commands; return true; }
@@ -1542,7 +1726,7 @@ window.macroOverrideDelete = async function (name) {
   try {
     var r = await fetch(
       SUPA_URL + '/rest/v1/terminal_macros?map_id=eq.' + encodeURIComponent(_MAP_ID) + '&name=eq.' + encodeURIComponent(name),
-      { method: 'DELETE', headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY } }
+      { method: 'DELETE', headers: _authHeaders() }
     );
     if (r.ok) { delete window._tmMacroShared[name]; return true; }
     var errBody = r.text ? await r.text().catch(function () { return ''; }) : '';
@@ -1573,12 +1757,10 @@ window.legendOverrideSave = async function (text) {
     var body = { map_id: _MAP_ID, text: text, updated_at: new Date().toISOString() };
     var r = await fetch(SUPA_URL + '/rest/v1/legend_overrides', {
       method: 'POST',
-      headers: {
+      headers: Object.assign({
         'Content-Type': 'application/json',
-        'apikey': SUPA_KEY,
-        'Authorization': 'Bearer ' + SUPA_KEY,
         'Prefer': 'resolution=merge-duplicates,return=minimal'
-      },
+      }, _authHeaders()),
       body: JSON.stringify(body)
     });
     if (r.ok) return true;
@@ -1597,7 +1779,8 @@ window.toggleTodoInExport = function(todoId) {
   });
 };
 
-window.addEventListener('load', () => {
+window.addEventListener('load', async () => {
+  await _authBoot();
   loadNotifs();
   loadDialogueOverrides().then(_markerRestore);
   loadTodoState();
