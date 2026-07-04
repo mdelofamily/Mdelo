@@ -467,39 +467,38 @@ function _tmObjects() {
   _tmL('tdm', _SEP);
 }
 
-// /ლოგინი                — მაჩვენე ჩემი სტატუსი, ან (თუ არ ხარ login) გამოითხოვე
-//                           email + სახელი ერთდროულად, სანამ magic link გაიგზავნება —
-//                           ეს ბრძანება, რომელსაც ღილაკი (parser-ით მიბმული) რეალურად
-//                           უშვებს, ამიტომ თავად უნდა მოითხოვოს ორივე.
-//                           სახელი დროებით ინახება localStorage-ში (mdelo_pending_name)
-//                           და გამოიყენება redirect-ის შემდეგ, _authBoot-ში (runtime.js) —
-//                           თუ ბმული სხვა მოწყობილობაზე გაიხსნა, სადაც ეს localStorage
-//                           მიუწვდომელია, იქ უბრალოდ ხელახლა ჰკითხავს.
+// /ლოგინი                — მაჩვენე ჩემი სტატუსი, ან (თუ არ ხარ login) გახსენი
+//                           ერთი პატარა popup (runtime.js: showLoginModal) email-ისა
+//                           და სახელისთვის ერთდროულად, სანამ magic link გაიგზავნება.
 // /ლოგინი ელფოსტა@მაგ.com — direct, ტერმინალიდან ხელით — email-ს აღარ ითხოვს
+//                           (popup მხოლოდ სახელს სთხოვს ამ შემთხვევაში)
 async function _tmLogin(args) {
   if (typeof window.isLoggedIn === 'function' && window.isLoggedIn()) {
     _tmL('tok', '✓ ავტორიზებული ხარ, როგორც ' + window.myDisplayName() + '  (tier: ' + window.myTier() + ')');
     return;
   }
   var email = (args || []).join(' ').trim();
-  if (!email) {
-    email = prompt('შენი ელფოსტა (login ბმულს გამოგიგზავნით):');
-    if (!email) return;
-  }
-  var name = prompt('რა გქვია? (ეს სახელი გამოჩნდება დიალოგებში)');
-  if (name && name.trim()) { try { localStorage.setItem('mdelo_pending_name', name.trim()); } catch (e) {} }
+  var name = '';
+
+  if (typeof window.showLoginModal !== 'function') { _tmL('ter', '✗ auth engine ვერ მოიძებნა (runtime.js?)'); return; }
+  var res = await window.showLoginModal(email || null);
+  if (!res) return; // გააუქმა
+  email = res.email;
+  name = res.name;
+
+  if (name) { try { localStorage.setItem('mdelo_pending_name', name); } catch (e) {} }
 
   if (typeof window.requestMagicLink !== 'function') { _tmL('ter', '✗ auth engine ვერ მოიძებნა (runtime.js?)'); return; }
   _tmL('ti', '/ლოგინი ' + email);
   _tmL('tdm', 'იგზავნება login ბმული "' + email + '"-ზე...');
-  var res = await window.requestMagicLink(email);
-  if (res === true) _tmL('tok', '✓ შეამოწმე ელფოსტა — login ბმული გამოგზავნილია');
-  else _tmL('ter', '✗ ვერ გაიგზავნა: ' + (res && res.msg ? res.msg : 'უცნობი შეცდომა'));
+  var lres = await window.requestMagicLink(email);
+  if (lres === true) _tmL('tok', '✓ შეამოწმე ელფოსტა — login ბმული გამოგზავნილია');
+  else _tmL('ter', '✗ ვერ გაიგზავნა: ' + (lres && lres.msg ? lres.msg : 'უცნობი შეცდომა'));
 }
 
 function _tmLogout() {
   if (typeof window.isLoggedIn !== 'function' || !window.isLoggedIn()) {
-    _tmL('tdm', 'უკვეც არ ხარ ავტორიზებული.');
+    _tmL('tdm', 'ჯერ არ ხარ ავტორიზებული.');
     return;
   }
   if (typeof window.signOut !== 'function') { _tmL('ter', '✗ auth engine ვერ მოიძებნა (runtime.js?)'); return; }
