@@ -224,8 +224,9 @@ window.setDisplayName = async function (name) {
 async function _authBoot() {
   const params = new URLSearchParams(window.location.search);
   const code = params.get('code');
+  let data = null;
   if (code) {
-    const data = await _authExchangeCode(code);
+    data = await _authExchangeCode(code);
     if (data) _authStoreFromTokenResponse(data);
     params.delete('code');
     const clean = window.location.pathname + (params.toString() ? '?' + params.toString() : '') + window.location.hash;
@@ -234,11 +235,23 @@ async function _authBoot() {
   } else {
     const s = _authGetSession();
     if (s && s.refresh_token && s.expires_at < Date.now() + 60000) {
-      const data = await _authRefresh(s.refresh_token);
-      if (data) _authStoreFromTokenResponse(data); else _authSetSession(null);
+      const refreshed = await _authRefresh(s.refresh_token);
+      if (refreshed) _authStoreFromTokenResponse(refreshed); else _authSetSession(null);
     }
   }
-  if (window.isLoggedIn()) await _authLoadTier();
+  if (window.isLoggedIn()) {
+    await _authLoadTier();
+    // fresh login (code just exchanged) + no name yet → apply the name that was
+    // collected up-front at /ლოგინი time; only ask again if it's not there
+    // (e.g. the magic link was opened on a different device/browser)
+    if (data && window._myTier && !window._myTier.display_name) {
+      let name = null;
+      try { name = localStorage.getItem('mdelo_pending_name'); } catch (e) {}
+      if (!name) name = prompt('პირველად ხარ! რა გქვია? (ეს სახელი გამოჩნდება დიალოგებში)');
+      if (name && name.trim()) await window.setDisplayName(name.trim());
+      try { localStorage.removeItem('mdelo_pending_name'); } catch (e) {}
+    }
+  }
 }
 window._authBoot = _authBoot;
 

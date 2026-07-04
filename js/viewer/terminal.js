@@ -15,7 +15,7 @@ var _tmEditMode = null;    // 'dlg' | 'menuItem' | null
 var _tmEditMenuCtx = null; // { node, idx, type } — set only when _tmEditMode === 'menuItem'
 var _tmEditLabel = null;   // human-readable label shown in cancel/header messages
 var _tmEditBuf = null;     // raw content buffered from a chain segment, consumed by /შეყვანა
-var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/marker','/დახურვა','/flag','/nick','/me','/who','/color','/help','/pwd','/ls','/cd','/md','/rm','/edit','/ფოთოლი','/macro','/ლოგინი'];
+var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/marker','/დახურვა','/flag','/nick','/me','/who','/color','/help','/pwd','/ls','/cd','/md','/rm','/edit','/ფოთოლი','/macro','/ლოგინი','/ლოგაუთი'];
 
 function toggleTerm() { _tmOpen ? closeTerm() : _tmOpen_(); }
 function _tmOpen_() {
@@ -232,6 +232,44 @@ function tmInsertSlash() {
 }
 
 // ── command router ──
+// ── tier-gated commands ──────────────────────────────────────────
+// Everything NOT listed here defaults to 'visitor' (open to everyone,
+// including logged-out visitors) — these are read-only/navigation/client-
+// local commands: დახმარება, ინფო, მასშტაბი, ზონები, ობიექტები, წასვლა,
+// ლეგენდა (view), მენიუ, pwd/ls/cd (nav only — comment above confirms /cd
+// never mutates), marker (LOCAL-ONLY per _tmMarkerCmd, never touches
+// Supabase), flag (this delegates to unlock.js — flag-setting IS the
+// visitor-tier capability itself), ვადა (localStorage only), ლოგინი.
+//
+// Listed here = actually mutates shared state (menu_overrides,
+// terminal_macros, notifications) via Supabase, so it needs the tier
+// check the RLS layer intentionally does NOT enforce (UI-gating model).
+var _TM_MIN_TIER = {
+  'შეტყობინება': 'caretaker', // notification send — caretaker's other direct capability
+  'todo':        'caretaker', // leaf-level todo/counter toggle (the exact "cat food refilled" case)
+  'ფოთოლი':      'caretaker', // leaf-level item add (text/indicator/todo) — caretaker's direct write scope
+  'დიალოგი':     'resident',  // dialogue DSL authoring
+  'md':          'resident',  // create menu branch — structural, not leaf
+  'rm':          'resident',  // remove menu node — structural
+  'edit':        'resident',  // edit menu node/branch
+  'macro':       'resident'   // author/manage shared macros
+};
+
+// Returns true (deny) when the current tier is below the command's
+// requirement. Fails OPEN (allows) if the auth engine isn't loaded yet,
+// so this never blocks local dev/testing before runtime.js is wired up —
+// the real backstop is still the RLS policies on the write itself.
+function _tmTierDenied(cmdKey) {
+  var minTier = _TM_MIN_TIER[cmdKey];
+  if (!minTier) return false;
+  if (typeof window._tierAtLeast !== 'function') return false;
+  return !window._tierAtLeast(minTier);
+}
+function _tmDenyMsg(cmdKey) {
+  var minTier = _TM_MIN_TIER[cmdKey];
+  _tmL('ter', '✗ "/' + cmdKey + '" საჭიროებს "' + minTier + '" ან უფრო მაღალ tier-ს — შენი: ' + (typeof window.myTier === 'function' ? window.myTier() : 'visitor'));
+}
+
 async function _tmRun(raw) {
   var text = raw.trim();
   if (text.charAt(0) !== '/') {
@@ -264,6 +302,7 @@ async function _tmRun(raw) {
   // pins down one exact node and N is that node's own items[] index.
   var todoPathM = full.match(/^todo\/(.+)$/);
   if (todoPathM) {
+    if (_tmTierDenied('todo')) { _tmDenyMsg('todo'); return; }
     var tsegs = todoPathM[1].split('/').map(function (s) { return s.trim(); }).filter(Boolean);
     if (!tsegs.length || !/^\d+$/.test(tsegs[tsegs.length - 1])) {
       _tmL('ter', 'გამოყენება: /todo/სექცია/.../N');
@@ -276,7 +315,10 @@ async function _tmRun(raw) {
   }
 
   var notifM = full.match(/^შეტყობინება([*!~+.^]?)(?:\s+([\s\S]*))?$/);
-  if (notifM) { await _tmNotify(notifM[1], notifM[2] || ''); return; }
+  if (notifM) {
+    if (_tmTierDenied('შეტყობინება')) { _tmDenyMsg('შეტყობინება'); return; }
+    await _tmNotify(notifM[1], notifM[2] || ''); return;
+  }
 
   // /მენიუ/<სექცია>/<სექცია>/.../<ფოთოლი_index?> — deep-link straight to a menu panel/leaf
   var menuPathM = full.match(/^მენიუ\/(.+)$/);
@@ -311,10 +353,14 @@ async function _tmRun(raw) {
     'ფოთოლი':      _tmMenuLeaf,
     'macro':       _tmMacro,
     'marker':      _tmMarkerCmd,
-    'ლოგინი':      _tmLogin
+    'ლოგინი':      _tmLogin,
+    'ლოგაუთი':     _tmLogout
   };
   var fn = map[cmd];
-  if (fn) { await fn(args); return; }
+  if (fn) {
+    if (_tmTierDenied(cmd)) { _tmDenyMsg(cmd); return; }
+    await fn(args); return;
+  }
   if (typeof chatHandleInput === 'function' && chatHandleInput(text)) return;
   _tmL('ter', 'უცნობი ბრძანება: "/' + cmd + '" — სცადე: /დახმარება');
 }
@@ -363,7 +409,8 @@ function _tmHelp() {
     ['/macro ls',         'ყველა შორთკატის სია'],
     ['/macro rm local|საერთო <სახელი>', 'შორთკატის წაშლა'],
     ['/ლოგინი ელფოსტა@მაგ.com', 'magic link — შესვლა/რეგისტრაცია'],
-    ['/ლოგინი',           '(არგუმენტის გარეშე) — მაჩვენე ჩემი სტატუსი']
+    ['/ლოგინი',           '(არგუმენტის გარეშე) — მაჩვენე ჩემი სტატუსი'],
+    ['/ლოგაუთი',          'გამოსვლა სისტემიდან']
   ];
   _tmL('tdm', _SEP); _tmL('tsy', '--- ბრძანები ---');
   for (var i = 0; i < list.length; i++) {
@@ -420,27 +467,44 @@ function _tmObjects() {
   _tmL('tdm', _SEP);
 }
 
-// /ლოგინი                — მაჩვენე ჩემი სტატუსი, ან (თუ არ ხარ login) გახსენი prompt()
-//                           email-სთვის — ეს არის ბრძანება, რომელსაც ღილაკი (parser-ით
-//                           მიბმული) რეალურად უშვებს, ამიტომ თავად უნდა მოითხოვოს email,
-//                           ღილაკს ხომ ტექსტის შეყვანა არ შეუძლია.
-// /ლოგინი ელფოსტა@მაგ.com — direct, ტერმინალიდან ხელით — prompt-ის გარეშე
+// /ლოგინი                — მაჩვენე ჩემი სტატუსი, ან (თუ არ ხარ login) გამოითხოვე
+//                           email + სახელი ერთდროულად, სანამ magic link გაიგზავნება —
+//                           ეს ბრძანება, რომელსაც ღილაკი (parser-ით მიბმული) რეალურად
+//                           უშვებს, ამიტომ თავად უნდა მოითხოვოს ორივე.
+//                           სახელი დროებით ინახება localStorage-ში (mdelo_pending_name)
+//                           და გამოიყენება redirect-ის შემდეგ, _authBoot-ში (runtime.js) —
+//                           თუ ბმული სხვა მოწყობილობაზე გაიხსნა, სადაც ეს localStorage
+//                           მიუწვდომელია, იქ უბრალოდ ხელახლა ჰკითხავს.
+// /ლოგინი ელფოსტა@მაგ.com — direct, ტერმინალიდან ხელით — email-ს აღარ ითხოვს
 async function _tmLogin(args) {
+  if (typeof window.isLoggedIn === 'function' && window.isLoggedIn()) {
+    _tmL('tok', '✓ ავტორიზებული ხარ, როგორც ' + window.myDisplayName() + '  (tier: ' + window.myTier() + ')');
+    return;
+  }
   var email = (args || []).join(' ').trim();
   if (!email) {
-    if (typeof window.isLoggedIn === 'function' && window.isLoggedIn()) {
-      _tmL('tok', '✓ ავტორიზებული ხარ, როგორც ' + window.myDisplayName() + '  (tier: ' + window.myTier() + ')');
-      return;
-    }
     email = prompt('შენი ელფოსტა (login ბმულს გამოგიგზავნით):');
-    if (!email) return; // გააუქმა prompt — არაფერს ვაკეთებთ
+    if (!email) return;
   }
+  var name = prompt('რა გქვია? (ეს სახელი გამოჩნდება დიალოგებში)');
+  if (name && name.trim()) { try { localStorage.setItem('mdelo_pending_name', name.trim()); } catch (e) {} }
+
   if (typeof window.requestMagicLink !== 'function') { _tmL('ter', '✗ auth engine ვერ მოიძებნა (runtime.js?)'); return; }
   _tmL('ti', '/ლოგინი ' + email);
   _tmL('tdm', 'იგზავნება login ბმული "' + email + '"-ზე...');
   var res = await window.requestMagicLink(email);
   if (res === true) _tmL('tok', '✓ შეამოწმე ელფოსტა — login ბმული გამოგზავნილია');
   else _tmL('ter', '✗ ვერ გაიგზავნა: ' + (res && res.msg ? res.msg : 'უცნობი შეცდომა'));
+}
+
+function _tmLogout() {
+  if (typeof window.isLoggedIn !== 'function' || !window.isLoggedIn()) {
+    _tmL('tdm', 'უკვეც არ ხარ ავტორიზებული.');
+    return;
+  }
+  if (typeof window.signOut !== 'function') { _tmL('ter', '✗ auth engine ვერ მოიძებნა (runtime.js?)'); return; }
+  window.signOut();
+  _tmL('tok', '✓ გამოხვედი სისტემიდან');
 }
 
 function _tmGo(args) {
