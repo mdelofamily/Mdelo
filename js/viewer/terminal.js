@@ -535,7 +535,7 @@ async function _tmResolveStatus(args) {
 async // /სესია — mobile-friendly stand-in for devtools console; prints the raw
 // auth state (session presence, tier row, etc.) straight into the terminal.
 // (named /სესია, not /debug — chat.js already owns /debug for its own diagnostics)
-function _tmDebug() {
+async function _tmDebug() {
   var loggedIn = typeof window.isLoggedIn === 'function' ? window.isLoggedIn() : '(isLoggedIn ვერ მოიძებნა)';
   _tmL('ti', 'isLoggedIn(): ' + loggedIn);
   var sess = null;
@@ -549,6 +549,27 @@ function _tmDebug() {
   _tmL('tdm', 'window._myTier: ' + JSON.stringify(window._myTier));
   _tmL('tdm', 'myTier(): ' + (typeof window.myTier === 'function' ? window.myTier() : '?') +
     '   myDisplayName(): ' + (typeof window.myDisplayName === 'function' ? window.myDisplayName() : '?'));
+
+  // if the tier row never loaded, retry it right here and print the *exact*
+  // failure into the terminal — not a toast, so it doesn't disappear before
+  // you can read it
+  if (loggedIn && !window._myTier && sess && sess.user) {
+    _tmL('tdm', 'ვცდი user_tiers-ის ხელახლა ჩატვირთვას...');
+    try {
+      var gr = await fetch(SUPA_URL + '/rest/v1/user_tiers?user_id=eq.' + sess.user.id + '&select=*', { headers: _authHeaders() });
+      var gbody = await gr.text();
+      _tmL(gr.ok ? 'tok' : 'ter', 'GET user_tiers → ' + gr.status + ': ' + gbody.slice(0, 300));
+      if (gr.ok && JSON.parse(gbody || '[]').length === 0) {
+        var pr = await fetch(SUPA_URL + '/rest/v1/user_tiers', {
+          method: 'POST',
+          headers: Object.assign({ 'Content-Type': 'application/json', 'Prefer': 'return=representation' }, _authHeaders()),
+          body: JSON.stringify({ user_id: sess.user.id })
+        });
+        var pbody = await pr.text();
+        _tmL(pr.ok ? 'tok' : 'ter', 'POST user_tiers → ' + pr.status + ': ' + pbody.slice(0, 300));
+      }
+    } catch (e) { _tmL('ter', 'exception: ' + e.message); }
+  }
 }
 
 async function _tmSetName(args) {
