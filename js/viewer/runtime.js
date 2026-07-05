@@ -1795,8 +1795,12 @@ window.menuOverrideSave = async function (nodeId, fields) {
 // ── shared terminal macros (Supabase) ──
 // Personal ("local") macros never leave the device — see terminal.js localStorage.
 // Shared ("საერთო") macros are visible to every viewer; cached in window._tmMacroShared
-// (name -> commands[]) so terminal.js can resolve them with zero network latency
-// once boot has finished.
+// (name -> {commands: [...], min_tier: null|'visitor'|'caretaker'|'resident'})
+// so terminal.js can resolve them with zero network latency once boot has
+// finished. min_tier is set ONLY by shadow_admin (enforced server-side by a
+// DB trigger, not just this client) — it's the sole mechanism that lets a
+// lower tier run a specific whitelisted macro without granting standalone
+// access to the raw commands inside it.
 window._tmMacroShared = {};
 
 async function loadMacroOverrides() {
@@ -1808,14 +1812,14 @@ async function loadMacroOverrides() {
     if (!r.ok) return;
     var rows = await r.json();
     var shared = {};
-    rows.forEach(function (row) { shared[row.name] = row.commands_json || []; });
+    rows.forEach(function (row) { shared[row.name] = { commands: row.commands_json || [], min_tier: row.min_tier || null }; });
     window._tmMacroShared = shared;
   } catch (e) {}
 }
 
-window.macroOverrideSave = async function (name, commands) {
+window.macroOverrideSave = async function (name, commands, minTier) {
   try {
-    var body = { map_id: _MAP_ID, name: name, commands_json: commands, updated_at: new Date().toISOString() };
+    var body = { map_id: _MAP_ID, name: name, commands_json: commands, min_tier: minTier || null, updated_at: new Date().toISOString() };
     var r = await fetch(SUPA_URL + '/rest/v1/terminal_macros', {
       method: 'POST',
       headers: Object.assign({
@@ -1824,7 +1828,7 @@ window.macroOverrideSave = async function (name, commands) {
       }, _authHeaders()),
       body: JSON.stringify(body)
     });
-    if (r.ok) { window._tmMacroShared[name] = commands; return true; }
+    if (r.ok) { window._tmMacroShared[name] = { commands: commands, min_tier: minTier || null }; return true; }
     var errBody = r.text ? await r.text().catch(function () { return ''; }) : '';
     return { ok: false, status: r.status, msg: errBody.slice(0, 150) };
   } catch (e) { return { ok: false, status: 0, msg: e.message }; }

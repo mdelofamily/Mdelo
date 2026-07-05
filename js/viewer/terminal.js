@@ -255,11 +255,17 @@ var _TM_MIN_TIER = {
   'macro':       'resident'   // author/manage shared macros
 };
 
+// Scoped elevation flag — true only while executing the commands *inside* a
+// macro whose own min_tier the caller already cleared. Never set outside
+// that one _tmRunChain call, and always restored in a finally block.
+var _tmMacroElevated = false;
+
 // Returns true (deny) when the current tier is below the command's
 // requirement. Fails OPEN (allows) if the auth engine isn't loaded yet,
 // so this never blocks local dev/testing before runtime.js is wired up —
 // the real backstop is still the RLS policies on the write itself.
 function _tmTierDenied(cmdKey) {
+  if (_tmMacroElevated) return false; // authorized by the macro's own min_tier
   var minTier = _TM_MIN_TIER[cmdKey];
   if (!minTier) return false;
   if (typeof window._tierAtLeast !== 'function') return false;
@@ -286,8 +292,23 @@ async function _tmRun(raw) {
   if (!isMacroDef) {
     // ── exact macro-name match (local scope wins over shared) — checked before
     //    normal dispatch, so a saved shortcut behaves like a brand-new command ──
-    var macroCmds = _tmMacroResolve(full);
-    if (macroCmds) { await _tmRunChain(macroCmds); return; }
+    var macroHit = _tmMacroResolve(full);
+    if (macroHit) {
+      if (macroHit.minTier && !window._tierAtLeast(macroHit.minTier)) {
+        _tmL('ter', '✗ "/' + full + '" საჭიროებს "' + macroHit.minTier + '" ან უფრო მაღალ tier-ს — შენი: ' + (typeof window.myTier === 'function' ? window.myTier() : 'visitor'));
+        return;
+      }
+      // min_tier IS the authorization for this macro's own bundled commands —
+      // elevate ONLY for the duration of this chain, never leaks beyond it.
+      var wasElevated = _tmMacroElevated;
+      if (macroHit.minTier) _tmMacroElevated = true;
+      try {
+        await _tmRunChain(macroHit.commands);
+      } finally {
+        _tmMacroElevated = wasElevated;
+      }
+      return;
+    }
 
     // ── generic ";"-chaining: only splits where ";" is followed by "/",
     //    so a stray ";" inside ordinary item text is left alone ──
@@ -411,8 +432,7 @@ function _tmHelp() {
     ['/macro საერთო <სახელი> := ...', 'გაზიარებული შორთკატის შექმნა'],
     ['/macro ls',         'ყველა შორთკატის სია'],
     ['/macro rm local|საერთო <სახელი>', 'შორთკატის წაშლა'],
-    ['/ლოგინი ელფოსტა@მაგ.com', 'magic link — შესვლა/რეგისტრაცია'],
-    ['/ლოგინი',           '(არგუმენტის გარეშე) — მაჩვენე ჩემი სტატუსი'],
+    ['/ლოგინი',           'შესვლა (popup: email + სახელი), ან სტატუსის ჩვენება'],
     ['/ლოგაუთი',          'გამოსვლა სისტემიდან'],
     ['/სახელი <ახალი სახელი>', 'display_name-ის შეცვლა (დიალოგებში ჩანს)'],
     ['/სესია',            'auth-ის მდგომარეობა — devtools-ის გარეშე']
@@ -472,31 +492,27 @@ function _tmObjects() {
   _tmL('tdm', _SEP);
 }
 
-// /ლოგინი                — მაჩვენე ჩემი სტატუსი, ან (თუ არ ხარ login) გახსენი
-//                           ერთი პატარა popup (runtime.js: showLoginModal) email-ისა
-//                           და სახელისთვის ერთდროულად, სანამ magic link გაიგზავნება.
-// /ლოგინი ელფოსტა@მაგ.com — direct, ტერმინალიდან ხელით — email-ს აღარ ითხოვს
-//                           (popup მხოლოდ სახელს სთხოვს ამ შემთხვევაში)
-async function _tmLogin(args) {
+// /ლოგინი — თუ უკვე ხარ ავტორიზებული, სტატუსს აჩვენებს. თუ არა — ხსნის
+// combined popup-ს (email + სახელი, runtime.js: showLoginModal). ცალკე
+// "/ლოგინი email@x.com" ვარიანტი ამოღებულია — არაფერს ამარტივებდა, popup
+// ისედაც ყოველთვის იხსნებოდა.
+async function _tmLogin() {
   if (typeof window.isLoggedIn === 'function' && window.isLoggedIn()) {
     _tmL('tok', '✓ ავტორიზებული ხარ, როგორც ' + window.myDisplayName() + '  (tier: ' + window.myTier() + ')');
     return;
   }
-  var email = (args || []).join(' ').trim();
-  var name = '';
-
-  if (typeof window.showLoginModal !== 'function') { _tmL('ter', '✗ auth engine ვერ მოიძებნა (runtime.js?)'); return; }
-  var res = await window.showLoginModal(email || null);
+  if (typeof window.showLoginModal !== 'function' || typeof window.requestMagicLink !== 'function') {
+    _tmL('ter', '✗ auth engine ვერ მოიძებნა (runtime.js?)');
+    return;
+  }
+  var res = await window.showLoginModal();
   if (!res) return; // გააუქმა
-  email = res.email;
-  name = res.name;
 
-  if (name) { try { localStorage.setItem('mdelo_pending_name', name); } catch (e) {} }
+  if (res.name) { try { localStorage.setItem('mdelo_pending_name', res.name); } catch (e) {} }
 
-  if (typeof window.requestMagicLink !== 'function') { _tmL('ter', '✗ auth engine ვერ მოიძებნა (runtime.js?)'); return; }
-  _tmL('ti', '/ლოგინი ' + email);
-  _tmL('tdm', 'იგზავნება login ბმული "' + email + '"-ზე...');
-  var lres = await window.requestMagicLink(email);
+  _tmL('ti', '/ლოგინი ' + res.email);
+  _tmL('tdm', 'იგზავნება login ბმული "' + res.email + '"-ზე...');
+  var lres = await window.requestMagicLink(res.email);
   if (lres === true) _tmL('tok', '✓ შეამოწმე ელფოსტა — login ბმული გამოგზავნილია');
   else _tmL('ter', '✗ ვერ გაიგზავნა: ' + (lres && lres.msg ? lres.msg : 'უცნობი შეცდომა'));
 }
@@ -1507,13 +1523,27 @@ function _tmMacroLocalSave(all) {
   try { localStorage.setItem(_tmMacroLocalKey(), JSON.stringify(all)); return true; } catch (e) { return false; }
 }
 
-// Exact-name lookup across both scopes. Returns a commands[] array or null.
+// Best-effort extraction of the "command key" _TM_MIN_TIER checks against,
+// from a raw bundled command string (e.g. "/შეტყობინება^ text" → "შეტყობინება").
+// Mirrors the special-cased matches _tmRun itself uses, before falling back
+// to "first token after the slash".
+function _tmCmdKeyFor(cmdStr) {
+  var c = (cmdStr || '').replace(/^\//, '');
+  if (/^todo\//.test(c)) return 'todo';
+  if (/^შეტყობინება/.test(c)) return 'შეტყობინება';
+  return c.split(/\s+/)[0] || '';
+}
+
+// Exact-name lookup across both scopes. Returns { commands: [...], minTier }
+// or null. Local macros never carry an elevation tier — they're personal,
+// self-run, and already naturally bounded by the creator's own access.
 function _tmMacroResolve(full) {
   var name = (full || '').trim();
   if (!name) return null;
   var locals = _tmMacroLocalAll();
-  if (locals[name]) return locals[name];
-  if (window._tmMacroShared && window._tmMacroShared[name]) return window._tmMacroShared[name];
+  if (locals[name]) return { commands: locals[name], minTier: null };
+  var shared = window._tmMacroShared && window._tmMacroShared[name];
+  if (shared) return { commands: shared.commands || [], minTier: shared.min_tier || null };
   return null;
 }
 
@@ -1554,6 +1584,7 @@ async function _tmMacro(args) {
     _tmL('tsy', '/macro ბრძანებები:');
     _tmL('tnf', '  local <სახელი> := cmd1 ; cmd2 ...   — პერსონალური შორთკატი');
     _tmL('tnf', '  საერთო <სახელი> := cmd1 ; cmd2 ...  — გაზიარებული შორთკატი');
+    _tmL('tnf', '  საერთო <სახელი>@tier := ...         — (მხოლოდ shadow_admin) tier-whitelist');
     _tmL('tnf', '  ls                                  — ყველა შორთკატის სია');
     _tmL('tnf', '  rm local|საერთო <სახელი>            — წაშლა');
     _tmL('tdm', _SEP);
@@ -1564,18 +1595,56 @@ async function _tmMacro(args) {
   var body = raw.slice(assignIdx + 2).trim();
   var headParts = head.split(/\s+/);
   var scope = headParts[0];
-  var name = headParts.slice(1).join(' ').trim();
+  var namePart = headParts.slice(1).join(' ').trim();
 
   if (scope !== 'local' && scope !== 'საერთო') {
     _tmL('ter', 'მითხარი scope: /macro local <სახელი> := ...  ან  /macro საერთო <სახელი> := ...');
     return;
   }
+
+  // optional "@tier" suffix — ONLY meaningful for საერთო, and only ever
+  // takes effect if the DB trigger also agrees the caller is shadow_admin
+  // (client-side check here is just to fail fast, not the real guard).
+  var name = namePart;
+  var minTier = null;
+  var atIdx = namePart.indexOf('@');
+  if (atIdx >= 0) {
+    name = namePart.slice(0, atIdx).trim();
+    minTier = namePart.slice(atIdx + 1).trim();
+    if (scope !== 'საერთო') {
+      _tmL('ter', '✗ "@tier" მხოლოდ საერთო მაკროებზეა შესაძლებელი');
+      return;
+    }
+    if (['visitor', 'caretaker', 'resident', 'shadow_admin'].indexOf(minTier) < 0) {
+      _tmL('ter', '✗ უცნობი tier: "' + minTier + '" — visitor/caretaker/resident/shadow_admin');
+      return;
+    }
+    if (typeof window.myTier !== 'function' || window.myTier() !== 'shadow_admin') {
+      _tmL('ter', '✗ მხოლოდ shadow_admin-ს შეუძლია მაკროზე tier-whitelist დაყენება');
+      return;
+    }
+  }
+
   if (!name) { _tmL('ter', 'სახელი არ მიუთითე'); return; }
   if (_TM_RESERVED.indexOf(name) >= 0) { _tmL('ter', '✗ "' + name + '" დაცული სახელია — სხვა აარჩიე'); return; }
 
   var commands = body.split(';').map(function (s) { return s.trim(); }).filter(Boolean)
     .map(function (c) { return c.charAt(0) === '/' ? c : '/' + c; });
   if (!commands.length) { _tmL('ter', 'ბრძანებების ჩამონათვალი ცარიელია'); return; }
+
+  // shared macros bundle only what the CREATOR already has standalone
+  // access to — a macro is never a way to author your own escalation and
+  // hope shadow_admin blesses it blind; shadow_admin's own macros trivially
+  // pass this, since shadow_admin has access to everything.
+  if (scope === 'საერთო') {
+    for (var ci = 0; ci < commands.length; ci++) {
+      var key = _tmCmdKeyFor(commands[ci]);
+      if (_tmTierDenied(key)) {
+        _tmL('ter', '✗ ვერ შეინახება — "' + commands[ci] + '" შენს tier-ს სცდება ("' + _TM_MIN_TIER[key] + '" სჭირდება)');
+        return;
+      }
+    }
+  }
 
   if (scope === 'local') {
     var locAll = _tmMacroLocalAll();
@@ -1584,9 +1653,12 @@ async function _tmMacro(args) {
     _tmL('tok', '🔒 "' + name + '" შენახულია (' + commands.length + ' ბრძანება)');
   } else {
     if (typeof window.macroOverrideSave !== 'function') { _tmL('ter', '✗ macroOverrideSave ვერ მოიძებნა (runtime.js?)'); return; }
-    var sres = await window.macroOverrideSave(name, commands);
-    if (sres === true) _tmL('tok', '🌐 "' + name + '" შენახულია — ყველა viewer-ს ეჩვენება');
-    else _tmL('ter', '✗ Supabase: ' + (sres && sres.msg ? sres.msg : 'უცნობი'));
+    var sres = await window.macroOverrideSave(name, commands, minTier);
+    if (sres === true) {
+      _tmL('tok', '🌐 "' + name + '" შენახულია — ყველა viewer-ს ეჩვენება' + (minTier ? ' (whitelist: ' + minTier + '+)' : ''));
+    } else {
+      _tmL('ter', '✗ Supabase: ' + (sres && sres.msg ? sres.msg : 'უცნობი'));
+    }
   }
 }
 
@@ -1602,18 +1674,27 @@ function _tmMacroLs() {
   Object.keys(shared).forEach(function (n) {
     if (locals[n]) return; // local already shown, and takes precedence
     any = true;
-    _tmL('tnf', '🌐 ' + n + '  (' + shared[n].length + ' ბრძანება)');
+    var s = shared[n];
+    var badge = s.min_tier ? ('  🔓' + s.min_tier + '+') : '';
+    _tmL('tnf', '🌐 ' + n + '  (' + (s.commands ? s.commands.length : 0) + ' ბრძანება)' + badge);
   });
   if (!any) _tmL('tdm', '(შორთკატები არ არსებობს)');
   _tmL('tdm', _SEP);
 }
 
 // Cross-file hook — e.g. a dialogue marker effect can call window.runMacro('name')
-// to replay a saved shortcut from inside an NPC conversation.
+// to replay a saved shortcut from inside an NPC conversation. Same min_tier
+// gate + scoped elevation as typing the macro name directly in the terminal.
 window.runMacro = function (name) {
-  var cmds = _tmMacroResolve(name);
-  if (!cmds) { if (typeof _tmL === 'function') _tmL('ter', 'მაკრო ვერ მოიძებნა: "' + name + '"'); return false; }
-  _tmRunChain(cmds);
+  var hit = _tmMacroResolve(name);
+  if (!hit) { if (typeof _tmL === 'function') _tmL('ter', 'მაკრო ვერ მოიძებნა: "' + name + '"'); return false; }
+  if (hit.minTier && !window._tierAtLeast(hit.minTier)) {
+    if (typeof _tmL === 'function') _tmL('ter', '✗ "' + name + '" საჭიროებს "' + hit.minTier + '" ან უფრო მაღალ tier-ს');
+    return false;
+  }
+  var wasElevated = _tmMacroElevated;
+  if (hit.minTier) _tmMacroElevated = true;
+  _tmRunChain(hit.commands).finally(function () { _tmMacroElevated = wasElevated; });
   return true;
 };
 
