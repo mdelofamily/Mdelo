@@ -15,7 +15,7 @@ var _tmEditMode = null;    // 'dlg' | 'menuItem' | null
 var _tmEditMenuCtx = null; // { node, idx, type } — set only when _tmEditMode === 'menuItem'
 var _tmEditLabel = null;   // human-readable label shown in cancel/header messages
 var _tmEditBuf = null;     // raw content buffered from a chain segment, consumed by /შეყვანა
-var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/marker','/დახურვა','/flag','/nick','/me','/who','/color','/help','/pwd','/ls','/cd','/md','/rm','/edit','/ფოთოლი','/macro','/ლოგინი','/ლოგაუთი','/სახელი'];
+var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/marker','/დახურვა','/flag','/nick','/me','/who','/color','/help','/pwd','/ls','/cd','/md','/rm','/edit','/ფოთოლი','/macro','/ლოგინი','/ლოგაუთი','/სახელი','/სესია'];
 
 function toggleTerm() { _tmOpen ? closeTerm() : _tmOpen_(); }
 function _tmOpen_() {
@@ -356,7 +356,8 @@ async function _tmRun(raw) {
     'ლოგინი':      _tmLogin,
     'ლოგაუთი':     _tmLogout,
     'სახელი':      _tmSetName,
-    'სტატუსი':     _tmResolveStatus
+    'სტატუსი':     _tmResolveStatus,
+    'სესია':       _tmDebug
   };
   var fn = map[cmd];
   if (fn) {
@@ -413,7 +414,8 @@ function _tmHelp() {
     ['/ლოგინი ელფოსტა@მაგ.com', 'magic link — შესვლა/რეგისტრაცია'],
     ['/ლოგინი',           '(არგუმენტის გარეშე) — მაჩვენე ჩემი სტატუსი'],
     ['/ლოგაუთი',          'გამოსვლა სისტემიდან'],
-    ['/სახელი <ახალი სახელი>', 'display_name-ის შეცვლა (დიალოგებში ჩანს)']
+    ['/სახელი <ახალი სახელი>', 'display_name-ის შეცვლა (დიალოგებში ჩანს)'],
+    ['/სესია',            'auth-ის მდგომარეობა — devtools-ის გარეშე']
   ];
   _tmL('tdm', _SEP); _tmL('tsy', '--- ბრძანები ---');
   for (var i = 0; i < list.length; i++) {
@@ -530,6 +532,25 @@ async function _tmResolveStatus(args) {
 // popup-ში სახელი ცარიელი დარჩა (ძველი ბაგი — Enter email-ის ველში აგზავნიდა
 // ფორმას სახელის ველამდე მისვლის გარეშე; ეს ახლა სავალდებულოა, მაგრამ ვინც
 // ადრე დარეგისტრირდა ცარიელი სახელით, ამ ბრძანებით გაასწორებს, ლოგაუთის გარეშე).
+async // /სესია — mobile-friendly stand-in for devtools console; prints the raw
+// auth state (session presence, tier row, etc.) straight into the terminal.
+// (named /სესია, not /debug — chat.js already owns /debug for its own diagnostics)
+function _tmDebug() {
+  var loggedIn = typeof window.isLoggedIn === 'function' ? window.isLoggedIn() : '(isLoggedIn ვერ მოიძებნა)';
+  _tmL('ti', 'isLoggedIn(): ' + loggedIn);
+  var sess = null;
+  try { sess = JSON.parse(localStorage.getItem('mdelo_auth_session') || 'null'); } catch (e) {}
+  if (sess) {
+    _tmL('tdm', 'session: user_id=' + (sess.user && sess.user.id) + '  email=' + (sess.user && sess.user.email) +
+      '  expires_at=' + new Date(sess.expires_at).toLocaleString());
+  } else {
+    _tmL('ter', 'session: localStorage-ში არაფერია (mdelo_auth_session)');
+  }
+  _tmL('tdm', 'window._myTier: ' + JSON.stringify(window._myTier));
+  _tmL('tdm', 'myTier(): ' + (typeof window.myTier === 'function' ? window.myTier() : '?') +
+    '   myDisplayName(): ' + (typeof window.myDisplayName === 'function' ? window.myDisplayName() : '?'));
+}
+
 async function _tmSetName(args) {
   if (typeof window.isLoggedIn !== 'function' || !window.isLoggedIn()) {
     _tmL('tdm', 'ჯერ არ ხარ ავტორიზებული — /ლოგინი.');
