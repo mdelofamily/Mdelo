@@ -782,6 +782,48 @@ function _dlgShowNode(nodeId, selectedLabel) {
       b.textContent = btn.label;
       b.style.cssText = 'width:100%;height:32px;background:rgba(22,27,34,0.2);border:1px solid rgba(88,166,255,0.4);color:#e6edf3;font-size:13px;border-radius:8px;cursor:pointer;text-align:center;';
       b.onclick = () => {
+        if (btn.applyTier) {
+          // self-nomination: caretaker or resident. Creates a normal-looking
+          // consensus (~) notification, tagged with subject_type/subject_data
+          // so resolve_tier_change (SQL) knows what it's for — and a
+          // terminal_cmd that references the notification's OWN id, set in a
+          // second PATCH once the insert returns it.
+          const targetTier = btn.applyTier;
+          if (!window.isLoggedIn || !window.isLoggedIn()) {
+            if (typeof toast === 'function') toast('⚠️ განაცხადისთვის საჭიროა შესვლა — სცადე /ლოგინი');
+          } else {
+            const uid = window.myUserId();
+            const name = window.myDisplayName();
+            const label = targetTier === 'caretaker' ? 'ქეართეიქერი' : 'რეზიდენტი';
+            const text = name + ' განაცხადებს, რომ მზადაა გახდეს ' + label;
+            fetch(SUPA_URL + '/rest/v1/user_tiers?tier=eq.resident&select=user_id', { headers: _authHeaders() })
+              .then(r => r.ok ? r.json() : [])
+              .then(residents => {
+                const quorum = residents.length > 0 ? residents.length : 1; // bootstrap: 1 (shadow_admin)
+                return fetch(SUPA_URL + '/rest/v1/notifications', {
+                  method: 'POST',
+                  headers: Object.assign({ 'Content-Type': 'application/json', 'Prefer': 'return=representation' }, _authHeaders()),
+                  body: JSON.stringify({
+                    type: 'consensus', symbol: '🌱', text: text, sender: name, quorum_count: quorum,
+                    subject_type: 'tier_change',
+                    subject_data: { user_id: uid, from: window.myTier(), to: targetTier }
+                  })
+                });
+              })
+              .then(r => r.ok ? r.json() : null).then(rows => {
+              const row = rows && rows[0];
+              if (!row) throw new Error('no row returned');
+              return fetch(SUPA_URL + '/rest/v1/notifications?id=eq.' + row.id, {
+                method: 'PATCH',
+                headers: Object.assign({ 'Content-Type': 'application/json', 'Prefer': 'return=minimal' }, _authHeaders()),
+                body: JSON.stringify({ terminal_cmd: '/სტატუსი ' + row.id })
+              });
+            }).then(() => {
+              if (typeof toast === 'function') toast('✓ განაცხადი გაგზავნილია — ხმის მიცემა იწყება');
+              if (typeof loadNotifs === 'function') loadNotifs();
+            }).catch(() => { if (typeof toast === 'function') toast('✗ განაცხადი ვერ გაიგზავნა'); });
+          }
+        }
         if (btn.notify) {
           const sender = localStorage.getItem('mdelo_sender') || 'ანონიმი';
           const notifyTxt = btn.notifyText || (sender + ' — ' + btn.label);
@@ -1218,6 +1260,12 @@ function openConsensusPopup(n) {
   document.getElementById('cpStatus').textContent = '';
   _setConsensusToggle(null);
   document.getElementById('cpFeed').innerHTML = '';
+  // voting itself is resident+ only — caretaker/visitor see the topic and
+  // the live feed, but the yes/no buttons simply aren't there for them
+  const canVote = typeof window._tierAtLeast === 'function' && window._tierAtLeast('resident');
+  const yesBtn = document.getElementById('cpYes'), noBtn = document.getElementById('cpNo');
+  if (yesBtn) yesBtn.style.display = canVote ? '' : 'none';
+  if (noBtn) noBtn.style.display = canVote ? '' : 'none';
   p.style.display = 'flex';
   requestAnimationFrame(() => p.classList.add('show'));
   loadConsensusVotes(n.id);
@@ -1290,6 +1338,10 @@ async function castConsensusVote(vote) {
   if (!_curConsensusNotif) return;
   if (typeof window.isLoggedIn !== 'function' || !window.isLoggedIn()) {
     if (typeof toast === 'function') toast('⚠️ ხმის მისაცემად საჭიროა შესვლა — სცადე /ლოგინი');
+    return;
+  }
+  if (typeof window._tierAtLeast !== 'function' || !window._tierAtLeast('resident')) {
+    if (typeof toast === 'function') toast('⚠️ ხმის მიცემა resident-ის და უფრო მაღალი tier-ისთვისაა');
     return;
   }
   const uid = window.myUserId();

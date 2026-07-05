@@ -15,7 +15,7 @@ var _tmEditMode = null;    // 'dlg' | 'menuItem' | null
 var _tmEditMenuCtx = null; // { node, idx, type } — set only when _tmEditMode === 'menuItem'
 var _tmEditLabel = null;   // human-readable label shown in cancel/header messages
 var _tmEditBuf = null;     // raw content buffered from a chain segment, consumed by /შეყვანა
-var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/marker','/დახურვა','/flag','/nick','/me','/who','/color','/help','/pwd','/ls','/cd','/md','/rm','/edit','/ფოთოლი','/macro','/ლოგინი','/ლოგაუთი'];
+var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/marker','/დახურვა','/flag','/nick','/me','/who','/color','/help','/pwd','/ls','/cd','/md','/rm','/edit','/ფოთოლი','/macro','/ლოგინი','/ლოგაუთი','/სახელი'];
 
 function toggleTerm() { _tmOpen ? closeTerm() : _tmOpen_(); }
 function _tmOpen_() {
@@ -354,7 +354,9 @@ async function _tmRun(raw) {
     'macro':       _tmMacro,
     'marker':      _tmMarkerCmd,
     'ლოგინი':      _tmLogin,
-    'ლოგაუთი':     _tmLogout
+    'ლოგაუთი':     _tmLogout,
+    'სახელი':      _tmSetName,
+    'სტატუსი':     _tmResolveStatus
   };
   var fn = map[cmd];
   if (fn) {
@@ -410,7 +412,8 @@ function _tmHelp() {
     ['/macro rm local|საერთო <სახელი>', 'შორთკატის წაშლა'],
     ['/ლოგინი ელფოსტა@მაგ.com', 'magic link — შესვლა/რეგისტრაცია'],
     ['/ლოგინი',           '(არგუმენტის გარეშე) — მაჩვენე ჩემი სტატუსი'],
-    ['/ლოგაუთი',          'გამოსვლა სისტემიდან']
+    ['/ლოგაუთი',          'გამოსვლა სისტემიდან'],
+    ['/სახელი <ახალი სახელი>', 'display_name-ის შეცვლა (დიალოგებში ჩანს)']
   ];
   _tmL('tdm', _SEP); _tmL('tsy', '--- ბრძანები ---');
   for (var i = 0; i < list.length; i++) {
@@ -494,6 +497,50 @@ async function _tmLogin(args) {
   var lres = await window.requestMagicLink(email);
   if (lres === true) _tmL('tok', '✓ შეამოწმე ელფოსტა — login ბმული გამოგზავნილია');
   else _tmL('ter', '✗ ვერ გაიგზავნა: ' + (lres && lres.msg ? lres.msg : 'უცნობი შეცდომა'));
+}
+
+// /სტატუსი <notification_id> — HIDDEN deliberately: not in _TMCMDS, not in
+// _tmHelp, no autocomplete. Only ever meant to run as a notification's own
+// terminal_cmd (auto-attached by btn.applyTier in runtime.js), auto-executed
+// once the existing consensus-quorum UI detects unanimity. It is still safe
+// to type by hand or forge, though — resolve_tier_change() (SQL, security
+// definer) re-counts votes itself and no-ops unless real quorum is met, so
+// hiding this command is a courtesy, not the actual protection.
+async function _tmResolveStatus(args) {
+  var notifId = (args || [])[0];
+  if (!notifId) return; // silent — this should never be invoked by a person directly
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/rpc/resolve_tier_change', {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, _authHeaders()),
+      body: JSON.stringify({ notif_id: notifId })
+    });
+    var data = r.ok ? await r.json() : null;
+    if (data && data.ok) {
+      _tmL('tok', '✓ tier შეიცვალა — ' + data.tier);
+      if (typeof loadNotifs === 'function') loadNotifs();
+    } else {
+      _tmL('tdm', 'tier ცვლილება ჯერ არ დამტკიცებულა (' + (data && data.reason ? data.reason : 'უცნობი') + ')');
+    }
+  } catch (e) { /* silent — this is a background auto-command */ }
+}
+
+// /სახელი <ახალი სახელი> — შეცვლის display_name-ს ნებისმიერ დროს (არა მხოლოდ
+// პირველ login-ზე). სასარგებლოა ზუსტად იმ შემთხვევისთვის, თუ პირველი login-ის
+// popup-ში სახელი ცარიელი დარჩა (ძველი ბაგი — Enter email-ის ველში აგზავნიდა
+// ფორმას სახელის ველამდე მისვლის გარეშე; ეს ახლა სავალდებულოა, მაგრამ ვინც
+// ადრე დარეგისტრირდა ცარიელი სახელით, ამ ბრძანებით გაასწორებს, ლოგაუთის გარეშე).
+async function _tmSetName(args) {
+  if (typeof window.isLoggedIn !== 'function' || !window.isLoggedIn()) {
+    _tmL('tdm', 'ჯერ არ ხარ ავტორიზებული — /ლოგინი.');
+    return;
+  }
+  var name = (args || []).join(' ').trim();
+  if (!name) { _tmL('ter', 'გამოყენება: /სახელი ახალი სახელი'); return; }
+  if (typeof window.setDisplayName !== 'function') { _tmL('ter', '✗ auth engine ვერ მოიძებნა (runtime.js?)'); return; }
+  var ok = await window.setDisplayName(name);
+  if (ok) _tmL('tok', '✓ სახელი შეიცვალა: ' + name);
+  else _tmL('ter', '✗ ვერ განახლდა');
 }
 
 function _tmLogout() {
