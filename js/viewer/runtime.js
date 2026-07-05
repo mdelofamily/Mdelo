@@ -205,7 +205,13 @@ async function _authLoadTier() {
   if (!s || !s.user) { window._myTier = null; return null; }
   try {
     const r = await fetch(SUPA_URL + '/rest/v1/user_tiers?user_id=eq.' + s.user.id + '&select=*', { headers: _authHeaders() });
-    const rows = r.ok ? await r.json() : [];
+    if (!r.ok) {
+      const errBody = await r.text().catch(() => '');
+      if (typeof toast === 'function') toast('✗ tier GET ჩავარდა (' + r.status + '): ' + errBody.slice(0, 100));
+      window._myTier = null;
+      return null;
+    }
+    const rows = await r.json();
     if (rows[0]) { window._myTier = rows[0]; return rows[0]; }
     // first login for this account — create the row; DB default tier='visitor'
     const c = await fetch(SUPA_URL + '/rest/v1/user_tiers', {
@@ -213,10 +219,20 @@ async function _authLoadTier() {
       headers: Object.assign({ 'Content-Type': 'application/json', 'Prefer': 'return=representation' }, _authHeaders()),
       body: JSON.stringify({ user_id: s.user.id })
     });
-    const created = c.ok ? await c.json() : null;
-    window._myTier = (created && created[0]) || { user_id: s.user.id, tier: 'visitor' };
+    if (!c.ok) {
+      const errBody = await c.text().catch(() => '');
+      if (typeof toast === 'function') toast('✗ tier POST ჩავარდა (' + c.status + '): ' + errBody.slice(0, 100));
+      window._myTier = null;
+      return null;
+    }
+    const created = await c.json();
+    window._myTier = created[0] || null;
     return window._myTier;
-  } catch (e) { window._myTier = null; return null; }
+  } catch (e) {
+    if (typeof toast === 'function') toast('✗ tier load exception: ' + e.message);
+    window._myTier = null;
+    return null;
+  }
 }
 window.myTier = function () { return window._myTier ? window._myTier.tier : 'visitor'; };
 window.myUserId = function () { const s = _authGetSession(); return (s && s.user && s.user.id) || null; };
