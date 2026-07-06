@@ -185,14 +185,19 @@ var _TM_HPOP_N = 5; // how many recent commands to show
 
 function _tmHistPopBuild() {
   var pop = document.getElementById('tmHistPop');
+  var inp = document.getElementById('tmIn');
   if (!pop || !_tmHist.length) return;
   var items = _tmHist.slice(0, _TM_HPOP_N);
   pop.innerHTML = items.map(function (h, i) {
     var esc = String(h).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    return '<div class="tm-hist-item" data-ix="' + i + '">'
-         +   '<span class="thi-ix">' + (i + 1) + '</span>' + esc
-         + '</div>';
+    return '<div class="tm-hist-item" data-ix="' + i + '">' + esc + '</div>';
   }).join('');
+  // position exactly above the input caret, not the whole row
+  if (inp) {
+    pop.style.left  = inp.offsetLeft + 'px';
+    pop.style.right = 'auto';
+    pop.style.width = Math.max(inp.offsetWidth, 140) + 'px';
+  }
   pop.classList.add('open');
 }
 function _tmHistPopHide() {
