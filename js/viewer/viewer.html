@@ -52,11 +52,17 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
 #tmSlashBtn:hover{background:rgba(0,255,136,.09);border-color:rgba(0,255,136,.45);color:#00ff88;}
 #tmSlashBtn:active{background:rgba(0,255,136,.18);}
 .tm-ir{position:relative;z-index:1;display:flex;flex-direction:column;border-top:1px solid rgba(0,255,136,.09);background:rgba(0,0,0,.2);flex-shrink:0;}
-.tm-ir-row{display:flex;align-items:center;padding:7px 13px;}
-.tm-pr{color:#00ff88;font-family:'Courier New',monospace;font-size:13px;margin-right:7px;opacity:.45;white-space:nowrap;}
-#tmIn{flex:1;background:transparent;border:none;outline:none;color:#00ff88;font-family:'Courier New',Consolas,monospace;font-size:13px;caret-color:#00ff88;}
+.tm-ir-row{display:flex;align-items:center;flex-wrap:nowrap;padding:7px 13px;}
+.tm-pr{color:#00ff88;font-family:'Courier New',monospace;font-size:13px;margin-right:7px;opacity:.45;white-space:nowrap;flex-shrink:0;}
+#tmIn{flex:1 1 auto;min-width:0;background:transparent;border:none;outline:none;color:#00ff88;font-family:'Courier New',Consolas,monospace;font-size:13px;caret-color:#00ff88;}
 #tmIn::placeholder{color:rgba(0,255,136,.2);}
-#tmHint{color:rgba(0,255,136,.2);font-family:'Courier New',monospace;font-size:13px;pointer-events:none;user-select:none;}
+#tmHint{flex:0 1 auto;min-width:0;max-width:40%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:rgba(0,255,136,.2);font-family:'Courier New',monospace;font-size:13px;pointer-events:none;user-select:none;}
+.tm-hist-pop{display:none;position:absolute;left:13px;right:13px;bottom:100%;margin-bottom:4px;background:rgba(8,14,10,.97);border:1px solid rgba(0,255,136,.25);border-radius:4px;overflow:hidden;z-index:5;box-shadow:0 4px 14px rgba(0,0,0,.4);}
+.tm-hist-pop.open{display:block;}
+.tm-hist-item{padding:6px 10px;font-family:'Courier New',monospace;font-size:13px;color:rgba(0,255,136,.75);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;border-bottom:1px solid rgba(0,255,136,.08);}
+.tm-hist-item:last-child{border-bottom:none;}
+.tm-hist-item:active,.tm-hist-item:hover{background:rgba(0,255,136,.1);color:#00ff88;}
+.tm-hist-item .thi-ix{opacity:.4;margin-right:6px;}
 #tmTa{display:none;background:transparent;border:none;border-bottom:1px solid rgba(0,255,136,.09);outline:none;color:#00ff88;font-family:'Courier New',Consolas,monospace;font-size:13px;caret-color:#00ff88;resize:none;padding:8px 13px;line-height:1.55;min-height:64px;max-height:120px;overflow-y:auto;}
 #tmTa::placeholder{color:rgba(0,255,136,.2);}
 #tmMlBtn{background:transparent;border:1px solid rgba(0,255,136,.18);color:rgba(0,255,136,.65);font-family:'Courier New',monospace;font-size:13px;font-weight:bold;padding:1px 7px;cursor:pointer;border-radius:2px;transition:all .12s;flex-shrink:0;line-height:1.5;margin-right:5px;}
@@ -193,6 +199,7 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
   </div>
   <div id="tmOut"></div>
   <div class="tm-ir">
+    <div id="tmHistPop" class="tm-hist-pop"></div>
     <textarea id="tmTa" autocomplete="off" spellcheck="false" placeholder="..."></textarea>
     <div class="tm-ir-row">
       <span class="tm-pr">~/mdelo $</span>
