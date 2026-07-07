@@ -15,7 +15,7 @@ var _tmEditMode = null;    // 'dlg' | 'menuItem' | null
 var _tmEditMenuCtx = null; // { node, idx, type } — set only when _tmEditMode === 'menuItem'
 var _tmEditLabel = null;   // human-readable label shown in cancel/header messages
 var _tmEditBuf = null;     // raw content buffered from a chain segment, consumed by /შეყვანა
-var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/marker','/დახურვა','/flag','/nick','/me','/who','/color','/help','/pwd','/ls','/cd','/md','/rm','/edit','/ფოთოლი','/macro','/ლოგინი','/ლოგაუთი','/სახელი','/სესია'];
+var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/marker','/დახურვა','/flag','/nick','/me','/who','/color','/help','/pwd','/ls','/cd','/md','/rm','/edit','/ფოთოლი','/macro','/ლოგინი','/ლოგაუთი','/სახელი','/სესია','/სია','/დაწინაურება','/რეჟიმი'];
 
 function toggleTerm() { _tmOpen ? closeTerm() : _tmOpen_(); }
 function _tmOpen_() {
@@ -322,7 +322,8 @@ var _TM_MIN_TIER = {
   'md':          'resident',  // create menu branch — structural, not leaf
   'rm':          'resident',  // remove menu node — structural
   'edit':        'resident',  // edit menu node/branch
-  'macro':       'resident'   // author/manage shared macros
+  'macro':       'resident',  // author/manage shared macros
+  'სია':         'shadow_admin' // list logged-in users (nickname/name/email/tier)
 };
 
 // Scoped elevation flag — true only while executing the commands *inside* a
@@ -448,7 +449,10 @@ async function _tmRun(raw) {
     'ლოგაუთი':     _tmLogout,
     'სახელი':      _tmSetName,
     'სტატუსი':     _tmResolveStatus,
-    'სესია':       _tmDebug
+    'სესია':       _tmDebug,
+    'სია':         _tmUserList,
+    'დაწინაურება': _tmRequestTierUp,
+    'რეჟიმი':      _tmDevViewTier
   };
   var fn = map[cmd];
   if (fn) {
@@ -502,6 +506,9 @@ function _tmHelp() {
     ['/macro საერთო <სახელი> := ...', 'გაზიარებული შორთკატის შექმნა'],
     ['/macro ls',         'ყველა შორთკატის სია'],
     ['/macro rm local|საერთო <სახელი>', 'შორთკატის წაშლა'],
+    ['/სია', 'დალოგინებული იუზერების სია (მხოლოდ shadow_admin)'],
+    ['/დაწინაურება', 'შემდეგი ტიერის თხოვნა კონსენსუსით (visitor→caretaker, caretaker→resident)'],
+    ['/რეჟიმი <tier>', 'ტესტ რეჟიმი — UI ხედავს სხვა ტიერად (მხოლოდ shadow_admin, /რეჟიმი გამორთვა-ით იხურება)'],
     ['/ლოგინი',           'შესვლა (popup: email + სახელი), ან სტატუსის ჩვენება'],
     ['/ლოგაუთი',          'გამოსვლა სისტემიდან'],
     ['/სახელი <ახალი სახელი>', 'display_name-ის შეცვლა (დიალოგებში ჩანს)'],
@@ -618,7 +625,7 @@ async function _tmResolveStatus(args) {
 // popup-ში სახელი ცარიელი დარჩა (ძველი ბაგი — Enter email-ის ველში აგზავნიდა
 // ფორმას სახელის ველამდე მისვლის გარეშე; ეს ახლა სავალდებულოა, მაგრამ ვინც
 // ადრე დარეგისტრირდა ცარიელი სახელით, ამ ბრძანებით გაასწორებს, ლოგაუთის გარეშე).
-async // /სესია — mobile-friendly stand-in for devtools console; prints the raw
+// /სესია — mobile-friendly stand-in for devtools console; prints the raw
 // auth state (session presence, tier row, etc.) straight into the terminal.
 // (named /სესია, not /debug — chat.js already owns /debug for its own diagnostics)
 async function _tmDebug() {
@@ -656,6 +663,101 @@ async function _tmDebug() {
       }
     } catch (e) { _tmL('ter', 'exception: ' + e.message); }
   }
+}
+
+// /სია — shadow_admin only. Lists every account with a user_tiers row:
+// display name + email + tier. "ნიკნეიმი" (mdelo_nick from chat.js' /nick)
+// is deliberately NOT included — it's device-local localStorage, never
+// synced to Supabase, so there is nothing server-side to list it from.
+// Backed by the `list_users` SQL RPC (SECURITY DEFINER) — see handoff notes
+// for the migration; this command is a no-op until that RPC exists.
+async function _tmUserList() {
+  if (typeof window.listUsers !== 'function') { _tmL('ter', '✗ auth engine ვერ მოიძებნა (runtime.js?)'); return; }
+  var rows = await window.listUsers();
+  if (rows && rows.ok === false) {
+    _tmL('ter', '✗ Supabase: ' + (rows.msg || ('status ' + rows.status)));
+    if (rows.status === 404) _tmL('tdm', '(სავარაუდოდ `list_users` RPC ჯერ არ არსებობს Supabase-ში)');
+    return;
+  }
+  if (!rows || !rows.length) { _tmL('tdm', 'ვერცერთი იუზერი ვერ მოიძებნა'); return; }
+  _tmL('tsy', 'იუზერების სია (' + rows.length + '):');
+  rows.forEach(function (u) {
+    var name = u.display_name || '(უსახელო)';
+    var email = u.email || '?';
+    var tier = u.tier || 'visitor';
+    _tmL('tnf', '  ' + name + '  ·  ' + email + '  ·  ' + tier);
+  });
+}
+
+// /დაწინაურება — available to any logged-in tier below resident (visitor or
+// caretaker). Auto-computes the next tier (nextTierFor), pops a form for the
+// person's own request text (name automatic), then delegates to the shared
+// requestTierUp() — the exact same consensus/quorum/subject_data shape the
+// applyTier dialogue button already uses. One open request per person at a
+// time (requestTierUp itself blocks a duplicate on the same topic).
+async function _tmRequestTierUp() {
+  if (typeof window.isLoggedIn !== 'function' || !window.isLoggedIn()) {
+    _tmL('tdm', 'ჯერ არ ხარ ავტორიზებული — /ლოგინი.');
+    return;
+  }
+  var myTier = typeof window.myTier === 'function' ? window.myTier() : 'visitor';
+  var nextTier = typeof window.nextTierFor === 'function' ? window.nextTierFor(myTier) : null;
+  if (!nextTier) {
+    _tmL('tdm', 'შენი ტიერიდან (' + myTier + ') აღარაფერი მოითხოვება ავტომატურად ამ გზით.');
+    return;
+  }
+  if (typeof window.showNotifyFormModal !== 'function' || typeof window.requestTierUp !== 'function') {
+    _tmL('ter', '✗ auth engine ვერ მოიძებნა (runtime.js?)');
+    return;
+  }
+  var label = nextTier === 'caretaker' ? 'ქეართეიქერი' : 'რეზიდენტი';
+  var fres = await window.showNotifyFormModal({ title: 'განაცხადი: ' + label + '-ობაზე', presetText: '' });
+  if (!fres) { _tmL('tdm', 'გაუქმდა'); return; }
+  var res = await window.requestTierUp(nextTier, fres.text);
+  if (res.ok) {
+    _tmL('tok', '✓ განაცხადი გაგზავნილია (' + label + ') — ხმის მიცემა იწყება');
+  } else if (res.reason === 'already_pending') {
+    _tmL('tdm', '⚠️ უკვე გაქვს გახსნილი განაცხადი — დაელოდე მის გადაწყვეტას');
+  } else {
+    _tmL('ter', '✗ განაცხადი ვერ გაიგზავნა (' + (res.reason || 'უცნობი') + ')');
+  }
+}
+
+// /რეჟიმი <tier> — shadow_admin only. Local view-tier override: UI-gating
+// (buttons, macro tier-checks, command tier-checks) sees the given tier
+// instead of the real one, WITHOUT logging out/in. Gated on myRealTier(),
+// never myTier() — otherwise once viewing as visitor there'd be no way to
+// switch back. Does NOT touch the real Supabase session — RLS-enforced
+// writes underneath still run as the real shadow_admin, so this only proves
+// what the UI shows/hides for a tier, not what the server would block.
+var _TM_TIER_ALIASES = {
+  'ვიზიტორი': 'visitor', 'visitor': 'visitor',
+  'ქეართეიქერი': 'caretaker', 'მეურვე': 'caretaker', 'caretaker': 'caretaker',
+  'რეზიდენტი': 'resident', 'resident': 'resident',
+  'შედოუადმინი': 'shadow_admin', 'ადმინი': 'shadow_admin', 'shadow_admin': 'shadow_admin'
+};
+function _tmDevViewTier(args) {
+  if (typeof window.myRealTier !== 'function' || window.myRealTier() !== 'shadow_admin') {
+    _tmL('ter', '✗ "/რეჟიმი" საჭიროებს "shadow_admin" — შენი: ' + (typeof window.myTier === 'function' ? window.myTier() : 'visitor'));
+    return;
+  }
+  var arg = (args || [])[0];
+  if (!arg) {
+    var cur = localStorage.getItem('mdelo_dev_view_tier');
+    _tmL('tdm', cur ? ('ტესტ რეჟიმი აქტიურია: ' + cur) : 'ტესტ რეჟიმი გამორთულია (ხედავ როგორც shadow_admin)');
+    _tmL('tdm', 'გამოყენება: /რეჟიმი visitor|caretaker|resident|shadow_admin  ან  /რეჟიმი გამორთვა');
+    return;
+  }
+  if (arg === 'გამორთვა' || arg === 'off' || arg === 'shadow_admin') {
+    window.clearDevViewTier();
+    _tmL('tok', '✓ ტესტ რეჟიმი გამორთულია — ისევ shadow_admin ხედვაა');
+    return;
+  }
+  var tier = _TM_TIER_ALIASES[arg];
+  if (!tier) { _tmL('ter', '✗ უცნობი ტიერი: "' + arg + '"'); return; }
+  var res = window.setDevViewTier(tier);
+  if (res.ok) _tmL('tok', '✓ ტესტ რეჟიმი: ხედავ როგორც "' + tier + '"');
+  else _tmL('ter', '✗ ვერ ჩაირთო (' + res.reason + ')');
 }
 
 async function _tmSetName(args) {
@@ -927,13 +1029,26 @@ var _TM_NOTIFY_VOTE_LABEL = {
 
 async function _tmNotify(typeChar, rest) {
   rest = (rest || '').trim();
+  var viaModal = false, modalDetail = '';
   if (!rest) {
-    _tmL('tnf', 'გამოყენება: /შეტყობინება[*!~+.^] ტექსტი [@@ზონა]');
-    _tmL('tdm', '*ინფო  !გაფრთხ.  ~საფრთხე');
-    _tmL('tdm', 'ხმის მიცემა: /შეტყობინება[^+.] კითხვა [::დეტალი] [##N] [@@ზონა] [{ბრძანება}]');
-    _tmL('tdm', '  ^კონსენსუსი(თანხმობა) · +პროექტი(მიღებულია/უარყოფილია) · .დასრულება(დასრულდა/არ დასრულებულა)');
-    _tmL('tdm', '  {ბრძანება} — quorum-ის მიღწევისას (დადებითი შედეგისას) გაეშვება window.tmRun()-ით');
-    return;
+    if (typeof window.showNotifyFormModal !== 'function') {
+      _tmL('tnf', 'გამოყენება: /შეტყობინება[*!~+.^] ტექსტი [@@ზონა]');
+      _tmL('tdm', '*ინფო  !გაფრთხ.  ~საფრთხე');
+      _tmL('tdm', 'ხმის მიცემა: /შეტყობინება[^+.] კითხვა [::დეტალი] [##N] [@@ზონა] [{ბრძანება}]');
+      _tmL('tdm', '  ^კონსენსუსი(თანხმობა) · +პროექტი(მიღებულია/უარყოფილია) · .დასრულება(დასრულდა/არ დასრულებულა)');
+      _tmL('tdm', '  {ბრძანება} — quorum-ის მიღწევისას (დადებითი შედეგისას) გაეშვება window.tmRun()-ით');
+      return;
+    }
+    // Popup path — used both for a person typing bare "/შეტყობინება^" AND for
+    // a low-tier macro that bundles "/შეტყობინება^" without hardcoding the
+    // request text. Name is automatic (shown in the popup, never re-typed).
+    var typeLabel = { '*': 'ინფო', '!': 'გაფრთხილება', '~': 'საფრთხე', '^': 'კონსენსუსი', '+': 'პროექტი', '.': 'დასრულება', '': 'ინფო' }[typeChar] || 'ინფო';
+    var fres = await window.showNotifyFormModal({ title: 'შეტყობინება (' + typeLabel + ')' });
+    if (!fres) { _tmL('tdm', 'გაუქმდა'); return; }
+    rest = (fres.text || '').trim();
+    modalDetail = (fres.detail || '').trim();
+    viaModal = true;
+    if (!rest) { _tmL('ter', 'ტექსტი ცარიელია'); return; }
   }
 
   // optional {terminal_cmd} field — consensus-only, but stripped for every type so the
@@ -954,7 +1069,8 @@ async function _tmNotify(typeChar, rest) {
 
   var type   = _TM_NOTIFY_TYPES[typeChar] || 'info';
   var sym    = _TM_NOTIFY_SYMS[type];
-  var sender = localStorage.getItem('mdelo_sender') || (typeof _CFG !== 'undefined' && _CFG && _CFG.title) || 'ანონიმი';
+  var sender = (typeof window.myDisplayName === 'function') ? window.myDisplayName()
+             : (localStorage.getItem('mdelo_sender') || (typeof _CFG !== 'undefined' && _CFG && _CFG.title) || 'ანონიმი');
 
   // ── vote branch: consensus ^ / project + / done . ──
   // All three share identical parsing and Supabase payload shape; only the
@@ -965,15 +1081,26 @@ async function _tmNotify(typeChar, rest) {
     // Parse order here: ##N first (from full rest), then ::detail, so neither swallows the other.
     var detail = '', quorum = null;
 
-    // 1. Extract ##N from anywhere in rest
-    var qM = rest.match(/##(\d+)/);
-    if (qM) { quorum = parseInt(qM[1]); rest = rest.replace(/\s*##\d+/, '').trim(); }
+    if (viaModal) {
+      // popup already collected the detail directly — no "::" to re-parse
+      detail = modalDetail;
+    } else {
+      // 1. Extract ##N from anywhere in rest
+      var qM = rest.match(/##(\d+)/);
+      if (qM) { quorum = parseInt(qM[1]); rest = rest.replace(/\s*##\d+/, '').trim(); }
 
-    // 2. Extract ::detail (everything after first "::")
-    var dcIdx = rest.indexOf('::');
-    if (dcIdx !== -1) { detail = rest.slice(dcIdx + 2).trim(); rest = rest.slice(0, dcIdx).trim(); }
+      // 2. Extract ::detail (everything after first "::")
+      var dcIdx = rest.indexOf('::');
+      if (dcIdx !== -1) { detail = rest.slice(dcIdx + 2).trim(); rest = rest.slice(0, dcIdx).trim(); }
+    }
 
     if (!rest) { _tmL('ter', 'ხმის მიცემა: კითხვა ცარიელია'); return; }
+
+    // No explicit ##N given (typed or popup path alike) — fall back to the
+    // dynamic quorum formula: every resident + every shadow_admin must agree.
+    if (!quorum && typeof window.consensusQuorumCount === 'function') {
+      quorum = await window.consensusQuorumCount();
+    }
 
     var body = { type: type, symbol: sym, text: rest, sender: sender, linked_area: area };
     if (detail)   body.detail       = detail;
@@ -998,11 +1125,13 @@ async function _tmNotify(typeChar, rest) {
   // ── standard notification branch (info / warning / danger) ──
   if (!rest) { _tmL('ter', 'ტექსტი ცარიელია'); return; }
   if (cmdField) _tmL('tdm', '{ბრძანება} მუშაობს მხოლოდ ^/+/. ტიპებზე — იგნორირებულია');
+  var stdBody = { type: type, symbol: sym, text: rest, sender: sender, linked_area: area };
+  if (viaModal && modalDetail) stdBody.detail = modalDetail;
   try {
     var r2 = await fetch(SUPA_URL + '/rest/v1/notifications', {
       method: 'POST',
       headers: Object.assign({ 'Content-Type': 'application/json', 'Prefer': 'return=minimal' }, _authHeaders()),
-      body: JSON.stringify({ type: type, symbol: sym, text: rest, sender: sender, linked_area: area })
+      body: JSON.stringify(stdBody)
     });
     if (r2.ok) {
       _tmL('tok', sym + ' შეტყობინება გაიგზავნა');
@@ -1523,7 +1652,7 @@ async function _tmMenuSaveNode(nodeId, fields) {
 // A macro IS a brand-new command: once saved, typing its exact name (with /) runs
 // the whole stored chain. Local scope takes precedence over shared on a name clash.
 var _TM_RESERVED = ['macro','marker','cd','md','rm','ls','pwd','edit','ფოთოლი','flag','nick','me','who','color','help',
-  'დახმარება','გასუფთავება','ინფო','მასშტაბი','ზონები','ობიექტები','დიალოგი','წასვლა','ლეგენდა','მენიუ','გახსნა','შეყვანა','სრული','ისტორია','ვადა','ტექსტი','შეტყობინება','დახურვა'];
+  'დახმარება','გასუფთავება','ინფო','მასშტაბი','ზონები','ობიექტები','დიალოგი','წასვლა','ლეგენდა','მენიუ','გახსნა','შეყვანა','სრული','ისტორია','ვადა','ტექსტი','შეტყობინება','დახურვა','სია','დაწინაურება','რეჟიმი'];
 
 // Splits a chain on ";" — but only when ";" is followed by "/" (so a stray
 // ";" inside ordinary command args is left alone) — PLUS treats any [...]
@@ -1698,8 +1827,11 @@ async function _tmMacro(args) {
   if (!name) { _tmL('ter', 'სახელი არ მიუთითე'); return; }
   if (_TM_RESERVED.indexOf(name) >= 0) { _tmL('ter', '✗ "' + name + '" დაცული სახელია — სხვა აარჩიე'); return; }
 
-  var commands = body.split(';').map(function (s) { return s.trim(); }).filter(Boolean)
-    .map(function (c) { return c.charAt(0) === '/' ? c : '/' + c; });
+  // Bracket-aware split — same splitter live chains use (_tmSplitChain), NOT
+  // a naive split(';'). A naive split tears apart any bundled command whose
+  // own text contains a literal ";" (an /edit body, or plain Georgian prose),
+  // which is why saved macros were coming out broken/malformed.
+  var commands = _tmSplitChain(body).map(function (c) { return c.charAt(0) === '/' ? c : '/' + c; });
   if (!commands.length) { _tmL('ter', 'ბრძანებების ჩამონათვალი ცარიელია'); return; }
 
   // shared macros bundle only what the CREATOR already has standalone

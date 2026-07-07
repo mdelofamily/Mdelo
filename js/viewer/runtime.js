@@ -197,6 +197,52 @@ window.showLoginModal = function (prefillEmail) {
   });
 };
 
+// Popup form for sending a /შეტყობინება notification or consensus request —
+// collects the message text + optional detail from the person. The sender
+// name is taken automatically (myDisplayName()) and shown read-only, never
+// re-typed by hand. Used by terminal.js's _tmNotify when the command is run
+// bare (no text) — e.g. from inside a low-tier-whitelisted macro that bundles
+// a "/შეტყობინება^" consensus request without hardcoding its wording.
+// Resolves { text, detail } on submit, or null if cancelled.
+window.showNotifyFormModal = function (opts) {
+  opts = opts || {};
+  return new Promise((resolve) => {
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;';
+    var name = (typeof window.myDisplayName === 'function') ? window.myDisplayName() : 'მოგზაური';
+    wrap.innerHTML =
+      '<div style="background:#161b22;border:1px solid rgba(88,166,255,0.4);border-radius:12px;padding:20px;width:min(92vw,360px);color:#e6edf3;font-family:inherit;">' +
+        '<div style="font-size:15px;font-weight:600;margin-bottom:4px;">' + (opts.title || 'შეტყობინება') + '</div>' +
+        '<div style="font-size:12px;opacity:0.6;margin-bottom:12px;">👤 ' + name + '</div>' +
+        '<textarea id="_nfText" placeholder="რას აცხადებ?" rows="3" style="width:100%;box-sizing:border-box;margin-bottom:10px;padding:8px 10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:#e6edf3;font-size:14px;font-family:inherit;resize:vertical;"></textarea>' +
+        '<input id="_nfDetail" type="text" placeholder="დეტალი (არასავალდებულო)" style="width:100%;box-sizing:border-box;height:36px;margin-bottom:14px;padding:0 10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:#e6edf3;font-size:14px;" />' +
+        '<div style="display:flex;gap:8px;">' +
+          '<button id="_nfCancel" style="flex:1;height:36px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);color:#e6edf3;border-radius:8px;font-size:13px;cursor:pointer;">გაუქმება</button>' +
+          '<button id="_nfSubmit" style="flex:1;height:36px;background:rgba(88,166,255,0.25);border:1px solid rgba(88,166,255,0.6);color:#e6edf3;border-radius:8px;font-size:13px;cursor:pointer;">გაგზავნა</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(wrap);
+
+    var textEl = wrap.querySelector('#_nfText');
+    var detailEl = wrap.querySelector('#_nfDetail');
+    if (opts.presetText) textEl.value = opts.presetText;
+    if (opts.presetDetail) detailEl.value = opts.presetDetail;
+    textEl.focus();
+
+    function done(result) { wrap.remove(); resolve(result); }
+    wrap.querySelector('#_nfCancel').onclick = () => done(null);
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) done(null); });
+    function trySubmit() {
+      var text = textEl.value.trim();
+      if (!text) { textEl.focus(); return; }
+      done({ text: text, detail: detailEl.value.trim() });
+    }
+    wrap.querySelector('#_nfSubmit').onclick = trySubmit;
+    textEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) trySubmit(); });
+    detailEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') trySubmit(); });
+  });
+};
+
 // ── tier cache (one row per user in user_tiers) ──
 window._myTier = null; // { user_id, tier, view_mode, display_name } once loaded
 
@@ -234,13 +280,51 @@ async function _authLoadTier() {
     return null;
   }
 }
-window.myTier = function () { return window._myTier ? window._myTier.tier : 'visitor'; };
+window.myRealTier = function () { return window._myTier ? window._myTier.tier : 'visitor'; };
+window.myTier = function () {
+  const real = window.myRealTier();
+  if (real === 'shadow_admin') {
+    const dev = localStorage.getItem('mdelo_dev_view_tier');
+    if (dev && _TIER_RANK.hasOwnProperty(dev)) return dev;
+  }
+  return real;
+};
 window.myUserId = function () { const s = _authGetSession(); return (s && s.user && s.user.id) || null; };
 window.myDisplayName = function () {
   return (window._myTier && window._myTier.display_name) || localStorage.getItem('mdelo_nick') || 'მოგზაური';
 };
 // tier-order check used by dialogue buttons / menu gating — e.g. _tierAtLeast('resident')
 window._tierAtLeast = function (min) { return (_TIER_RANK[window.myTier()] || 0) >= (_TIER_RANK[min] || 0); };
+
+// shadow_admin only (checked against the REAL tier, never the overridden
+// view — otherwise there'd be no way back). Sets/clears the local
+// dev-view-tier override and (re)draws the "test mode" banner.
+window.setDevViewTier = function (tier) {
+  if (window.myRealTier() !== 'shadow_admin') return { ok: false, reason: 'not_shadow_admin' };
+  if (!_TIER_RANK.hasOwnProperty(tier)) return { ok: false, reason: 'unknown_tier' };
+  localStorage.setItem('mdelo_dev_view_tier', tier);
+  _renderDevViewBanner();
+  if (typeof scheduleRender === 'function') scheduleRender();
+  return { ok: true };
+};
+window.clearDevViewTier = function () {
+  localStorage.removeItem('mdelo_dev_view_tier');
+  _renderDevViewBanner();
+  if (typeof scheduleRender === 'function') scheduleRender();
+};
+function _renderDevViewBanner() {
+  var old = document.getElementById('_devViewBanner');
+  if (old) old.remove();
+  if (window.myRealTier() !== 'shadow_admin') return;
+  var dev = localStorage.getItem('mdelo_dev_view_tier');
+  if (!dev || !_TIER_RANK.hasOwnProperty(dev)) return;
+  var bar = document.createElement('div');
+  bar.id = '_devViewBanner';
+  bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999999;background:#a34d00;color:#fff;font-size:12px;padding:6px 10px;display:flex;align-items:center;justify-content:center;gap:10px;font-family:inherit;';
+  bar.innerHTML = '🎭 ტესტ რეჟიმი — UI ხედავს როგორც: <b>' + dev + '</b> (რეალურად შენ shadow_admin ხარ) &nbsp; <span id="_devViewOff" style="text-decoration:underline;cursor:pointer;">გამორთვა</span>';
+  document.body.prepend(bar);
+  document.getElementById('_devViewOff').onclick = function () { window.clearDevViewTier(); };
+}
 
 // Sets display_name on first login — replaces /nick for authenticated users.
 // (Anonymous /nick in terminal.js is untouched for now; that consolidation
@@ -257,6 +341,26 @@ window.setDisplayName = async function (name) {
     if (r.ok && window._myTier) window._myTier.display_name = name;
     return r.ok;
   } catch (e) { return false; }
+};
+
+// shadow_admin only — returns [{ user_id, display_name, email, tier }, ...]
+// for every account with a user_tiers row. Backed by the `list_users` SQL
+// RPC (SECURITY DEFINER, joins auth.users for email — never exposed via
+// plain PostgREST) which re-validates the caller is shadow_admin server-side;
+// this client-side gate is just fail-fast, same pattern as macro @tier checks.
+window.listUsers = async function () {
+  try {
+    const r = await fetch(SUPA_URL + '/rest/v1/rpc/list_users', {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, _authHeaders()),
+      body: '{}'
+    });
+    if (!r.ok) {
+      const errBody = await r.text().catch(() => '');
+      return { ok: false, status: r.status, msg: errBody.slice(0, 150) };
+    }
+    return await r.json();
+  } catch (e) { return { ok: false, status: 0, msg: e.message }; }
 };
 
 // Handles the ?token_hash=...&type=... redirect on load, or silently
@@ -769,7 +873,7 @@ function _dlgShowNode(nodeId, selectedLabel) {
 
   // append selected answer to history (no typewriter, italic)
   if (selectedLabel) {
-    const nick = localStorage.getItem('mdelo_nick') || 'მოგზაური';
+    const nick = window.myDisplayName ? window.myDisplayName() : (localStorage.getItem('mdelo_nick') || 'მოგზაური');
     const ans = document.createElement('div');
     ans.style.cssText = 'font-style:italic;opacity:0.55;font-size:12px;margin:6px 0 2px; display:flex; justify-content:flex-end; text-align:right;';
     ans.textContent = nick + ': ' + selectedLabel;
@@ -779,7 +883,7 @@ function _dlgShowNode(nodeId, selectedLabel) {
   const objTitle = (_dlgObj && (_dlgObj.title || _dlgObj.lb)) || '';
   const _he = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const txt = (node.text || '')
-    .replace(/\[\]/g, (localStorage.getItem('mdelo_nick') || 'მოგზაური') + ':')
+    .replace(/\[\]/g, (window.myDisplayName ? window.myDisplayName() : (localStorage.getItem('mdelo_nick') || 'მოგზაური')) + ':')
     .replace(/__OBJ__([^<"]*)/g, (_, name) => (name.trim() || _he(objTitle)) + ':')
     .replace(/&lt;([^&<\n]*)&gt;/g, (_, name) => '<b>' + (name.trim() || _he(objTitle)) + ':</b>');
 
@@ -799,49 +903,19 @@ function _dlgShowNode(nodeId, selectedLabel) {
       b.style.cssText = 'width:100%;height:32px;background:rgba(22,27,34,0.2);border:1px solid rgba(88,166,255,0.4);color:#e6edf3;font-size:13px;border-radius:8px;cursor:pointer;text-align:center;';
       b.onclick = () => {
         if (btn.applyTier) {
-          // self-nomination: caretaker or resident. Creates a normal-looking
-          // consensus (~) notification, tagged with subject_type/subject_data
-          // so resolve_tier_change (SQL) knows what it's for — and a
-          // terminal_cmd that references the notification's OWN id, set in a
-          // second PATCH once the insert returns it.
           const targetTier = btn.applyTier;
           if (!window.isLoggedIn || !window.isLoggedIn()) {
             if (typeof toast === 'function') toast('⚠️ განაცხადისთვის საჭიროა შესვლა — სცადე /ლოგინი');
           } else {
-            const uid = window.myUserId();
-            const name = window.myDisplayName();
-            const label = targetTier === 'caretaker' ? 'ქეართეიქერი' : 'რეზიდენტი';
-            const text = name + ' განაცხადებს, რომ მზადაა გახდეს ' + label;
-            fetch(SUPA_URL + '/rest/v1/user_tiers?tier=eq.resident&select=user_id', { headers: _authHeaders() })
-              .then(r => r.ok ? r.json() : [])
-              .then(residents => {
-                const quorum = residents.length > 0 ? residents.length : 1; // bootstrap: 1 (shadow_admin)
-                return fetch(SUPA_URL + '/rest/v1/notifications', {
-                  method: 'POST',
-                  headers: Object.assign({ 'Content-Type': 'application/json', 'Prefer': 'return=representation' }, _authHeaders()),
-                  body: JSON.stringify({
-                    type: 'consensus', symbol: '🌱', text: text, sender: name, quorum_count: quorum,
-                    subject_type: 'tier_change',
-                    subject_data: { user_id: uid, from: window.myTier(), to: targetTier }
-                  })
-                });
-              })
-              .then(r => r.ok ? r.json() : null).then(rows => {
-              const row = rows && rows[0];
-              if (!row) throw new Error('no row returned');
-              return fetch(SUPA_URL + '/rest/v1/notifications?id=eq.' + row.id, {
-                method: 'PATCH',
-                headers: Object.assign({ 'Content-Type': 'application/json', 'Prefer': 'return=minimal' }, _authHeaders()),
-                body: JSON.stringify({ terminal_cmd: '/სტატუსი ' + row.id })
-              });
-            }).then(() => {
-              if (typeof toast === 'function') toast('✓ განაცხადი გაგზავნილია — ხმის მიცემა იწყება');
-              if (typeof loadNotifs === 'function') loadNotifs();
-            }).catch(() => { if (typeof toast === 'function') toast('✗ განაცხადი ვერ გაიგზავნა'); });
+            window.requestTierUp(targetTier).then(res => {
+              if (res.ok) { if (typeof toast === 'function') toast('✓ განაცხადი გაგზავნილია — ხმის მიცემა იწყება'); }
+              else if (res.reason === 'already_pending') { if (typeof toast === 'function') toast('⚠️ უკვე გაქვს გახსნილი განაცხადი — დაელოდე შედეგს'); }
+              else { if (typeof toast === 'function') toast('✗ განაცხადი ვერ გაიგზავნა'); }
+            });
           }
         }
         if (btn.notify) {
-          const sender = localStorage.getItem('mdelo_sender') || 'ანონიმი';
+          const sender = window.myDisplayName ? window.myDisplayName() : (localStorage.getItem('mdelo_sender') || 'ანონიმი');
           const notifyTxt = btn.notifyText || (sender + ' — ' + btn.label);
           const nType = btn.notifyType || 'info';
           const nSymbol = { info: '💬', warning: '⚠️', danger: '🔴', project: '🚀', done: '✅' }[nType] || '💬';
@@ -878,9 +952,14 @@ function _dlgShowNode(nodeId, selectedLabel) {
         if (btn.flags && btn.flags.length) {
           btn.flags.forEach(function(f) { if (typeof flagSet === 'function') flagSet(f); });
         }
-        // [$macro_name] — run a saved console macro (window.runMacro, terminal.js)
+        // [$macro_name] — run a saved console macro; a leading '/' instead
+        // runs the raw command directly via window.tmRun (no wrapper macro
+        // needed for commands that already have no tier restriction).
         if (btn.cmds && btn.cmds.length) {
-          btn.cmds.forEach(function(c) { if (typeof window.runMacro === 'function') window.runMacro(c); });
+          btn.cmds.forEach(function(c) {
+            if (c.charAt(0) === '/') { if (typeof window.tmRun === 'function') window.tmRun(c); }
+            else if (typeof window.runMacro === 'function') window.runMacro(c);
+          });
         }
         if (btn.nextNode && _dlgNodes[btn.nextNode]) { _dlgShowNode(btn.nextNode, btn.label); }
         else {
@@ -1252,6 +1331,85 @@ function openNotifList() {
 function closeNotifPopup() { const p = document.getElementById('notifPopup'); p.classList.remove('show'); p.style.display = 'none'; }
 
 // ── consensus notification ("talking circle") ──
+// Dynamic quorum: shadow_admin is a permanent voter alongside every resident
+// (not just a bootstrap fallback) — quorum = residentCount + shadowAdminCount
+// at every stage: 0 residents -> quorum = shadow_admin count (bootstrap,
+// normally 1); n residents -> quorum = n + shadowAdminCount (unanimous, all
+// residents + shadow_admin(s) must agree). Used for every consensus-type
+// notification (tier-change requests and plain /შეტყობინება^ alike).
+window.consensusQuorumCount = async function () {
+  try {
+    const r = await fetch(SUPA_URL + '/rest/v1/user_tiers?tier=in.(resident,shadow_admin)&select=user_id', { headers: _authHeaders() });
+    if (!r.ok) return 1;
+    const rows = await r.json();
+    return rows.length || 1;
+  } catch (e) { return 1; }
+};
+
+// ── self-nomination (tier-up requests) ──
+// Both self-service tiers use consensus: visitor→caretaker AND
+// caretaker→resident. resident/shadow_admin have no self-service next tier.
+window.nextTierFor = function (tier) {
+  const order = ['visitor', 'caretaker', 'resident', 'shadow_admin'];
+  const idx = order.indexOf(tier);
+  if (idx === -1 || idx >= order.length - 2) return null;
+  return order[idx + 1];
+};
+
+// Shared self-nomination logic — used by the applyTier dialogue button AND
+// the /დაწინაურება terminal command, so the notification shape / quorum
+// logic lives in exactly one place (avoids the two-places-to-fix drift that
+// hit the quorum formula before). Creates a consensus notification tagged
+// with subject_type='tier_change' (consumed server-side by
+// resolve_tier_change), with a terminal_cmd that self-triggers on quorum.
+// Blocks a second request while the person already has one open — per topic
+// (tier_change), not globally.
+window.requestTierUp = async function (targetTier, requestText) {
+  if (!window.isLoggedIn || !window.isLoggedIn()) return { ok: false, reason: 'not_logged_in' };
+  const uid = window.myUserId();
+  const name = window.myDisplayName();
+
+  try {
+    const dupR = await fetch(
+      SUPA_URL + '/rest/v1/notifications?subject_type=eq.tier_change&subject_data->>user_id=eq.' + encodeURIComponent(uid) + '&select=id',
+      { headers: _authHeaders() }
+    );
+    if (dupR.ok) {
+      const dupRows = await dupR.json();
+      if (dupRows && dupRows.length) return { ok: false, reason: 'already_pending' };
+    }
+  } catch (e) { /* fail open — worst case a duplicate slips through, harmless */ }
+
+  const label = targetTier === 'caretaker' ? 'ქეართეიქერი' : (targetTier === 'resident' ? 'რეზიდენტი' : targetTier);
+  const text = name + ' განაცხადებს, რომ მზადაა გახდეს ' + label + (requestText ? (' — ' + requestText) : '');
+  const quorum = typeof window.consensusQuorumCount === 'function' ? await window.consensusQuorumCount() : 1;
+
+  try {
+    const r = await fetch(SUPA_URL + '/rest/v1/notifications', {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json', 'Prefer': 'return=representation' }, _authHeaders()),
+      body: JSON.stringify({
+        type: 'consensus', symbol: '🌱', text: text, sender: name, quorum_count: quorum,
+        subject_type: 'tier_change',
+        subject_data: { user_id: uid, from: window.myTier(), to: targetTier }
+      })
+    });
+    if (!r.ok) return { ok: false, reason: 'insert_failed' };
+    const rows = await r.json();
+    const row = rows && rows[0];
+    if (!row) return { ok: false, reason: 'no_row' };
+
+    await fetch(SUPA_URL + '/rest/v1/notifications?id=eq.' + row.id, {
+      method: 'PATCH',
+      headers: Object.assign({ 'Content-Type': 'application/json', 'Prefer': 'return=minimal' }, _authHeaders()),
+      body: JSON.stringify({ terminal_cmd: '/სტატუსი ' + row.id })
+    });
+
+    if (typeof loadNotifs === 'function') loadNotifs();
+    return { ok: true, id: row.id };
+  } catch (e) { return { ok: false, reason: 'exception' }; }
+};
+
 let _curConsensusNotif = null, _consensusVotes = [], _consensusChannel = null, _voteWritePending = false;
 const _executedTerminalCmds = new Set(); // prevent re-firing on realtime re-evaluations
 
@@ -1893,6 +2051,7 @@ window.toggleTodoInExport = function(todoId) {
 
 window.addEventListener('load', async () => {
   await _authBoot();
+  _renderDevViewBanner();
   loadNotifs();
   loadDialogueOverrides().then(_markerRestore);
   loadTodoState();
