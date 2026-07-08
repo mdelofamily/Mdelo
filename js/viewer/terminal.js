@@ -723,6 +723,7 @@ async function _tmRequestTierUp() {
   var fres = await window.showNotifyFormModal({
     title: 'დაწინაურების განაცხადი',
     tierOptions: tierOptions,
+    lockText: true,
     textForTier: function (tier) {
       var lbl = tier === 'caretaker' ? 'ქეართეიქერი' : 'რეზიდენტი';
       return window.myDisplayName() + '-ს სურს გახდეს ' + lbl;
