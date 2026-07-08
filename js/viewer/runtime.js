@@ -1503,8 +1503,13 @@ function closeConsensusPopup() {
   setTimeout(() => { if (!p.classList.contains('show')) p.style.display = 'none'; }, 200);
   if (_consensusChannel) { try { _consensusChannel.unsubscribe(); } catch (e) {} _consensusChannel = null; }
   _curConsensusNotif = null;
-  // if voting was complete when user closed — auto-delete the notification
-  if (n && n._allVoted) _autoDeleteVotingNotif(n);
+  // if voting was complete when user closed — auto-delete the notification,
+  // but ONLY when there's no terminal_cmd. A terminal_cmd (e.g. tier_change's
+  // /სტატუსი) is already responsible for deleting the row itself on success —
+  // deleting it here too would race that async call and could delete the
+  // notification BEFORE resolve_tier_change finds it, silently discarding
+  // the outcome while still looking like it worked (card just disappears).
+  if (n && n._allVoted && !n.terminal_cmd) _autoDeleteVotingNotif(n);
 }
 
 async function _autoDeleteVotingNotif(n) {
@@ -1650,6 +1655,11 @@ function _subscribeConsensusVotes(notifId) {
       .subscribe();
   } catch (e) {}
 }
+window.onConsensusResolved = function (notifId) {
+  if (_curConsensusNotif && _curConsensusNotif.id === notifId) {
+    setTimeout(() => { if (_curConsensusNotif && _curConsensusNotif.id === notifId) closeConsensusPopup(); }, 1500);
+  }
+};
 window.openConsensusPopup = openConsensusPopup;
 window.closeConsensusPopup = closeConsensusPopup;
 window.castConsensusVote = castConsensusVote;

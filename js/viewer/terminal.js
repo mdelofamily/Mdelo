@@ -614,6 +614,7 @@ async function _tmResolveStatus(args) {
     if (data && data.ok) {
       _tmL('tok', '✓ tier შეიცვალა — ' + data.tier);
       if (typeof loadNotifs === 'function') loadNotifs();
+      if (typeof window.onConsensusResolved === 'function') window.onConsensusResolved(notifId);
     } else {
       _tmL('tdm', 'tier ცვლილება ჯერ არ დამტკიცებულა (' + (data && data.reason ? data.reason : 'უცნობი') + ')');
     }
