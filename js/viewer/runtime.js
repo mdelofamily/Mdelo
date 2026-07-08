@@ -210,10 +210,20 @@ window.showNotifyFormModal = function (opts) {
     var wrap = document.createElement('div');
     wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;';
     var name = (typeof window.myDisplayName === 'function') ? window.myDisplayName() : 'მოგზაური';
+    var hasTierChoice = opts.tierOptions && opts.tierOptions.length > 1;
+    var tierRowHtml = '';
+    if (hasTierChoice) {
+      tierRowHtml = '<div id="_nfTierRow" style="display:flex;gap:6px;margin-bottom:12px;">' +
+        opts.tierOptions.map(function (t, i) {
+          return '<button type="button" data-tier="' + t.value + '" style="flex:1;height:34px;border-radius:8px;font-size:13px;cursor:pointer;border:1px solid rgba(88,166,255,' + (i === 0 ? '0.7' : '0.25') + ');background:rgba(88,166,255,' + (i === 0 ? '0.22' : '0.05') + ');color:#e6edf3;">' + t.label + '</button>';
+        }).join('') +
+      '</div>';
+    }
     wrap.innerHTML =
       '<div style="background:#161b22;border:1px solid rgba(88,166,255,0.4);border-radius:12px;padding:20px;width:min(92vw,360px);color:#e6edf3;font-family:inherit;">' +
         '<div style="font-size:15px;font-weight:600;margin-bottom:4px;">' + (opts.title || 'შეტყობინება') + '</div>' +
         '<div style="font-size:12px;opacity:0.6;margin-bottom:12px;">👤 ' + name + '</div>' +
+        tierRowHtml +
         '<textarea id="_nfText" placeholder="რას აცხადებ?" rows="3" style="width:100%;box-sizing:border-box;margin-bottom:10px;padding:8px 10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:#e6edf3;font-size:14px;font-family:inherit;resize:vertical;"></textarea>' +
         '<input id="_nfDetail" type="text" placeholder="დეტალი (არასავალდებულო)" style="width:100%;box-sizing:border-box;height:36px;margin-bottom:14px;padding:0 10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:#e6edf3;font-size:14px;" />' +
         '<div style="display:flex;gap:8px;">' +
@@ -225,8 +235,22 @@ window.showNotifyFormModal = function (opts) {
 
     var textEl = wrap.querySelector('#_nfText');
     var detailEl = wrap.querySelector('#_nfDetail');
+    var selectedTier = hasTierChoice ? opts.tierOptions[0].value : (opts.tierOptions && opts.tierOptions[0] ? opts.tierOptions[0].value : null);
     if (opts.presetText) textEl.value = opts.presetText;
     if (opts.presetDetail) detailEl.value = opts.presetDetail;
+    if (hasTierChoice) {
+      var tierBtns = wrap.querySelectorAll('#_nfTierRow button');
+      tierBtns.forEach(function (b) {
+        b.onclick = function () {
+          selectedTier = b.getAttribute('data-tier');
+          tierBtns.forEach(function (o) {
+            var active = o === b;
+            o.style.border = '1px solid rgba(88,166,255,' + (active ? '0.7' : '0.25') + ')';
+            o.style.background = 'rgba(88,166,255,' + (active ? '0.22' : '0.05') + ')';
+          });
+        };
+      });
+    }
     textEl.focus();
 
     function done(result) { wrap.remove(); resolve(result); }
@@ -235,7 +259,7 @@ window.showNotifyFormModal = function (opts) {
     function trySubmit() {
       var text = textEl.value.trim();
       if (!text) { textEl.focus(); return; }
-      done({ text: text, detail: detailEl.value.trim() });
+      done({ text: text, detail: detailEl.value.trim(), tier: selectedTier });
     }
     wrap.querySelector('#_nfSubmit').onclick = trySubmit;
     textEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) trySubmit(); });
@@ -910,7 +934,7 @@ function _dlgShowNode(nodeId, selectedLabel) {
             window.requestTierUp(targetTier).then(res => {
               if (res.ok) { if (typeof toast === 'function') toast('✓ განაცხადი გაგზავნილია — ხმის მიცემა იწყება'); }
               else if (res.reason === 'already_pending') { if (typeof toast === 'function') toast('⚠️ უკვე გაქვს გახსნილი განაცხადი — დაელოდე შედეგს'); }
-              else { if (typeof toast === 'function') toast('✗ განაცხადი ვერ გაიგზავნა'); }
+              else { if (typeof toast === 'function') toast('✗ განაცხადი ვერ გაიგზავნა'); if (res.status) console.error('requestTierUp failed:', res.status, res.msg); }
             });
           }
         }
@@ -1378,6 +1402,9 @@ window.requestTierUp = async function (targetTier, requestText) {
       const dupRows = await dupR.json();
       if (dupRows && dupRows.length) return { ok: false, reason: 'already_pending' };
     }
+    // if the dup-check itself fails (e.g. missing GRANT on notifications
+    // SELECT), fail OPEN here — the insert below will surface the real
+    // permission error clearly instead of masking it as "already_pending"
   } catch (e) { /* fail open — worst case a duplicate slips through, harmless */ }
 
   const label = targetTier === 'caretaker' ? 'ქეართეიქერი' : (targetTier === 'resident' ? 'რეზიდენტი' : targetTier);
@@ -1391,10 +1418,13 @@ window.requestTierUp = async function (targetTier, requestText) {
       body: JSON.stringify({
         type: 'consensus', symbol: '🌱', text: text, sender: name, quorum_count: quorum,
         subject_type: 'tier_change',
-        subject_data: { user_id: uid, from: window.myTier(), to: targetTier }
+        subject_data: { user_id: uid, from: window.myRealTier(), to: targetTier }
       })
     });
-    if (!r.ok) return { ok: false, reason: 'insert_failed' };
+    if (!r.ok) {
+      const errBody = await r.text().catch(() => '');
+      return { ok: false, reason: 'insert_failed', status: r.status, msg: errBody.slice(0, 200) };
+    }
     const rows = await r.json();
     const row = rows && rows[0];
     if (!row) return { ok: false, reason: 'no_row' };
@@ -1407,7 +1437,7 @@ window.requestTierUp = async function (targetTier, requestText) {
 
     if (typeof loadNotifs === 'function') loadNotifs();
     return { ok: true, id: row.id };
-  } catch (e) { return { ok: false, reason: 'exception' }; }
+  } catch (e) { return { ok: false, reason: 'exception', msg: e.message }; }
 };
 
 let _curConsensusNotif = null, _consensusVotes = [], _consensusChannel = null, _voteWritePending = false;

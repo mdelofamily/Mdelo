@@ -701,8 +701,18 @@ async function _tmRequestTierUp() {
     return;
   }
   var myTier = typeof window.myTier === 'function' ? window.myTier() : 'visitor';
-  var nextTier = typeof window.nextTierFor === 'function' ? window.nextTierFor(myTier) : null;
-  if (!nextTier) {
+  // visitor can request either caretaker or resident directly — both are
+  // equally valid, single-topic consensus requests (per project decision).
+  // caretaker only ever has one next step: resident.
+  var tierOptions;
+  if (myTier === 'visitor') {
+    tierOptions = [
+      { value: 'caretaker', label: 'ქეართეიქერი' },
+      { value: 'resident', label: 'რეზიდენტი' }
+    ];
+  } else if (myTier === 'caretaker') {
+    tierOptions = [{ value: 'resident', label: 'რეზიდენტი' }];
+  } else {
     _tmL('tdm', 'შენი ტიერიდან (' + myTier + ') აღარაფერი მოითხოვება ავტომატურად ამ გზით.');
     return;
   }
@@ -710,16 +720,18 @@ async function _tmRequestTierUp() {
     _tmL('ter', '✗ auth engine ვერ მოიძებნა (runtime.js?)');
     return;
   }
-  var label = nextTier === 'caretaker' ? 'ქეართეიქერი' : 'რეზიდენტი';
-  var fres = await window.showNotifyFormModal({ title: 'განაცხადი: ' + label + '-ობაზე', presetText: '' });
+  var fres = await window.showNotifyFormModal({ title: 'დაწინაურების განაცხადი', tierOptions: tierOptions, presetText: '' });
   if (!fres) { _tmL('tdm', 'გაუქმდა'); return; }
-  var res = await window.requestTierUp(nextTier, fres.text);
+  var targetTier = fres.tier || tierOptions[0].value;
+  var label = targetTier === 'caretaker' ? 'ქეართეიქერი' : 'რეზიდენტი';
+  var res = await window.requestTierUp(targetTier, fres.text);
   if (res.ok) {
     _tmL('tok', '✓ განაცხადი გაგზავნილია (' + label + ') — ხმის მიცემა იწყება');
   } else if (res.reason === 'already_pending') {
     _tmL('tdm', '⚠️ უკვე გაქვს გახსნილი განაცხადი — დაელოდე მის გადაწყვეტას');
   } else {
     _tmL('ter', '✗ განაცხადი ვერ გაიგზავნა (' + (res.reason || 'უცნობი') + ')');
+    if (res.status) _tmL('tdm', 'Supabase HTTP ' + res.status + ': ' + (res.msg || ''));
   }
 }
 
