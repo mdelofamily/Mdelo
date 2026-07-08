@@ -15,7 +15,7 @@ var _tmEditMode = null;    // 'dlg' | 'menuItem' | null
 var _tmEditMenuCtx = null; // { node, idx, type } — set only when _tmEditMode === 'menuItem'
 var _tmEditLabel = null;   // human-readable label shown in cancel/header messages
 var _tmEditBuf = null;     // raw content buffered from a chain segment, consumed by /შეყვანა
-var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/marker','/დახურვა','/flag','/nick','/me','/who','/color','/help','/pwd','/ls','/cd','/md','/rm','/edit','/ფოთოლი','/macro','/ლოგინი','/ლოგაუთი','/სახელი','/სესია','/სია','/დაწინაურება','/რეჟიმი'];
+var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/მარკერი','/დახურვა','/დროშა','/მეტსახელი','/მე','/ვინ','/ფერი','/help','/გზა','/ჩვ','/გად','/md','/წაშ','/რედ','/ფოთოლი','/მაკრო','/ლოგინი','/ლოგაუთი','/სახელი','/სესია','/სია','/სურვილი','/რეჟიმი','/შესრულება'];
 
 function toggleTerm() { _tmOpen ? closeTerm() : _tmOpen_(); }
 function _tmOpen_() {
@@ -317,12 +317,16 @@ function tmInsertSlash() {
 var _TM_MIN_TIER = {
   'შეტყობინება': 'caretaker', // notification send — caretaker's other direct capability
   'todo':        'caretaker', // leaf-level todo/counter toggle (the exact "cat food refilled" case)
+  'შესრულება':   'caretaker', // = todo, new name
   'ფოთოლი':      'caretaker', // leaf-level item add (text/indicator/todo) — caretaker's direct write scope
   'დიალოგი':     'resident',  // dialogue DSL authoring
   'md':          'resident',  // create menu branch — structural, not leaf
   'rm':          'resident',  // remove menu node — structural
+  'წაშ':         'resident',  // = rm, new name
   'edit':        'resident',  // edit menu node/branch
+  'რედ':         'resident',  // = edit, new name
   'macro':       'resident',  // author/manage shared macros
+  'მაკრო':       'resident',  // = macro, new name
   'სია':         'shadow_admin' // list logged-in users (nickname/name/email/tier)
 };
 
@@ -358,7 +362,7 @@ async function _tmRun(raw) {
 
   // A macro DEFINITION owns its own ";"-separated body — never let the generic
   // resolver/splitter below tear it apart before it reaches _tmMacro.
-  var isMacroDef = /^macro\s+(local|საერთო)\s+/.test(full) && full.indexOf(':=') >= 0;
+  var isMacroDef = /^(macro|მაკრო)\s+(local|ჩემი|საერთო)\s+/.test(full) && full.indexOf(':=') >= 0;
 
   if (!isMacroDef) {
     // ── exact macro-name match (local scope wins over shared) — checked before
@@ -392,12 +396,12 @@ async function _tmRun(raw) {
   // Path resolution is identical to /მენიუ/... — collision-safe even when two
   // different branches have todos with the same label, since the path always
   // pins down one exact node and N is that node's own items[] index.
-  var todoPathM = full.match(/^todo\/(.+)$/);
+  var todoPathM = full.match(/^(?:todo|შესრულება)\/(.+)$/);
   if (todoPathM) {
     if (_tmTierDenied('todo')) { _tmDenyMsg('todo'); return; }
     var tsegs = todoPathM[1].split('/').map(function (s) { return s.trim(); }).filter(Boolean);
     if (!tsegs.length || !/^\d+$/.test(tsegs[tsegs.length - 1])) {
-      _tmL('ter', 'გამოყენება: /todo/სექცია/.../N');
+      _tmL('ter', 'გამოყენება: /შესრულება/სექცია/.../N');
     } else {
       var tIdx = parseInt(tsegs[tsegs.length - 1]);
       var tNode = _tmFindMenuNodeByPath(tsegs.slice(0, -1));
@@ -436,15 +440,23 @@ async function _tmRun(raw) {
     'ტექსტი':      tmToggleMulti,
     'დახურვა':     closeTerm,
     'flag':        _tmFlagDelegate,
+    'დროშა':       _tmFlagDelegate,
     'pwd':         _tmMenuPwd,
+    'გზა':         _tmMenuPwd,
     'ls':          _tmMenuLs,
+    'ჩვ':          _tmMenuLs,
     'cd':          _tmMenuCd,
+    'გად':         _tmMenuCd,
     'md':          _tmMenuMd,
     'rm':          _tmMenuRm,
+    'წაშ':         _tmMenuRm,
     'edit':        _tmMenuEdit,
+    'რედ':         _tmMenuEdit,
     'ფოთოლი':      _tmMenuLeaf,
     'macro':       _tmMacro,
+    'მაკრო':       _tmMacro,
     'marker':      _tmMarkerCmd,
+    'მარკერი':     _tmMarkerCmd,
     'ლოგინი':      _tmLogin,
     'ლოგაუთი':     _tmLogout,
     'სახელი':      _tmSetName,
@@ -452,6 +464,7 @@ async function _tmRun(raw) {
     'სესია':       _tmDebug,
     'სია':         _tmUserList,
     'დაწინაურება': _tmRequestTierUp,
+    'სურვილი':     _tmRequestTierUp,
     'რეჟიმი':      _tmDevViewTier
   };
   var fn = map[cmd];
@@ -486,28 +499,28 @@ function _tmHelp() {
     ['/ვადა [N]',         'ისტ. შენახვა N დღე'],
     ['/ტექსტი',           'ჩატ ↔ ბრძანება mode'],
     ['/შეტყობინება[*!~+.^] ტექსტი [@@ზონა]', 'შეტყობინების გაგზავნა  (^+. =ხმის მიცემა ::დეტ ##N {ბრძანება})'],
-    ['/marker set <სახელი> ?/!/~/-', 'მარკერი — ლოკალური (მხ. შენ)'],
-    ['/marker reset [სახელი]', 'მარკერი → საწყისზე (ერთი ან ყველა)'],
+    ['/მარკერი დაყენება <სახელი> ?/!/~/-', 'მარკერი — ლოკალური (მხ. შენ)'],
+    ['/მარკერი გადაყენება [სახელი]', 'მარკერი → საწყისზე (ერთი ან ყველა)'],
     ['/დახურვა',          'დახურვა  [Esc]'],
-    ['/flag set/clear/list', 'flag სისტემა'],
-    ['/nick სახელი',      'ნიკნეიმის შეცვლა'],
-    ['/me ტექსტი',        '* აქშნის მესიჯი'],
-    ['/who',              'ონლაინ სია'],
-    ['/color #hex',       'ნიკნეიმის ფერი'],
-    ['/pwd',              'მენიუს მიმდინარე გზა'],
-    ['/ls',               'მენიუს კვანძის შემცველობა'],
-    ['/cd [სახელი|..|/|a/b/c]', 'ნავიგაცია — ერთი ნაბიჯი ან slash-path'],
+    ['/დროშა დაყენება/წაშლა/სია', 'flag სისტემა'],
+    ['/მეტსახელი სახელი', 'ნიკნეიმის შეცვლა'],
+    ['/მე ტექსტი',        '* აქშნის მესიჯი'],
+    ['/ვინ',              'ონლაინ სია'],
+    ['/ფერი #hex',        'ნიკნეიმის ფერი'],
+    ['/გზა',              'მენიუს მიმდინარე გზა'],
+    ['/ჩვ',               'მენიუს კვანძის შემცველობა'],
+    ['/გად [სახელი|..|/|a/b/c]', 'ნავიგაცია — ერთი ნაბიჯი ან slash-path'],
     ['/md <სახელი> [ემოჯი]', 'ახალი ქვე-სექცია + ავტო-cd (default 📁)'],
     ['/ფოთოლი ტექსტი|ინდიკატორი [ემოჯი]|todo', 'item-ის დამატება მიმდინარე კვანძში'],
-    ['/rm <სახელი|N>',    'სექციის (სახელით) ან item-ის (ინდექსით) წაშლა'],
-    ['/edit <N>',         'item [N] — multiline რედაქტირება'],
-    ['/edit <N> <...>',   'item [N] — სწრაფი ერთხაზიანი ედიტი'],
-    ['/macro local <სახელი> := ...',  'პერსონალური შორთკატის შექმნა'],
-    ['/macro საერთო <სახელი> := ...', 'გაზიარებული შორთკატის შექმნა'],
-    ['/macro ls',         'ყველა შორთკატის სია'],
-    ['/macro rm local|საერთო <სახელი>', 'შორთკატის წაშლა'],
+    ['/წაშ <სახელი|N>',    'სექციის (სახელით) ან item-ის (ინდექსით) წაშლა'],
+    ['/რედ <N>',         'item [N] — multiline რედაქტირება'],
+    ['/რედ <N> <...>',   'item [N] — სწრაფი ერთხაზიანი ედიტი'],
+    ['/მაკრო ჩემი <სახელი> := ...',  'პერსონალური შორთკატის შექმნა'],
+    ['/მაკრო საერთო <სახელი> := ...', 'გაზიარებული შორთკატის შექმნა'],
+    ['/მაკრო ჩვ',         'ყველა შორთკატის სია'],
+    ['/მაკრო წაშ ჩემი|საერთო <სახელი>', 'შორთკატის წაშლა'],
     ['/სია', 'დალოგინებული იუზერების სია (მხოლოდ shadow_admin)'],
-    ['/დაწინაურება', 'შემდეგი ტიერის თხოვნა კონსენსუსით (visitor→caretaker, caretaker→resident)'],
+    ['/სურვილი', 'შემდეგი ტიერის თხოვნა კონსენსუსით (სტუმარი→მეურვე, მეურვე→მაცხოვრებელი)'],
     ['/რეჟიმი <tier>', 'ტესტ რეჟიმი — UI ხედავს სხვა ტიერად (მხოლოდ shadow_admin, /რეჟიმი გამორთვა-ით იხურება)'],
     ['/ლოგინი',           'შესვლა (popup: email + სახელი), ან სტატუსის ჩვენება'],
     ['/ლოგაუთი',          'გამოსვლა სისტემიდან'],
@@ -708,11 +721,11 @@ async function _tmRequestTierUp() {
   var tierOptions;
   if (myTier === 'visitor') {
     tierOptions = [
-      { value: 'caretaker', label: 'ქეართეიქერი' },
-      { value: 'resident', label: 'რეზიდენტი' }
+      { value: 'caretaker', label: 'მეურვე' },
+      { value: 'resident', label: 'მაცხოვრებელი' }
     ];
   } else if (myTier === 'caretaker') {
-    tierOptions = [{ value: 'resident', label: 'რეზიდენტი' }];
+    tierOptions = [{ value: 'resident', label: 'მაცხოვრებელი' }];
   } else {
     _tmL('tdm', 'შენი ტიერიდან (' + myTier + ') აღარაფერი მოითხოვება ავტომატურად ამ გზით.');
     return;
@@ -726,13 +739,13 @@ async function _tmRequestTierUp() {
     tierOptions: tierOptions,
     lockText: true,
     textForTier: function (tier) {
-      var lbl = tier === 'caretaker' ? 'ქეართეიქერი' : 'რეზიდენტი';
+      var lbl = tier === 'caretaker' ? 'მეურვე' : 'მაცხოვრებელი';
       return window.myDisplayName() + '-ს სურს გახდეს ' + lbl;
     }
   });
   if (!fres) { _tmL('tdm', 'გაუქმდა'); return; }
   var targetTier = fres.tier || tierOptions[0].value;
-  var label = targetTier === 'caretaker' ? 'ქეართეიქერი' : 'რეზიდენტი';
+  var label = targetTier === 'caretaker' ? 'მეურვე' : 'მაცხოვრებელი';
   var res = await window.requestTierUp(targetTier, fres.text, fres.detail);
   if (res.ok) {
     _tmL('tok', '✓ განაცხადი გაგზავნილია (' + label + ') — ხმის მიცემა იწყება');
@@ -752,9 +765,9 @@ async function _tmRequestTierUp() {
 // writes underneath still run as the real shadow_admin, so this only proves
 // what the UI shows/hides for a tier, not what the server would block.
 var _TM_TIER_ALIASES = {
-  'ვიზიტორი': 'visitor', 'visitor': 'visitor',
+  'ვიზიტორი': 'visitor', 'სტუმარი': 'visitor', 'visitor': 'visitor',
   'ქეართეიქერი': 'caretaker', 'მეურვე': 'caretaker', 'caretaker': 'caretaker',
-  'რეზიდენტი': 'resident', 'resident': 'resident',
+  'რეზიდენტი': 'resident', 'მაცხოვრებელი': 'resident', 'resident': 'resident',
   'შედოუადმინი': 'shadow_admin', 'ადმინი': 'shadow_admin', 'shadow_admin': 'shadow_admin'
 };
 function _tmDevViewTier(args) {
@@ -981,11 +994,11 @@ function _tmOrigMk(oi) {
 async function _tmMarkerCmd(args) {
   var sub = (args[0] || '').toLowerCase();
 
-  if (sub === 'set') {
+  if (sub === 'set' || sub === 'დაყენება') {
     var rest = args.slice(1).join(' ').trim();
     var m = rest.match(/^([\s\S]+?)\s+([?!~-])$/);
     if (!m) {
-      _tmL('ter', 'გამოყენება: /marker set <სახელი> ?|!|~|-');
+      _tmL('ter', 'გამოყენება: /მარკერი დაყენება <სახელი> ?|!|~|-');
       _tmL('tdm', '?ქუესტი  !აღებული  ~ჩატი(...)  -ნეიტრალური(•)');
       return;
     }
@@ -997,7 +1010,7 @@ async function _tmMarkerCmd(args) {
     return;
   }
 
-  if (sub === 'reset') {
+  if (sub === 'reset' || sub === 'გადაყენება') {
     var name2 = args.slice(1).join(' ').trim();
 
     if (!name2) {
@@ -1030,7 +1043,7 @@ async function _tmMarkerCmd(args) {
     return;
   }
 
-  _tmL('ter', 'გამოყენება: /marker set|reset <სახელი> [?|!|~|-]');
+  _tmL('ter', 'გამოყენება: /მარკერი დაყენება|გადაყენება <სახელი> [?|!|~|-]');
 }
 
 // ── /შეტყობინება — direct send to Supabase `notifications` table ──
@@ -1672,8 +1685,8 @@ async function _tmMenuSaveNode(nodeId, fields) {
 //   საერთო  — Supabase (terminal_macros table), every viewer sees it on next load
 // A macro IS a brand-new command: once saved, typing its exact name (with /) runs
 // the whole stored chain. Local scope takes precedence over shared on a name clash.
-var _TM_RESERVED = ['macro','marker','cd','md','rm','ls','pwd','edit','ფოთოლი','flag','nick','me','who','color','help',
-  'დახმარება','გასუფთავება','ინფო','მასშტაბი','ზონები','ობიექტები','დიალოგი','წასვლა','ლეგენდა','მენიუ','გახსნა','შეყვანა','სრული','ისტორია','ვადა','ტექსტი','შეტყობინება','დახურვა','სია','დაწინაურება','რეჟიმი'];
+var _TM_RESERVED = ['macro','მაკრო','marker','მარკერი','cd','გად','md','rm','წაშ','ls','ჩვ','pwd','გზა','edit','რედ','ფოთოლი','flag','დროშა','nick','მეტსახელი','me','მე','who','ვინ','color','ფერი','help',
+  'დახმარება','გასუფთავება','ინფო','მასშტაბი','ზონები','ობიექტები','დიალოგი','წასვლა','ლეგენდა','მენიუ','გახსნა','შეყვანა','სრული','ისტორია','ვადა','ტექსტი','შეტყობინება','დახურვა','სია','დაწინაურება','სურვილი','რეჟიმი','შესრულება'];
 
 // Splits a chain on ";" — but only when ";" is followed by "/" (so a stray
 // ";" inside ordinary command args is left alone) — PLUS treats any [...]
@@ -1749,7 +1762,7 @@ function _tmMacroLocalSave(all) {
 // to "first token after the slash".
 function _tmCmdKeyFor(cmdStr) {
   var c = (cmdStr || '').replace(/^\//, '');
-  if (/^todo\//.test(c)) return 'todo';
+  if (/^(todo|შესრულება)\//.test(c)) return 'todo';
   if (/^შეტყობინება/.test(c)) return 'შეტყობინება';
   return c.split(/\s+/)[0] || '';
 }
@@ -1773,16 +1786,16 @@ function _tmMacroResolve(full) {
 async function _tmMacro(args) {
   var head0 = (args[0] || '').trim();
 
-  if (head0 === 'ls') { _tmMacroLs(); return; }
+  if (head0 === 'ls' || head0 === 'ჩვ') { _tmMacroLs(); return; }
 
-  if (head0 === 'rm') {
+  if (head0 === 'rm' || head0 === 'წაშ') {
     var scopeWord = (args[1] || '').trim();
     var rmName = args.slice(2).join(' ').trim();
-    if (!rmName || (scopeWord !== 'local' && scopeWord !== 'საერთო')) {
-      _tmL('ter', 'გამოყენება: /macro rm local|საერთო <სახელი>');
+    if (!rmName || (scopeWord !== 'local' && scopeWord !== 'ჩემი' && scopeWord !== 'საერთო')) {
+      _tmL('ter', 'გამოყენება: /მაკრო წაშ ჩემი|საერთო <სახელი>');
       return;
     }
-    if (scopeWord === 'local') {
+    if (scopeWord === 'local' || scopeWord === 'ჩემი') {
       var all = _tmMacroLocalAll();
       if (!all[rmName]) { _tmL('ter', 'local მაკრო ვერ მოიძებნა: "' + rmName + '"'); return; }
       delete all[rmName];
@@ -1801,12 +1814,12 @@ async function _tmMacro(args) {
   var assignIdx = raw.indexOf(':=');
   if (assignIdx < 0) {
     _tmL('tdm', _SEP);
-    _tmL('tsy', '/macro ბრძანებები:');
-    _tmL('tnf', '  local <სახელი> := cmd1 ; cmd2 ...   — პერსონალური შორთკატი');
+    _tmL('tsy', '/მაკრო ბრძანებები:');
+    _tmL('tnf', '  ჩემი <სახელი> := cmd1 ; cmd2 ...    — პერსონალური შორთკატი');
     _tmL('tnf', '  საერთო <სახელი> := cmd1 ; cmd2 ...  — გაზიარებული შორთკატი');
     _tmL('tnf', '  საერთო <სახელი>@tier := ...         — (მხოლოდ shadow_admin) tier-whitelist');
-    _tmL('tnf', '  ls                                  — ყველა შორთკატის სია');
-    _tmL('tnf', '  rm local|საერთო <სახელი>            — წაშლა');
+    _tmL('tnf', '  ჩვ                                  — ყველა შორთკატის სია');
+    _tmL('tnf', '  წაშ ჩემი|საერთო <სახელი>            — წაშლა');
     _tmL('tdm', _SEP);
     return;
   }
@@ -1817,8 +1830,8 @@ async function _tmMacro(args) {
   var scope = headParts[0];
   var namePart = headParts.slice(1).join(' ').trim();
 
-  if (scope !== 'local' && scope !== 'საერთო') {
-    _tmL('ter', 'მითხარი scope: /macro local <სახელი> := ...  ან  /macro საერთო <სახელი> := ...');
+  if (scope !== 'local' && scope !== 'ჩემი' && scope !== 'საერთო') {
+    _tmL('ter', 'მითხარი scope: /მაკრო ჩემი <სახელი> := ...  ან  /მაკრო საერთო <სახელი> := ...');
     return;
   }
 
@@ -1869,7 +1882,7 @@ async function _tmMacro(args) {
     }
   }
 
-  if (scope === 'local') {
+  if (scope === 'local' || scope === 'ჩემი') {
     var locAll = _tmMacroLocalAll();
     locAll[name] = commands;
     _tmMacroLocalSave(locAll);

@@ -218,26 +218,30 @@
 
     switch (sub) {
       case 'set':
-        if (!arg) { _pr('გამოყენება: /flag set <სახელი>', 'ter'); return true; }
+      case 'დაყენება':
+        if (!arg) { _pr('გამოყენება: /დროშა დაყენება <სახელი>', 'ter'); return true; }
         flagSet(arg);
         _pr('✓ flag დაყენდა: ' + arg, 'tok');
         return true;
 
       case 'clear':
       case 'del':
-        if (!arg) { _pr('გამოყენება: /flag clear <სახელი>', 'ter'); return true; }
+      case 'წაშლა':
+        if (!arg) { _pr('გამოყენება: /დროშა წაშლა <სახელი>', 'ter'); return true; }
         if (flagClear(arg)) { _pr('✗ flag წაიშალა: ' + arg, 'tnf'); }
         else                { _pr('flag არ არსებობს: ' + arg, 'ter'); }
         return true;
 
       case 'check':
-        if (!arg) { _pr('გამოყენება: /flag check <სახელი>', 'ter'); return true; }
+      case 'შემოწმება':
+        if (!arg) { _pr('გამოყენება: /დროშა შემოწმება <სახელი>', 'ter'); return true; }
         _pr(arg + ': ' + (flagHas(arg) ? '✓ true' : '✗ false'),
             flagHas(arg) ? 'tok' : 'tnf');
         return true;
 
       case 'list':
       case 'ls':
+      case 'სია':
         var fl = flagList();
         if (!fl.length) {
           _pr('flags: ცარიელი', 'tdm');
@@ -248,12 +252,13 @@
         return true;
 
       case 'reset':
+      case 'გასუფთავება':
         flagReset();
         _pr('ყველა flag გასუფთავდა', 'tnf');
         return true;
 
       default:
-        _pr('/flag  set|clear|check|list|reset', 'tsy');
+        _pr('/დროშა  დაყენება|წაშლა|შემოწმება|სია|გასუფთავება', 'tsy');
         return true;
     }
   }

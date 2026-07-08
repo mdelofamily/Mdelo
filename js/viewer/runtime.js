@@ -1420,7 +1420,7 @@ window.requestTierUp = async function (targetTier, requestText, detail) {
     // permission error clearly instead of masking it as "already_pending"
   } catch (e) { /* fail open — worst case a duplicate slips through, harmless */ }
 
-  const label = targetTier === 'caretaker' ? 'ქეართეიქერი' : (targetTier === 'resident' ? 'რეზიდენტი' : targetTier);
+  const label = targetTier === 'caretaker' ? 'მეურვე' : (targetTier === 'resident' ? 'მაცხოვრებელი' : targetTier);
   // requestText already IS the full message when it comes from a popup that
   // pre-filled the "<name>-ს სურს გახდეს <tier>" template (terminal command
   // path) — used verbatim. Only auto-generate it here when nothing was
