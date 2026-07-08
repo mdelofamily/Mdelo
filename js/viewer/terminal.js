@@ -720,11 +720,18 @@ async function _tmRequestTierUp() {
     _tmL('ter', '✗ auth engine ვერ მოიძებნა (runtime.js?)');
     return;
   }
-  var fres = await window.showNotifyFormModal({ title: 'დაწინაურების განაცხადი', tierOptions: tierOptions, presetText: '' });
+  var fres = await window.showNotifyFormModal({
+    title: 'დაწინაურების განაცხადი',
+    tierOptions: tierOptions,
+    textForTier: function (tier) {
+      var lbl = tier === 'caretaker' ? 'ქეართეიქერი' : 'რეზიდენტი';
+      return window.myDisplayName() + '-ს სურს გახდეს ' + lbl;
+    }
+  });
   if (!fres) { _tmL('tdm', 'გაუქმდა'); return; }
   var targetTier = fres.tier || tierOptions[0].value;
   var label = targetTier === 'caretaker' ? 'ქეართეიქერი' : 'რეზიდენტი';
-  var res = await window.requestTierUp(targetTier, fres.text);
+  var res = await window.requestTierUp(targetTier, fres.text, fres.detail);
   if (res.ok) {
     _tmL('tok', '✓ განაცხადი გაგზავნილია (' + label + ') — ხმის მიცემა იწყება');
   } else if (res.reason === 'already_pending') {

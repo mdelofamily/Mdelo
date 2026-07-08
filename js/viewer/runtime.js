@@ -225,7 +225,7 @@ window.showNotifyFormModal = function (opts) {
         '<div style="font-size:12px;opacity:0.6;margin-bottom:12px;">👤 ' + name + '</div>' +
         tierRowHtml +
         '<textarea id="_nfText" placeholder="რას აცხადებ?" rows="3" style="width:100%;box-sizing:border-box;margin-bottom:10px;padding:8px 10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:#e6edf3;font-size:14px;font-family:inherit;resize:vertical;"></textarea>' +
-        '<input id="_nfDetail" type="text" placeholder="დეტალი (არასავალდებულო)" style="width:100%;box-sizing:border-box;height:36px;margin-bottom:14px;padding:0 10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:#e6edf3;font-size:14px;" />' +
+        '<textarea id="_nfDetail" placeholder="დეტალი (არასავალდებულო)" rows="2" style="width:100%;box-sizing:border-box;margin-bottom:14px;padding:8px 10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:#e6edf3;font-size:14px;font-family:inherit;resize:vertical;"></textarea>' +
         '<div style="display:flex;gap:8px;">' +
           '<button id="_nfCancel" style="flex:1;height:36px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);color:#e6edf3;border-radius:8px;font-size:13px;cursor:pointer;">გაუქმება</button>' +
           '<button id="_nfSubmit" style="flex:1;height:36px;background:rgba(88,166,255,0.25);border:1px solid rgba(88,166,255,0.6);color:#e6edf3;border-radius:8px;font-size:13px;cursor:pointer;">გაგზავნა</button>' +
@@ -235,8 +235,14 @@ window.showNotifyFormModal = function (opts) {
 
     var textEl = wrap.querySelector('#_nfText');
     var detailEl = wrap.querySelector('#_nfDetail');
-    var selectedTier = hasTierChoice ? opts.tierOptions[0].value : (opts.tierOptions && opts.tierOptions[0] ? opts.tierOptions[0].value : null);
-    if (opts.presetText) textEl.value = opts.presetText;
+    var selectedTier = opts.tierOptions && opts.tierOptions[0] ? opts.tierOptions[0].value : null;
+    var lastAutoText = null;
+    if (typeof opts.textForTier === 'function' && selectedTier && !opts.presetText) {
+      lastAutoText = opts.textForTier(selectedTier);
+      textEl.value = lastAutoText;
+    } else if (opts.presetText) {
+      textEl.value = opts.presetText;
+    }
     if (opts.presetDetail) detailEl.value = opts.presetDetail;
     if (hasTierChoice) {
       var tierBtns = wrap.querySelectorAll('#_nfTierRow button');
@@ -248,10 +254,16 @@ window.showNotifyFormModal = function (opts) {
             o.style.border = '1px solid rgba(88,166,255,' + (active ? '0.7' : '0.25') + ')';
             o.style.background = 'rgba(88,166,255,' + (active ? '0.22' : '0.05') + ')';
           });
+          // only refresh the template if the person hasn't typed their own text yet
+          if (typeof opts.textForTier === 'function' && (textEl.value === lastAutoText || !textEl.value.trim())) {
+            lastAutoText = opts.textForTier(selectedTier);
+            textEl.value = lastAutoText;
+          }
         };
       });
     }
     textEl.focus();
+    if (textEl.value) textEl.setSelectionRange(textEl.value.length, textEl.value.length);
 
     function done(result) { wrap.remove(); resolve(result); }
     wrap.querySelector('#_nfCancel').onclick = () => done(null);
@@ -263,7 +275,7 @@ window.showNotifyFormModal = function (opts) {
     }
     wrap.querySelector('#_nfSubmit').onclick = trySubmit;
     textEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) trySubmit(); });
-    detailEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') trySubmit(); });
+    detailEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) trySubmit(); });
   });
 };
 
@@ -1388,7 +1400,7 @@ window.nextTierFor = function (tier) {
 // resolve_tier_change), with a terminal_cmd that self-triggers on quorum.
 // Blocks a second request while the person already has one open — per topic
 // (tier_change), not globally.
-window.requestTierUp = async function (targetTier, requestText) {
+window.requestTierUp = async function (targetTier, requestText, detail) {
   if (!window.isLoggedIn || !window.isLoggedIn()) return { ok: false, reason: 'not_logged_in' };
   const uid = window.myUserId();
   const name = window.myDisplayName();
@@ -1408,18 +1420,24 @@ window.requestTierUp = async function (targetTier, requestText) {
   } catch (e) { /* fail open — worst case a duplicate slips through, harmless */ }
 
   const label = targetTier === 'caretaker' ? 'ქეართეიქერი' : (targetTier === 'resident' ? 'რეზიდენტი' : targetTier);
-  const text = name + ' განაცხადებს, რომ მზადაა გახდეს ' + label + (requestText ? (' — ' + requestText) : '');
+  // requestText already IS the full message when it comes from a popup that
+  // pre-filled the "<name>-ს სურს გახდეს <tier>" template (terminal command
+  // path) — used verbatim. Only auto-generate it here when nothing was
+  // supplied at all (the dialogue-button path, which has no popup).
+  const text = (requestText && requestText.trim()) ? requestText.trim() : (name + '-ს სურს გახდეს ' + label);
   const quorum = typeof window.consensusQuorumCount === 'function' ? await window.consensusQuorumCount() : 1;
 
   try {
+    const notifBody = {
+      type: 'consensus', symbol: '🌱', text: text, sender: name, quorum_count: quorum,
+      subject_type: 'tier_change',
+      subject_data: { user_id: uid, from: window.myRealTier(), to: targetTier }
+    };
+    if (detail && detail.trim()) notifBody.detail = detail.trim();
     const r = await fetch(SUPA_URL + '/rest/v1/notifications', {
       method: 'POST',
       headers: Object.assign({ 'Content-Type': 'application/json', 'Prefer': 'return=representation' }, _authHeaders()),
-      body: JSON.stringify({
-        type: 'consensus', symbol: '🌱', text: text, sender: name, quorum_count: quorum,
-        subject_type: 'tier_change',
-        subject_data: { user_id: uid, from: window.myRealTier(), to: targetTier }
-      })
+      body: JSON.stringify(notifBody)
     });
     if (!r.ok) {
       const errBody = await r.text().catch(() => '');
