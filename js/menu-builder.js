@@ -164,6 +164,68 @@ function _insertLinkIntoItem(nodeId, idx) {
 const _ISTYLE = "flex:1;background:var(--panel);border:1px solid var(--border);color:var(--text);font-size:12px;padding:4px 6px;border-radius:4px;";
 const _ESTYLE = "width:30px;text-align:center;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:2px;font-size:13px;";
 
+// ── SEGMENTS PREVIEW (read-only — editing happens via terminal /მედია) ──
+// item.segments = [{type:'text', value}, {type:'files', items:[{type,url,name}]}]
+function _segmentFileIcon(f) {
+  if (f.type === "audio") return "🎵";
+  if (f.type === "text")  return "📄";
+  return "📎";
+}
+
+function _buildSegmentsPreview(itObj) {
+  const box = document.createElement("div");
+  box.style.cssText = "flex:1;display:flex;flex-direction:column;gap:5px;";
+
+  const segWrap = document.createElement("div");
+  segWrap.style.cssText = "background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:12px;line-height:1.5;color:var(--text);";
+
+  (itObj.segments || []).forEach(seg => {
+    if (seg.type === "text") {
+      if (!seg.value) return;
+      const span = document.createElement("span");
+      span.textContent = seg.value;
+      span.style.cssText = "white-space:pre-wrap;";
+      segWrap.appendChild(span);
+    } else if (seg.type === "files") {
+      const grid = document.createElement("div");
+      grid.className = "photo-report-grid";
+      grid.style.cssText = "display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin:6px 0;";
+      (seg.items || []).forEach(f => {
+        const cell = document.createElement("div");
+        cell.style.cssText = "display:flex;flex-direction:column;align-items:center;gap:2px;width:64px;";
+        if (f.type === "image") {
+          const img = document.createElement("img");
+          img.src = f.url; img.alt = f.name || "";
+          img.style.cssText = "width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid var(--border);";
+          cell.appendChild(img);
+        } else {
+          const icon = document.createElement("div");
+          icon.textContent = _segmentFileIcon(f);
+          icon.style.cssText = "width:64px;height:64px;display:flex;align-items:center;justify-content:center;font-size:26px;background:var(--bg);border:1px solid var(--border);border-radius:6px;";
+          cell.appendChild(icon);
+        }
+        if (f.name) {
+          const nm = document.createElement("span");
+          nm.textContent = f.name;
+          nm.style.cssText = "font-size:9px;color:var(--muted);max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+          cell.appendChild(nm);
+        }
+        grid.appendChild(cell);
+      });
+      segWrap.appendChild(grid);
+    }
+  });
+
+  box.appendChild(segWrap);
+
+  const hint = document.createElement("span");
+  hint.textContent = "✏️ რედაქტირება მხოლოდ ტერმინალიდან (/რედ)";
+  hint.style.cssText = "font-size:10px;color:var(--muted);";
+  box.appendChild(hint);
+
+  return box;
+}
+
 // ── RENDER ONE NODE (recursive) ──
 function _renderNode(node, depth, isRoot) {
   const wrap = document.createElement("div");
@@ -224,7 +286,9 @@ function _renderNode(node, depth, isRoot) {
 
     if (itObj.type !== "todo") row.appendChild(emojiI);
 
-    if (itObj.type === "text" || itObj.type === "todo") {
+    if (itObj.type === "text" && itObj.segments && itObj.segments.length) {
+      row.appendChild(_buildSegmentsPreview(itObj));
+    } else if (itObj.type === "text" || itObj.type === "todo") {
       const col2  = document.createElement("div");
       col2.style.cssText = "flex:1;display:flex;flex-direction:column;gap:3px;";
       col2.appendChild(labelI);
@@ -315,6 +379,32 @@ function _generateMenuHTML(nodes, slugMap) {
           html += `<div style="font-size:12px; color:var(--text-muted); display:flex; justify-content:between;"><span>${it.emoji || "📊"} ${parseWikiLinks(it.label || "")}</span> <span style="font-weight:bold;">${it.value || 0}%</span></div>`;
           html += `<div style="width:100%; height:6px; background:#222836; border-radius:3px; overflow:hidden;"><div style="width:${it.value || 0}%; height:100%; background:var(--accent);"></div></div>`;
           html += `</li>`;
+        } else if (it.type === "text" && it.segments && it.segments.length) {
+          html += `<li style="margin-bottom:5px; display:flex; align-items:flex-start; gap:6px;">`;
+          html += `<span style="color:var(--accent); flex-shrink:0;">${it.emoji || "•"}</span>`;
+          html += `<div style="color:var(--text-muted); font-size:13px; line-height:1.4;">`;
+          it.segments.forEach(seg => {
+            if (seg.type === "text") {
+              if (!seg.value) return;
+              html += `<span style="white-space:pre-wrap;">${parseWikiLinks(seg.value)}</span>`;
+            } else if (seg.type === "files") {
+              html += `<div class="photo-report-grid" style="display:flex; flex-wrap:wrap; justify-content:center; gap:8px; margin:8px 0;">`;
+              (seg.items || []).forEach(f => {
+                html += `<div class="photo-report-item" style="display:flex; flex-direction:column; align-items:center; gap:3px; width:80px;">`;
+                if (f.type === "image") {
+                  html += `<img src="${f.url}" alt="${f.name || ""}" style="width:80px; height:80px; object-fit:cover; border-radius:8px; border:1px solid var(--border); cursor:pointer;" onclick="window.open('${f.url}','_blank')">`;
+                } else {
+                  const icon = f.type === "audio" ? "🎵" : f.type === "text" ? "📄" : "📎";
+                  html += `<a href="${f.url}" target="_blank" style="width:80px; height:80px; display:flex; align-items:center; justify-content:center; font-size:30px; background:var(--panel); border:1px solid var(--border); border-radius:8px; text-decoration:none;">${icon}</a>`;
+                }
+                if (f.name) html += `<span style="font-size:10px; color:var(--muted); max-width:80px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${f.name}</span>`;
+                html += `</div>`;
+              });
+              html += `</div>`;
+            }
+          });
+          html += `</div>`;
+          html += `</li>`;
         } else {
           html += `<li style="margin-bottom:3px; display:flex; align-items:flex-start; gap:6px;">`;
           html += `<span style="color:var(--accent); flex-shrink:0;">${it.emoji || "•"}</span>`;
@@ -364,3 +454,5 @@ window._slugify            = _slugify;
 window._buildSlugMap       = _buildSlugMap;
 window._findNodeBySlug     = _findNodeBySlug;
 window.exportMenuHTML      = exportMenuHTML;
+window._buildSegmentsPreview = _buildSegmentsPreview;
+window._segmentFileIcon      = _segmentFileIcon;
