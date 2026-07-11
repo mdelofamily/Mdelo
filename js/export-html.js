@@ -3,6 +3,7 @@
 //  Depends on: state.js, tile-engine.js, render.js, save-load.js, menu-builder.js
 //  Viewer template lives in: viewer/viewer.html
 //  Runtime JS:               viewer/runtime.js
+//  Upload JS:                viewer/upload.js   (must load after runtime.js, before terminal.js)
 //  Terminal JS:              viewer/terminal.js
 //  Canvas renderer:          viewer/canvas-renderer.js
 //  Bulk parser:              js/bulk-parser.js
@@ -168,9 +169,10 @@ async function doExportHTML() {
     const dialogsJS = 'window.DIALOGS = ' + JSON.stringify(_dialogsMap) + ';';
 
     // load viewer assets (all inlined)
-    const [tmpl, runtimeJS, terminalJS, canvasRendererJS, bulkParserJS, unlockJS] = await Promise.all([
+    const [tmpl, runtimeJS, uploadJS, terminalJS, canvasRendererJS, bulkParserJS, unlockJS] = await Promise.all([
       _fetchViewerAsset('js/viewer/viewer.html'),
       _fetchViewerAsset('js/viewer/runtime.js'),
+      _fetchViewerAsset('js/viewer/upload.js'),
       _fetchViewerAsset('js/viewer/terminal.js'),
       _fetchViewerAsset('js/viewer/canvas-renderer.js'),
       _fetchViewerAsset('js/bulk-parser.js'),
@@ -206,6 +208,7 @@ async function doExportHTML() {
       .replace(/{{TS}}/g,              String(TS))
       .replace(/{{CANVAS_RENDERER}}/g, () => canvasRendererBlock)
       .replace(/{{RUNTIME_JS}}/g,      () => runtimeJS)
+      .replace(/{{UPLOAD_JS}}/g,       () => uploadJS)
       .replace(/{{DIALOGS_JS}}/g,      () => dialogsJS)
       .replace(/{{UNLOCK_JS}}/g,       () => unlockJS)
       .replace(/{{BULK_PARSER_JS}}/g,  () => bulkParserJS)
