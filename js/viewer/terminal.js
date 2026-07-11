@@ -1748,7 +1748,7 @@ function _tmMenuEditOpen(node, idx, itObj) {
 
   _tmL('tsy', '─── [' + idx + '] ' + (node.title || '') + ' ──────────────');
   _tmL('tdm', 'ხაზი 1 — [emoji: X], მხოლოდ X გამოცვალე');
-  if (itObj.type === 'text' || !itObj.type) _tmL('tdm', 'ახალ ხაზზე დაწერე "/მედია" — სურათი/mp3/txt ატვირთვისთვის');
+  if (itObj.type === 'text' || !itObj.type) _tmL('tdm', 'ახალ ხაზზე დაწერე "/მედია" — jpg/png/webp/mp3/txt/mp4/epub/pdf ატვირთვისთვის');
   _tmL('tdm', 'Ctrl+Enter — შენახვა · Esc — გაუქმება');
 }
 
