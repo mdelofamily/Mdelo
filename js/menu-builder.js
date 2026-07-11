@@ -169,6 +169,9 @@ const _ESTYLE = "width:30px;text-align:center;background:var(--panel);border:1px
 function _segmentFileIcon(f) {
   if (f.type === "audio") return "🎵";
   if (f.type === "text")  return "📄";
+  if (f.type === "video") return "🎬";
+  if (f.type === "epub")  return "📚";
+  if (f.type === "pdf")   return "📕";
   return "📎";
 }
 
@@ -394,7 +397,7 @@ function _generateMenuHTML(nodes, slugMap) {
                 if (f.type === "image") {
                   html += `<img src="${f.url}" alt="${f.name || ""}" style="width:80px; height:80px; object-fit:cover; border-radius:8px; border:1px solid var(--border); cursor:pointer;" onclick="window.open('${f.url}','_blank')">`;
                 } else {
-                  const icon = f.type === "audio" ? "🎵" : f.type === "text" ? "📄" : "📎";
+                  const icon = _segmentFileIcon(f);
                   html += `<a href="${f.url}" target="_blank" style="width:80px; height:80px; display:flex; align-items:center; justify-content:center; font-size:30px; background:var(--panel); border:1px solid var(--border); border-radius:8px; text-decoration:none;">${icon}</a>`;
                 }
                 if (f.name) html += `<span style="font-size:10px; color:var(--muted); max-width:80px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${f.name}</span>`;
