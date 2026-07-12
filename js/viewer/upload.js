@@ -276,25 +276,39 @@ async function _mdListOne(prefix) {
 window.mdMediaList = async function (limit) {
   limit = limit || 20;
   try {
-    var folders = await _mdListOne('');
+    var root = await _mdListOne('');
     var all = [];
-    for (var i = 0; i < folders.length; i++) {
-      if (folders[i].id !== null) continue; // a stray root-level file, not a user folder — skip
-      var files = await _mdListOne(folders[i].name + '/');
-      files.forEach(function (file) {
-        if (file.id === null) return; // nested folder — not expected, skip
-        var path = folders[i].name + '/' + file.name;
+    var debug = root.map(function (e) { return e.name + '(meta=' + (e.metadata ? 'yes' : 'no') + ')'; });
+    for (var i = 0; i < root.length; i++) {
+      var entry = root[i];
+      if (entry.metadata) {
+        // a file sitting directly at the bucket root (not expected given
+        // _mdNick()'s per-user-folder layout, but handle it rather than skip it)
         all.push({
-          path: path,
-          url: SUPA_URL + '/storage/v1/object/public/' + _MD_BUCKET + '/' + path,
-          name: file.name,
-          size: file.metadata && file.metadata.size,
-          created_at: file.created_at
+          path: entry.name,
+          url: SUPA_URL + '/storage/v1/object/public/' + _MD_BUCKET + '/' + entry.name,
+          name: entry.name,
+          size: entry.metadata.size,
+          created_at: entry.created_at
         });
-      });
+      } else {
+        // no metadata → a folder — recurse one level
+        var files = await _mdListOne(entry.name + '/');
+        files.forEach(function (file) {
+          if (!file.metadata) return; // nested folder — not expected, skip
+          var path = entry.name + '/' + file.name;
+          all.push({
+            path: path,
+            url: SUPA_URL + '/storage/v1/object/public/' + _MD_BUCKET + '/' + path,
+            name: file.name,
+            size: file.metadata.size,
+            created_at: file.created_at
+          });
+        });
+      }
     }
     all.sort(function (a, b) { return new Date(b.created_at) - new Date(a.created_at); });
-    return { ok: true, files: all.slice(0, limit) };
+    return { ok: true, files: all.slice(0, limit), debug: debug };
   } catch (e) {
     return { ok: false, files: [], error: e.message };
   }
