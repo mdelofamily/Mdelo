@@ -99,18 +99,18 @@ async function _mdUploadOne(file) {
 // ── modal DOM (built dynamically — index.html is never touched) ──
 function _mdBuildModal(resolve) {
   var overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
 
   var box = document.createElement('div');
-  box.style.cssText = 'background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:16px;width:100%;max-width:360px;display:flex;flex-direction:column;gap:10px;font-family:inherit;';
+  box.style.cssText = 'background:var(--bg, #14181c);border:1px solid var(--border, #333);border-radius:10px;padding:16px;width:100%;max-width:360px;display:flex;flex-direction:column;gap:10px;font-family:inherit;';
 
   var title = document.createElement('div');
   title.textContent = '📎 მედია ატვირთვა';
-  title.style.cssText = 'font-size:14px;font-weight:600;color:var(--text);';
+  title.style.cssText = 'font-size:14px;font-weight:600;color:var(--text, #eee);';
 
   var hint = document.createElement('div');
   hint.textContent = 'jpg / png / webp / mp3 / txt / mp4 / epub / pdf — მაქს. 5MB თითო ფაილზე';
-  hint.style.cssText = 'font-size:11px;color:var(--muted);';
+  hint.style.cssText = 'font-size:11px;color:var(--muted, #9aa0a6);';
 
   var fileI = document.createElement('input');
   fileI.type = 'file'; fileI.accept = _MD_ACCEPT; fileI.multiple = true;
@@ -124,12 +124,12 @@ function _mdBuildModal(resolve) {
   var pickB = document.createElement('button');
   pickB.type = 'button';
   pickB.textContent = '📁 ფაილის არჩევა';
-  pickB.style.cssText = 'background:none;border:1px dashed var(--border);color:var(--text);font-size:12px;padding:10px;border-radius:6px;cursor:pointer;text-align:center;';
+  pickB.style.cssText = 'background:none;border:1px dashed var(--border, #444);color:var(--text, #eee);font-size:12px;padding:10px;border-radius:6px;cursor:pointer;text-align:center;';
   pickB.onclick = function () { fileI.click(); };
 
   var chosenLabel = document.createElement('div');
   chosenLabel.textContent = 'ფაილი არ არის არჩეული';
-  chosenLabel.style.cssText = 'font-size:11px;color:var(--muted);';
+  chosenLabel.style.cssText = 'font-size:11px;color:var(--muted, #9aa0a6);';
 
   var list = document.createElement('div');
   list.style.cssText = 'display:flex;flex-direction:column;gap:4px;font-size:11px;';
@@ -139,12 +139,12 @@ function _mdBuildModal(resolve) {
 
   var cancelB = document.createElement('button');
   cancelB.textContent = 'გაუქმება';
-  cancelB.style.cssText = 'background:none;border:1px solid var(--border);color:var(--text);font-size:12px;padding:6px 12px;border-radius:6px;cursor:pointer;';
+  cancelB.style.cssText = 'background:none;border:1px solid var(--border, #444);color:var(--text, #eee);font-size:12px;padding:6px 12px;border-radius:6px;cursor:pointer;';
 
   var uploadB = document.createElement('button');
   uploadB.textContent = 'ატვირთვა';
   uploadB.disabled = true;
-  uploadB.style.cssText = 'background:var(--accent);border:none;color:#fff;font-size:12px;padding:6px 14px;border-radius:6px;cursor:pointer;opacity:.5;';
+  uploadB.style.cssText = 'background:var(--accent, #2e9e5b);border:none;color:#fff;font-size:12px;padding:6px 14px;border-radius:6px;cursor:pointer;opacity:.5;';
 
   box.appendChild(title); box.appendChild(hint); box.appendChild(pickB); box.appendChild(fileI); box.appendChild(chosenLabel); box.appendChild(list);
   btnRow.appendChild(cancelB); btnRow.appendChild(uploadB);
@@ -172,7 +172,7 @@ function _mdBuildModal(resolve) {
     files.forEach(function (f) {
       var v = _mdValidateFile(f);
       var row = document.createElement('div');
-      row.style.cssText = 'color:' + (v.ok ? 'var(--muted)' : '#e05555') + ';';
+      row.style.cssText = 'color:' + (v.ok ? 'var(--muted, #9aa0a6)' : '#ff8080') + ';';
       row.textContent = (v.ok ? '✓ ' : '✗ ') + (v.ok ? f.name : v.msg);
       list.appendChild(row);
       if (v.ok) anyValid = true;

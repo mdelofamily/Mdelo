@@ -830,6 +830,54 @@ function _gmShowPanel(nodes, path) {
   });
 }
 
+// Fullscreen image viewer for photo-report-grid thumbnails. `images` is the
+// list of {url,name} for the files-segment the clicked thumbnail belongs to
+// (only the 'image' type entries — audio/text/video/epub/pdf stay as plain
+// download links, a carousel doesn't make sense for those) — `idx` is which
+// one was clicked. </>  cycle within that same list.
+function _gmLightboxOpen(images, idx) {
+  if (!images || !images.length) return;
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  ov.addEventListener('pointerdown', (e) => { if (e.target === ov) ov.remove(); });
+
+  const img = document.createElement('img');
+  img.style.cssText = 'max-width:92vw;max-height:80vh;object-fit:contain;border-radius:4px;';
+
+  const cap = document.createElement('div');
+  cap.style.cssText = 'position:absolute;bottom:16px;left:0;right:0;text-align:center;color:#fff;font-size:12px;';
+
+  const closeB = document.createElement('div');
+  closeB.textContent = '✕';
+  closeB.style.cssText = 'position:absolute;top:14px;right:18px;color:#fff;font-size:26px;cursor:pointer;line-height:1;padding:6px;';
+  closeB.onclick = () => ov.remove();
+
+  let i = idx < 0 ? 0 : idx;
+  function render() {
+    img.src = images[i].url;
+    cap.textContent = (i + 1) + ' / ' + images.length + (images[i].name ? ' — ' + images[i].name : '');
+  }
+  render();
+
+  ov.appendChild(img); ov.appendChild(cap); ov.appendChild(closeB);
+
+  if (images.length > 1) {
+    const prevB = document.createElement('div');
+    prevB.textContent = '‹';
+    prevB.style.cssText = 'position:absolute;left:6px;top:50%;transform:translateY(-50%);color:#fff;font-size:40px;cursor:pointer;padding:10px 16px;user-select:none;';
+    prevB.onclick = (e) => { e.stopPropagation(); i = (i - 1 + images.length) % images.length; render(); };
+
+    const nextB = document.createElement('div');
+    nextB.textContent = '›';
+    nextB.style.cssText = 'position:absolute;right:6px;top:50%;transform:translateY(-50%);color:#fff;font-size:40px;cursor:pointer;padding:10px 16px;user-select:none;';
+    nextB.onclick = (e) => { e.stopPropagation(); i = (i + 1) % images.length; render(); };
+
+    ov.appendChild(prevB); ov.appendChild(nextB);
+  }
+
+  document.body.appendChild(ov);
+}
+
 /* Open full-screen overlay for a leaf node's items.
    parentNodes = the siblings array the leaf lives in (so "back" can return to the exact same panel).
    parentPath  = breadcrumb path TO that panel (not including the leaf itself).
@@ -871,27 +919,49 @@ function _gmOpenOverlay(node, parentNodes, parentPath, standalone) {
     } else {
       const d = document.createElement('div'); d.className = 'gm-item';
       if (itObj.segments && itObj.segments.length) {
-        let html = (itObj.emoji || '•') + ' ';
+        const head = document.createElement('span');
+        head.textContent = (itObj.emoji || '•') + ' ';
+        d.appendChild(head);
         itObj.segments.forEach(seg => {
           if (seg.type === 'text') {
-            if (seg.value) html += '<span style="white-space:pre-wrap;">' + parseLinks(seg.value) + '</span>';
+            if (!seg.value) return;
+            const span = document.createElement('span');
+            span.style.cssText = 'white-space:pre-wrap;';
+            span.innerHTML = parseLinks(seg.value);
+            d.appendChild(span);
           } else if (seg.type === 'files') {
-            html += '<div class="photo-report-grid" style="display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin:8px 0;">';
+            const grid = document.createElement('div');
+            grid.className = 'photo-report-grid';
+            grid.style.cssText = 'display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin:8px 0;';
+            const imgList = (seg.items || []).filter(f => f.type === 'image');
             (seg.items || []).forEach(f => {
-              html += '<div class="photo-report-item" style="display:flex;flex-direction:column;align-items:center;gap:3px;width:80px;">';
+              const cell = document.createElement('div');
+              cell.className = 'photo-report-item';
+              cell.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:3px;width:80px;';
               if (f.type === 'image') {
-                html += '<img src="' + f.url + '" alt="' + (f.name || '') + '" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:pointer;" onclick="window.open(\'' + f.url + '\',\'_blank\')">';
+                const img = document.createElement('img');
+                img.src = f.url; img.alt = f.name || '';
+                img.style.cssText = 'width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:pointer;';
+                img.onclick = () => _gmLightboxOpen(imgList, imgList.findIndex(x => x.url === f.url));
+                cell.appendChild(img);
               } else {
                 const icon = f.type === 'audio' ? '🎵' : f.type === 'text' ? '📄' : f.type === 'video' ? '🎬' : f.type === 'epub' ? '📚' : f.type === 'pdf' ? '📕' : '📎';
-                html += '<a href="' + f.url + '" target="_blank" style="width:80px;height:80px;display:flex;align-items:center;justify-content:center;font-size:30px;background:var(--panel);border:1px solid var(--border);border-radius:8px;text-decoration:none;">' + icon + '</a>';
+                const a = document.createElement('a');
+                a.href = f.url; a.target = '_blank'; a.textContent = icon;
+                a.style.cssText = 'width:80px;height:80px;display:flex;align-items:center;justify-content:center;font-size:30px;background:var(--panel);border:1px solid var(--border);border-radius:8px;text-decoration:none;';
+                cell.appendChild(a);
               }
-              if (f.name) html += '<span style="font-size:10px;color:var(--muted);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + f.name + '</span>';
-              html += '</div>';
+              if (f.name) {
+                const nm = document.createElement('span');
+                nm.textContent = f.name;
+                nm.style.cssText = 'font-size:10px;color:var(--muted);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+                cell.appendChild(nm);
+              }
+              grid.appendChild(cell);
             });
-            html += '</div>';
+            d.appendChild(grid);
           }
         });
-        d.innerHTML = html;
       } else {
         d.innerHTML = (itObj.emoji || '•') + ' ' + parseLinks(itObj.label || '');
       }
