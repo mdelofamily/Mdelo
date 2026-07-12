@@ -18,7 +18,7 @@ var _tmEditBuf = null;     // raw content buffered from a chain segment, consume
 var _tmEditMediaBuf = [];  // [{items:[{type,url,name}...]}...] — files-segments captured via /მედია
                             // during the current 'text' menuItem session; [[მედია:N]] tokens in tmTa
                             // point into this by index. Cleared on every session open/close/save/cancel.
-var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/მარკერი','/დახურვა','/დროშა','/მეტსახელი','/მე','/ვინ','/ფერი','/help','/გზა','/ჩვ','/გად','/md','/წაშ','/რედ','/ფოთოლი','/მაკრო','/ლოგინი','/ლოგაუთი','/სახელი','/სესია','/სია','/სურვილი','/რეჟიმი','/შესრულება'];
+var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/მარკერი','/დახურვა','/დროშა','/მეტსახელი','/მე','/ვინ','/ფერი','/help','/გზა','/ჩვ','/გად','/md','/წაშ','/რედ','/ფოთოლი','/მაკრო','/ლოგინი','/ლოგაუთი','/სახელი','/სესია','/სია','/სურვილი','/რეჟიმი','/შესრულება','/play','/მუსიკა'];
 
 function toggleTerm() { _tmOpen ? closeTerm() : _tmOpen_(); }
 function _tmOpen_() {
@@ -339,6 +339,9 @@ var _TM_MIN_TIER = {
   'რედ':         'resident',  // = edit, new name
   'macro':       'resident',  // author/manage shared macros
   'მაკრო':       'resident',  // = macro, new name
+  'play':        'caretaker', // one-shot fullscreen video trigger
+  'მუსიკა':      'caretaker', // background music playlist control
+  'music':       'caretaker', // = მუსიკა, new name
   'სია':         'shadow_admin' // list logged-in users (nickname/name/email/tier)
 };
 
@@ -467,6 +470,9 @@ async function _tmRun(raw) {
     'ფოთოლი':      _tmMenuLeaf,
     'macro':       _tmMacro,
     'მაკრო':       _tmMacro,
+    'play':        _tmPlay,
+    'მუსიკა':      _tmMusic,
+    'music':       _tmMusic,
     'marker':      _tmMarkerCmd,
     'მარკერი':     _tmMarkerCmd,
     'ლოგინი':      _tmLogin,
@@ -531,6 +537,9 @@ function _tmHelp() {
     ['/მაკრო საერთო <სახელი> := ...', 'გაზიარებული შორთკატის შექმნა'],
     ['/მაკრო ჩვ',         'ყველა შორთკატის სია'],
     ['/მაკრო წაშ ჩემი|საერთო <სახელი>', 'შორთკატის წაშლა'],
+    ['/play [url]', 'ვიდეო fullscreen-ში — url-ის გარეშე ხსნის ატვირთვის მოდალს'],
+    ['/მუსიკა play <url1,url2,...>', 'ფონური playlist, loop — url-ების გარეშე ხსნის მოდალს'],
+    ['/მუსიკა stop | skip | volume <0-100>', 'მუსიკის კონტროლი'],
     ['/სია', 'დალოგინებული იუზერების სია (მხოლოდ shadow_admin)'],
     ['/სურვილი', 'შემდეგი ტიერის თხოვნა კონსენსუსით (სტუმარი→მეურვე, მეურვე→მაცხოვრებელი)'],
     ['/რეჟიმი <tier>', 'ტესტ რეჟიმი — UI ხედავს სხვა ტიერად (მხოლოდ shadow_admin, /რეჟიმი გამორთვა-ით იხურება)'],
@@ -1078,6 +1087,64 @@ var _TM_NOTIFY_VOTE_LABEL = {
   project:   { open: 'პროექტის ხმის მიცემა გაიხსნა',   yes: 'მიღებულია', no: 'უარყოფილია' },
   done:      { open: 'დასრულების ხმის მიცემა გაიხსნა', yes: 'დასრულდა',  no: 'არ დასრულებულა' }
 };
+
+// /play [url] — no arg opens the same upload modal as /მედია and plays
+// whatever comes back immediately; a url plays it directly. One-shot,
+// fullscreen, no attached data model — exactly "just play this file",
+// per design: no separate cinematic engine.
+async function _tmPlay(args) {
+  var url = args.join(' ').trim();
+  if (!url) {
+    if (typeof window.mdMediaOpen !== 'function') { _tmL('ter', '✗ mdMediaOpen ვერ მოიძებნა (upload.js ჩატვირთულია?)'); return; }
+    var files = await window.mdMediaOpen();
+    if (!files || !files.length) return;
+    url = files[0].url;
+  }
+  if (typeof window._gmVideoPlay !== 'function') { _tmL('ter', '✗ _gmVideoPlay ვერ მოიძებნა (runtime.js ჩატვირთულია?)'); return; }
+  window._gmVideoPlay(url);
+  _tmL('tok', '▶ გაეშვა');
+}
+
+// /მუსიკა play <url1,url2,...> | /მუსიკა stop | /მუსიკა skip | /მუსიკა volume <0-100>
+// "play" is the default when the first arg isn't a recognized subcommand, so
+// `/მუსიკა <urls>` and `/მუსიკა play <urls>` both work; no-arg opens the
+// upload picker (audio only makes sense there, but nothing stops picking
+// something else — it'll just fail to play).
+async function _tmMusic(args) {
+  var sub = (args[0] || '').toLowerCase();
+  if (sub === 'stop') {
+    if (typeof window._gmMusicStop === 'function') window._gmMusicStop();
+    _tmL('tok', '⏹ მუსიკა გაჩერდა');
+    return;
+  }
+  if (sub === 'skip') {
+    if (typeof window._gmMusicSkip === 'function') window._gmMusicSkip();
+    _tmL('tok', '⏭ შემდეგი ტრეკი');
+    return;
+  }
+  if (sub === 'volume' || sub === 'ხმა') {
+    var v = parseInt(args[1], 10);
+    if (isNaN(v)) { _tmL('ter', 'გამოყენება: /მუსიკა volume <0-100>'); return; }
+    v = Math.max(0, Math.min(100, v));
+    if (typeof window._gmMusicVolume === 'function') window._gmMusicVolume(v / 100);
+    _tmL('tok', '🔊 ხმა: ' + v + '%');
+    return;
+  }
+
+  var rest = (sub === 'play') ? args.slice(1).join(' ').trim() : args.join(' ').trim();
+  var urls;
+  if (rest) {
+    urls = rest.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+  } else {
+    if (typeof window.mdMediaOpen !== 'function') { _tmL('ter', '✗ mdMediaOpen ვერ მოიძებნა (upload.js ჩატვირთულია?)'); return; }
+    var files = await window.mdMediaOpen();
+    if (!files || !files.length) return;
+    urls = files.map(function (f) { return f.url; });
+  }
+  if (typeof window._gmMusicPlay !== 'function') { _tmL('ter', '✗ _gmMusicPlay ვერ მოიძებნა (runtime.js ჩატვირთულია?)'); return; }
+  window._gmMusicPlay(urls);
+  _tmL('tok', '🎵 playlist დაიწყო (' + urls.length + ' ტრეკი)');
+}
 
 async function _tmNotify(typeChar, rest) {
   rest = (rest || '').trim();
@@ -1873,7 +1940,7 @@ async function _tmMenuSaveNode(nodeId, fields) {
 //   საერთო  — Supabase (terminal_macros table), every viewer sees it on next load
 // A macro IS a brand-new command: once saved, typing its exact name (with /) runs
 // the whole stored chain. Local scope takes precedence over shared on a name clash.
-var _TM_RESERVED = ['macro','მაკრო','marker','მარკერი','cd','გად','md','rm','წაშ','ls','ჩვ','pwd','გზა','edit','რედ','ფოთოლი','flag','დროშა','nick','მეტსახელი','me','მე','who','ვინ','color','ფერი','help',
+var _TM_RESERVED = ['macro','მაკრო','marker','მარკერი','cd','გად','md','rm','წაშ','ls','ჩვ','pwd','გზა','edit','რედ','ფოთოლი','flag','დროშა','nick','მეტსახელი','me','მე','who','ვინ','color','ფერი','help','play','მუსიკა','music',
   'დახმარება','გასუფთავება','ინფო','მასშტაბი','ზონები','ობიექტები','დიალოგი','წასვლა','ლეგენდა','მენიუ','გახსნა','შეყვანა','სრული','ისტორია','ვადა','ტექსტი','შეტყობინება','დახურვა','სია','დაწინაურება','სურვილი','რეჟიმი','შესრულება'];
 
 // Splits a chain on ";" — but only when ";" is followed by "/" (so a stray

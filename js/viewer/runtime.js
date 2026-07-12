@@ -835,6 +835,72 @@ function _gmShowPanel(nodes, path) {
 // (only the 'image' type entries — audio/text/video/epub/pdf stay as plain
 // download links, a carousel doesn't make sense for those) — `idx` is which
 // one was clicked. </>  cycle within that same list.
+// Fullscreen one-shot video player, triggered by /play. Plain <video controls
+// autoplay> in an overlay — closes itself when the video ends, or via ✕/
+// background click same as the lightbox. No cinematic-engine state machine —
+// this is intentionally "just play this file", nothing more.
+function _gmVideoPlay(url) {
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  ov.addEventListener('pointerdown', (e) => { if (e.target === ov) ov.remove(); });
+
+  const vid = document.createElement('video');
+  vid.src = url; vid.controls = true; vid.autoplay = true; vid.playsInline = true;
+  vid.style.cssText = 'max-width:94vw;max-height:88vh;';
+  vid.addEventListener('ended', () => ov.remove());
+
+  const closeB = document.createElement('div');
+  closeB.textContent = '✕';
+  closeB.style.cssText = 'position:absolute;top:14px;right:18px;color:#fff;font-size:26px;cursor:pointer;line-height:1;padding:6px;';
+  closeB.onclick = () => ov.remove();
+
+  ov.appendChild(vid); ov.appendChild(closeB);
+  document.body.appendChild(ov);
+}
+
+// Persistent background music — one <audio> element for the whole page
+// lifetime (created lazily, reused across every /მუსიკა call), advances
+// through a playlist on 'ended' and loops back to track 0 at the end. Plain
+// singleton state, no wrapper object needed — there's only ever one of these
+// per page.
+let _gmMusicEl = null, _gmMusicList = [], _gmMusicIdx = 0;
+
+function _gmMusicEnsureEl() {
+  if (_gmMusicEl) return _gmMusicEl;
+  _gmMusicEl = document.createElement('audio');
+  _gmMusicEl.addEventListener('ended', () => {
+    _gmMusicIdx = (_gmMusicIdx + 1) % _gmMusicList.length;
+    _gmMusicEl.src = _gmMusicList[_gmMusicIdx];
+    _gmMusicEl.play().catch(() => {});
+  });
+  document.body.appendChild(_gmMusicEl);
+  return _gmMusicEl;
+}
+
+function _gmMusicPlay(urls) {
+  if (!urls || !urls.length) return;
+  _gmMusicList = urls; _gmMusicIdx = 0;
+  const el = _gmMusicEnsureEl();
+  el.src = _gmMusicList[0];
+  el.play().catch(() => {});
+}
+
+function _gmMusicStop() {
+  if (_gmMusicEl) { _gmMusicEl.pause(); _gmMusicEl.src = ''; }
+  _gmMusicList = []; _gmMusicIdx = 0;
+}
+
+function _gmMusicSkip() {
+  if (!_gmMusicEl || !_gmMusicList.length) return;
+  _gmMusicIdx = (_gmMusicIdx + 1) % _gmMusicList.length;
+  _gmMusicEl.src = _gmMusicList[_gmMusicIdx];
+  _gmMusicEl.play().catch(() => {});
+}
+
+function _gmMusicVolume(v) {
+  _gmMusicEnsureEl().volume = Math.max(0, Math.min(1, v));
+}
+
 function _gmLightboxOpen(images, idx) {
   if (!images || !images.length) return;
   const ov = document.createElement('div');
