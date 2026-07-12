@@ -15,10 +15,11 @@ var _tmEditMode = null;    // 'dlg' | 'menuItem' | null
 var _tmEditMenuCtx = null; // { node, idx, type } — set only when _tmEditMode === 'menuItem'
 var _tmEditLabel = null;   // human-readable label shown in cancel/header messages
 var _tmEditBuf = null;     // raw content buffered from a chain segment, consumed by /შეყვანა
+var _tmFilesCache = [];    // last /ფაილები result — lets /play & /მუსიკა take an index or filename instead of a full URL
 var _tmEditMediaBuf = [];  // [{items:[{type,url,name}...]}...] — files-segments captured via /მედია
                             // during the current 'text' menuItem session; [[მედია:N]] tokens in tmTa
                             // point into this by index. Cleared on every session open/close/save/cancel.
-var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/მარკერი','/დახურვა','/დროშა','/მეტსახელი','/მე','/ვინ','/ფერი','/help','/გზა','/ჩვ','/გად','/md','/წაშ','/რედ','/ფოთოლი','/მაკრო','/ლოგინი','/ლოგაუთი','/სახელი','/სესია','/სია','/სურვილი','/რეჟიმი','/შესრულება','/play','/მუსიკა','/ფაილები'];
+var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/მარკერი','/დახურვა','/დროშა','/მეტსახელი','/მე','/ვინ','/ფერი','/help','/გზა','/ჩვ','/გად','/md','/წაშ','/რედ','/ფოთოლი','/მაკრო','/ლოგინი','/ლოგაუთი','/სახელი','/სესია','/სია','/სურვილი','/რეჟიმი','/შესრულება','/play','/მუსიკა','/ფაილები','/ფაილი'];
 
 function toggleTerm() { _tmOpen ? closeTerm() : _tmOpen_(); }
 function _tmOpen_() {
@@ -344,6 +345,7 @@ var _TM_MIN_TIER = {
   'music':       'caretaker', // = მუსიკა, new name
   'ფაილები':     'caretaker', // list uploaded bucket files
   'files':       'caretaker', // = ფაილები, new name
+  'ფაილი':       'resident',  // delete an arbitrary bucket file by index/name (same severity as /rm)
   'სია':         'shadow_admin' // list logged-in users (nickname/name/email/tier)
 };
 
@@ -477,6 +479,7 @@ async function _tmRun(raw) {
     'music':       _tmMusic,
     'ფაილები':     _tmFiles,
     'files':       _tmFiles,
+    'ფაილი':       _tmFileDelete,
     'marker':      _tmMarkerCmd,
     'მარკერი':     _tmMarkerCmd,
     'ლოგინი':      _tmLogin,
@@ -541,10 +544,11 @@ function _tmHelp() {
     ['/მაკრო საერთო <სახელი> := ...', 'გაზიარებული შორთკატის შექმნა'],
     ['/მაკრო ჩვ',         'ყველა შორთკატის სია'],
     ['/მაკრო წაშ ჩემი|საერთო <სახელი>', 'შორთკატის წაშლა'],
-    ['/play [url]', 'ვიდეო fullscreen-ში — url-ის გარეშე ხსნის ატვირთვის მოდალს'],
-    ['/მუსიკა play <url1,url2,...>', 'ფონური playlist, loop — url-ების გარეშე ხსნის მოდალს'],
+    ['/play [url|N|სახელი]', 'ვიდეო fullscreen-ში — N ან ფაილის სახელი /ფაილები-ს ბოლო სიიდან, url-ის გარეშე ხსნის ატვირთვის მოდალს'],
+    ['/მუსიკა play <url|N|სახელი,...>', 'ფონური playlist, loop — ტოკენების გარეშე ხსნის მოდალს'],
     ['/მუსიკა stop | skip | volume <0-100>', 'მუსიკის კონტროლი'],
     ['/ფაილები [N]', 'bucket-ში ბოლო N ატვირთული ფაილის URL (default 20)'],
+    ['/ფაილი წაშ <N|სახელი>', 'ცალკე bucket-ფაილის წაშლა — item-ზე მიბმულობის მიუხედავად'],
     ['/სია', 'დალოგინებული იუზერების სია (მხოლოდ shadow_admin)'],
     ['/სურვილი', 'შემდეგი ტიერის თხოვნა კონსენსუსით (სტუმარი→მეურვე, მეურვე→მაცხოვრებელი)'],
     ['/რეჟიმი <tier>', 'ტესტ რეჟიმი — UI ხედავს სხვა ტიერად (მხოლოდ shadow_admin, /რეჟიმი გამორთვა-ით იხურება)'],
@@ -1097,9 +1101,37 @@ var _TM_NOTIFY_VOTE_LABEL = {
 // whatever comes back immediately; a url plays it directly. One-shot,
 // fullscreen, no attached data model — exactly "just play this file",
 // per design: no separate cinematic engine.
+// Resolves a /play or /მუსიკა token against the last /ფაილები listing —
+// a bare index ("3"), an exact filename, or a unique substring of one — so
+// caretakers don't have to paste the full Storage URL every time. Anything
+// that doesn't match falls through unchanged (treated as a literal URL, the
+// original behavior). Returns null (having already reported the reason) if
+// the token is ambiguous — callers must check for that and abort.
+function _tmResolveMediaRef(tok) {
+  tok = (tok || '').trim();
+  if (!tok) return tok;
+  if (/^\d+$/.test(tok) && _tmFilesCache[+tok]) return _tmFilesCache[+tok].url;
+  if (_tmFilesCache.length) {
+    var lower = tok.toLowerCase();
+    var exact = _tmFilesCache.find(function (f) { return f.name.toLowerCase() === lower; });
+    if (exact) return exact.url;
+    var partial = _tmFilesCache.filter(function (f) { return f.name.toLowerCase().indexOf(lower) !== -1; });
+    if (partial.length === 1) return partial[0].url;
+    if (partial.length > 1) {
+      _tmL('ter', '✗ "' + tok + '" ემთხვევა ' + partial.length + ' ფაილს — დააკონკრეტე: ' + partial.map(function (f) { return f.name; }).join(', '));
+      return null;
+    }
+  }
+  return tok; // no cache match — treat as a literal URL, unchanged
+}
+
 async function _tmPlay(args) {
-  var url = args.join(' ').trim();
-  if (!url) {
+  var raw = args.join(' ').trim();
+  var url = raw;
+  if (raw) {
+    url = _tmResolveMediaRef(raw);
+    if (url === null) return; // ambiguous — already reported
+  } else {
     if (typeof window.mdMediaOpen !== 'function') { _tmL('ter', '✗ mdMediaOpen ვერ მოიძებნა (upload.js ჩატვირთულია?)'); return; }
     var files = await window.mdMediaOpen();
     if (!files || !files.length) return;
@@ -1111,10 +1143,11 @@ async function _tmPlay(args) {
 }
 
 // /მუსიკა play <url1,url2,...> | /მუსიკა stop | /მუსიკა skip | /მუსიკა volume <0-100>
-// "play" is the default when the first arg isn't a recognized subcommand, so
-// `/მუსიკა <urls>` and `/მუსიკა play <urls>` both work; no-arg opens the
-// upload picker (audio only makes sense there, but nothing stops picking
-// something else — it'll just fail to play).
+// Each comma-separated token also accepts an index or filename (see
+// _tmResolveMediaRef) — "play" is the default when the first arg isn't a
+// recognized subcommand, so `/მუსიკა <urls>` and `/მუსიკა play <urls>` both
+// work; no-arg opens the upload picker (audio only makes sense there, but
+// nothing stops picking something else — it'll just fail to play).
 async function _tmMusic(args) {
   var sub = (args[0] || '').toLowerCase();
   if (sub === 'stop') {
@@ -1139,7 +1172,9 @@ async function _tmMusic(args) {
   var rest = (sub === 'play') ? args.slice(1).join(' ').trim() : args.join(' ').trim();
   var urls;
   if (rest) {
-    urls = rest.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+    var toks = rest.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+    urls = toks.map(_tmResolveMediaRef);
+    if (urls.indexOf(null) !== -1) return; // ambiguous — already reported
   } else {
     if (typeof window.mdMediaOpen !== 'function') { _tmL('ter', '✗ mdMediaOpen ვერ მოიძებნა (upload.js ჩატვირთულია?)'); return; }
     var files = await window.mdMediaOpen();
@@ -1153,7 +1188,30 @@ async function _tmMusic(args) {
 
 // /ფაილები [N] — lists the N most recent uploads in the bucket (default 20),
 // newest first, each with a copyable public URL — for finding a URL to feed
-// into /play or /მუსიკა without leaving the app.
+// into /play or /მუსიკა without leaving the app. Also caches the result so
+// /play and /მუსიკა can reference these by index or filename instead.
+// /ფაილი წაშ <N|სახელი|url> — deletes a file straight out of the bucket,
+// independent of the item/segments data model. Exists because /play and
+// /მუსიკა upload files that never get attached to any item's segments[] —
+// the /rm-based cleanup only ever reaches files it can find referenced in
+// segments, so these would otherwise sit in storage forever.
+async function _tmFileDelete(args) {
+  var sub = (args[0] || '').toLowerCase();
+  var isDelSub = (sub === 'წაშ' || sub === 'delete' || sub === 'rm');
+  var tok = (isDelSub ? args.slice(1) : args).join(' ').trim();
+  if (!tok) { _tmL('ter', 'გამოყენება: /ფაილი წაშ <N|სახელი|url>'); return; }
+
+  var url = _tmResolveMediaRef(tok);
+  if (url === null) return; // ambiguous — already reported
+  if (!/^https?:\/\//.test(url)) { _tmL('ter', '✗ "' + tok + '" ვერ ვიპოვე ბოლო /ფაილები-ს სიაში — jer /ფაილები გაუშვი'); return; }
+  if (typeof window.mdMediaDelete !== 'function') { _tmL('ter', '✗ mdMediaDelete ვერ მოიძებნა (upload.js ჩატვირთულია?)'); return; }
+
+  var ok = await window.mdMediaDelete([url]);
+  if (!ok) { _tmL('ter', '✗ წაშლა ჩავარდა'); return; }
+  _tmFilesCache = _tmFilesCache.filter(function (f) { return f.url !== url; }); // keep indices/cache in sync
+  _tmL('tok', '✗ წაიშალა: ' + tok);
+}
+
 async function _tmFiles(args) {
   var n = parseInt(args[0], 10); if (isNaN(n) || n <= 0) n = 20;
   if (typeof window.mdMediaList !== 'function') { _tmL('ter', '✗ mdMediaList ვერ მოიძებნა (upload.js ჩატვირთულია?)'); return; }
@@ -1161,11 +1219,13 @@ async function _tmFiles(args) {
   var res = await window.mdMediaList(n);
   if (!res.ok) { _tmL('ter', '✗ ვერ ჩამოვთვალე: ' + res.error); return; }
   if (!res.files.length) {
+    _tmFilesCache = [];
     _tmL('ter', 'ფაილები ვერ მოიძებნა.');
     if (res.debug && res.debug.length) _tmL('tdm', 'root-ში ' + res.debug.length + ' ჩანაწერი: ' + res.debug.join(', '));
     else _tmL('tdm', 'root-ში 0 ჩანაწერი — LIST API ცარიელს აბრუნებს');
     return;
   }
+  _tmFilesCache = res.files;
   res.files.forEach(function (f, i) {
     var kb = f.size ? Math.round(f.size / 1024) + 'KB' : '';
     _tmL('tdm', '[' + i + '] ' + f.name + (kb ? ' — ' + kb : ''));
@@ -1967,7 +2027,7 @@ async function _tmMenuSaveNode(nodeId, fields) {
 //   საერთო  — Supabase (terminal_macros table), every viewer sees it on next load
 // A macro IS a brand-new command: once saved, typing its exact name (with /) runs
 // the whole stored chain. Local scope takes precedence over shared on a name clash.
-var _TM_RESERVED = ['macro','მაკრო','marker','მარკერი','cd','გად','md','rm','წაშ','ls','ჩვ','pwd','გზა','edit','რედ','ფოთოლი','flag','დროშა','nick','მეტსახელი','me','მე','who','ვინ','color','ფერი','help','play','მუსიკა','music','ფაილები','files',
+var _TM_RESERVED = ['macro','მაკრო','marker','მარკერი','cd','გად','md','rm','წაშ','ls','ჩვ','pwd','გზა','edit','რედ','ფოთოლი','flag','დროშა','nick','მეტსახელი','me','მე','who','ვინ','color','ფერი','help','play','მუსიკა','music','ფაილები','files','ფაილი',
   'დახმარება','გასუფთავება','ინფო','მასშტაბი','ზონები','ობიექტები','დიალოგი','წასვლა','ლეგენდა','მენიუ','გახსნა','შეყვანა','სრული','ისტორია','ვადა','ტექსტი','შეტყობინება','დახურვა','სია','დაწინაურება','სურვილი','რეჟიმი','შესრულება'];
 
 // Splits a chain on ";" — but only when ";" is followed by "/" (so a stray

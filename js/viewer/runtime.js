@@ -842,21 +842,50 @@ function _gmShowPanel(nodes, path) {
 function _gmVideoPlay(url) {
   const ov = document.createElement('div');
   ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:10000;display:flex;align-items:center;justify-content:center;';
-  ov.addEventListener('pointerdown', (e) => { if (e.target === ov) ov.remove(); });
+
+  let closed = false;
+  function closeAndExit() {
+    if (closed) return;
+    closed = true;
+    const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+    if (fsEl === ov) {
+      if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+    }
+    ov.remove();
+  }
+  // Covers the OS/browser's own fullscreen-exit gesture (back button, swipe,
+  // Esc) — without this, exiting fullscreen that way would leave the overlay
+  // sitting on screen (no longer fullscreen, but not closed either).
+  document.addEventListener('fullscreenchange', function onFsChange() {
+    if (document.fullscreenElement !== ov) { document.removeEventListener('fullscreenchange', onFsChange); closeAndExit(); }
+  });
+
+  ov.addEventListener('pointerdown', (e) => { if (e.target === ov) closeAndExit(); });
 
   const vid = document.createElement('video');
   vid.src = url; vid.controls = true; vid.playsInline = true;
   vid.style.cssText = 'max-width:94vw;max-height:88vh;';
-  vid.addEventListener('ended', () => ov.remove());
+  vid.addEventListener('ended', closeAndExit);
   vid.addEventListener('error', () => { if (typeof _tmL === 'function') _tmL('ter', '✗ ვიდეო ვერ ჩაიტვირთა (404/CORS/ტიპი?): ' + url); });
 
   const closeB = document.createElement('div');
   closeB.textContent = '✕';
-  closeB.style.cssText = 'position:absolute;top:14px;right:18px;color:#fff;font-size:26px;cursor:pointer;line-height:1;padding:6px;';
-  closeB.onclick = () => ov.remove();
+  closeB.style.cssText = 'position:absolute;top:14px;right:18px;color:#fff;font-size:26px;cursor:pointer;line-height:1;padding:6px;z-index:1;';
+  closeB.onclick = closeAndExit;
 
   ov.appendChild(vid); ov.appendChild(closeB);
   document.body.appendChild(ov);
+
+  // Best-effort — some browsers (notably iOS Safari, depending on how the
+  // request was triggered) may refuse this; the overlay already covers the
+  // whole viewport either way, so a refusal just means the browser chrome
+  // (address bar) stays visible, nothing actually breaks.
+  try {
+    const reqFs = ov.requestFullscreen || ov.webkitRequestFullscreen;
+    if (reqFs) { const p = reqFs.call(ov); if (p && p.catch) p.catch(() => {}); }
+  } catch (e) {}
+
   vid.play().catch((e) => { if (typeof _tmL === 'function') _tmL('ter', '✗ play() ჩავარდა: ' + e.message); });
 }
 
