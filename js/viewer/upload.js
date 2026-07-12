@@ -17,7 +17,7 @@
 //   so callers (terminal.js) never need a .catch().
 
 var _MD_BUCKET       = 'illustrations';
-var _MD_MAX_BYTES    = 5 * 1024 * 1024; // 5MB/file
+var _MD_MAX_BYTES    = 40 * 1024 * 1024; // 40MB/file — matches the bucket's Dashboard file-size limit
 var _MD_MAX_PER_MIN  = 5;               // client-side throttle only — NOT a security boundary,
                                          // the real backstop (if any) has to be a Storage/RLS-side limit
 var _mdUploadTimes   = []; // in-memory sliding window, per page load
@@ -46,7 +46,7 @@ function _mdDetectType(file) {
 }
 
 function _mdValidateFile(file) {
-  if (file.size > _MD_MAX_BYTES) return { ok: false, msg: 'ფაილი > 5MB: ' + file.name };
+  if (file.size > _MD_MAX_BYTES) return { ok: false, msg: 'ფაილი > 40MB: ' + file.name };
   if (!_mdDetectType(file)) return { ok: false, msg: 'მხარდაუჭერელი ტიპი: ' + file.name + ' (jpg/png/webp/mp3/txt/mp4/epub/pdf)' };
   return { ok: true };
 }
@@ -109,7 +109,7 @@ function _mdBuildModal(resolve) {
   title.style.cssText = 'font-size:14px;font-weight:600;color:var(--text, #eee);';
 
   var hint = document.createElement('div');
-  hint.textContent = 'jpg / png / webp / mp3 / txt / mp4 / epub / pdf — მაქს. 5MB თითო ფაილზე';
+  hint.textContent = 'jpg / png / webp / mp3 / txt / mp4 / epub / pdf — მაქს. 40MB თითო ფაილზე';
   hint.style.cssText = 'font-size:11px;color:var(--muted, #9aa0a6);';
 
   var fileI = document.createElement('input');
@@ -249,6 +249,47 @@ window.mdMediaDelete = async function (urls) {
     });
     return r.ok;
   } catch (e) { return false; }
+};
+
+// Lists the most recent files in the bucket, newest first. Storage's list
+// API is non-recursive (like `ls` in a single directory) and every file
+// lives under a per-user UUID folder (see _mdNick()), so this lists the
+// folder level first, then each folder's contents, and merges + sorts the
+// result. Fine for a small caretaker team; would need pagination for a
+// bucket with many hundreds of uploaders.
+async function _mdListOne(prefix) {
+  try {
+    var r = await fetch(SUPA_URL + '/storage/v1/object/list/' + _MD_BUCKET, {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, _authHeaders()),
+      body: JSON.stringify({ prefix: prefix, limit: 1000, sortBy: { column: 'created_at', order: 'desc' } })
+    });
+    if (!r.ok) return [];
+    return await r.json();
+  } catch (e) { return []; }
+}
+
+window.mdMediaList = async function (limit) {
+  limit = limit || 20;
+  var folders = await _mdListOne('');
+  var all = [];
+  for (var i = 0; i < folders.length; i++) {
+    if (folders[i].id !== null) continue; // a stray root-level file, not a user folder — skip
+    var files = await _mdListOne(folders[i].name + '/');
+    files.forEach(function (file) {
+      if (file.id === null) return; // nested folder — not expected, skip
+      var path = folders[i].name + '/' + file.name;
+      all.push({
+        path: path,
+        url: SUPA_URL + '/storage/v1/object/public/' + _MD_BUCKET + '/' + path,
+        name: file.name,
+        size: file.metadata && file.metadata.size,
+        created_at: file.created_at
+      });
+    });
+  }
+  all.sort(function (a, b) { return new Date(b.created_at) - new Date(a.created_at); });
+  return all.slice(0, limit);
 };
 
 window.mdMediaOpen = function () {
