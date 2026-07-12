@@ -845,9 +845,10 @@ function _gmVideoPlay(url) {
   ov.addEventListener('pointerdown', (e) => { if (e.target === ov) ov.remove(); });
 
   const vid = document.createElement('video');
-  vid.src = url; vid.controls = true; vid.autoplay = true; vid.playsInline = true;
+  vid.src = url; vid.controls = true; vid.playsInline = true;
   vid.style.cssText = 'max-width:94vw;max-height:88vh;';
   vid.addEventListener('ended', () => ov.remove());
+  vid.addEventListener('error', () => { if (typeof _tmL === 'function') _tmL('ter', '✗ ვიდეო ვერ ჩაიტვირთა (404/CORS/ტიპი?): ' + url); });
 
   const closeB = document.createElement('div');
   closeB.textContent = '✕';
@@ -856,6 +857,7 @@ function _gmVideoPlay(url) {
 
   ov.appendChild(vid); ov.appendChild(closeB);
   document.body.appendChild(ov);
+  vid.play().catch((e) => { if (typeof _tmL === 'function') _tmL('ter', '✗ play() ჩავარდა: ' + e.message); });
 }
 
 // Persistent background music — one <audio> element for the whole page
@@ -873,6 +875,9 @@ function _gmMusicEnsureEl() {
     _gmMusicEl.src = _gmMusicList[_gmMusicIdx];
     _gmMusicEl.play().catch(() => {});
   });
+  _gmMusicEl.addEventListener('error', () => {
+    if (typeof _tmL === 'function') _tmL('ter', '✗ track ვერ ჩაიტვირთა (404/CORS/ტიპი?): ' + _gmMusicEl.src);
+  });
   document.body.appendChild(_gmMusicEl);
   return _gmMusicEl;
 }
@@ -882,7 +887,7 @@ function _gmMusicPlay(urls) {
   _gmMusicList = urls; _gmMusicIdx = 0;
   const el = _gmMusicEnsureEl();
   el.src = _gmMusicList[0];
-  el.play().catch(() => {});
+  el.play().catch((e) => { if (typeof _tmL === 'function') _tmL('ter', '✗ play() ჩავარდა: ' + e.message); });
 }
 
 function _gmMusicStop() {

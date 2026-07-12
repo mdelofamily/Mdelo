@@ -1158,9 +1158,10 @@ async function _tmFiles(args) {
   var n = parseInt(args[0], 10); if (isNaN(n) || n <= 0) n = 20;
   if (typeof window.mdMediaList !== 'function') { _tmL('ter', '✗ mdMediaList ვერ მოიძებნა (upload.js ჩატვირთულია?)'); return; }
   _tmL('tdm', 'ფაილები იტვირთება...');
-  var files = await window.mdMediaList(n);
-  if (!files.length) { _tmL('ter', 'ფაილები ვერ მოიძებნა (ან ცარიელია bucket)'); return; }
-  files.forEach(function (f, i) {
+  var res = await window.mdMediaList(n);
+  if (!res.ok) { _tmL('ter', '✗ ვერ ჩამოვთვალე: ' + res.error); return; }
+  if (!res.files.length) { _tmL('ter', 'bucket ცარიელია — ერთი ატვირთვაც არ არის'); return; }
+  res.files.forEach(function (f, i) {
     var kb = f.size ? Math.round(f.size / 1024) + 'KB' : '';
     _tmL('tdm', '[' + i + '] ' + f.name + (kb ? ' — ' + kb : ''));
     _tmL('tdm', '    ' + f.url);

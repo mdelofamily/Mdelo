@@ -258,38 +258,46 @@ window.mdMediaDelete = async function (urls) {
 // result. Fine for a small caretaker team; would need pagination for a
 // bucket with many hundreds of uploaders.
 async function _mdListOne(prefix) {
-  try {
-    var r = await fetch(SUPA_URL + '/storage/v1/object/list/' + _MD_BUCKET, {
-      method: 'POST',
-      headers: Object.assign({ 'Content-Type': 'application/json' }, _authHeaders()),
-      body: JSON.stringify({ prefix: prefix, limit: 1000, sortBy: { column: 'created_at', order: 'desc' } })
-    });
-    if (!r.ok) return [];
-    return await r.json();
-  } catch (e) { return []; }
+  var r = await fetch(SUPA_URL + '/storage/v1/object/list/' + _MD_BUCKET, {
+    method: 'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, _authHeaders()),
+    body: JSON.stringify({ prefix: prefix, limit: 1000, sortBy: { column: 'created_at', order: 'desc' } })
+  });
+  if (!r.ok) {
+    var body = await r.text().catch(function () { return ''; });
+    throw new Error('HTTP ' + r.status + ': ' + body.slice(0, 150));
+  }
+  return await r.json();
 }
 
+// Returns {ok, files, error} — never throws — so callers (the /ფაილები
+// terminal command) can show the real failure reason instead of a generic
+// "nothing found", which was indistinguishable from an actually-empty bucket.
 window.mdMediaList = async function (limit) {
   limit = limit || 20;
-  var folders = await _mdListOne('');
-  var all = [];
-  for (var i = 0; i < folders.length; i++) {
-    if (folders[i].id !== null) continue; // a stray root-level file, not a user folder — skip
-    var files = await _mdListOne(folders[i].name + '/');
-    files.forEach(function (file) {
-      if (file.id === null) return; // nested folder — not expected, skip
-      var path = folders[i].name + '/' + file.name;
-      all.push({
-        path: path,
-        url: SUPA_URL + '/storage/v1/object/public/' + _MD_BUCKET + '/' + path,
-        name: file.name,
-        size: file.metadata && file.metadata.size,
-        created_at: file.created_at
+  try {
+    var folders = await _mdListOne('');
+    var all = [];
+    for (var i = 0; i < folders.length; i++) {
+      if (folders[i].id !== null) continue; // a stray root-level file, not a user folder — skip
+      var files = await _mdListOne(folders[i].name + '/');
+      files.forEach(function (file) {
+        if (file.id === null) return; // nested folder — not expected, skip
+        var path = folders[i].name + '/' + file.name;
+        all.push({
+          path: path,
+          url: SUPA_URL + '/storage/v1/object/public/' + _MD_BUCKET + '/' + path,
+          name: file.name,
+          size: file.metadata && file.metadata.size,
+          created_at: file.created_at
+        });
       });
-    });
+    }
+    all.sort(function (a, b) { return new Date(b.created_at) - new Date(a.created_at); });
+    return { ok: true, files: all.slice(0, limit) };
+  } catch (e) {
+    return { ok: false, files: [], error: e.message };
   }
-  all.sort(function (a, b) { return new Date(b.created_at) - new Date(a.created_at); });
-  return all.slice(0, limit);
 };
 
 window.mdMediaOpen = function () {
