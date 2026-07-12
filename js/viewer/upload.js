@@ -114,7 +114,22 @@ function _mdBuildModal(resolve) {
 
   var fileI = document.createElement('input');
   fileI.type = 'file'; fileI.accept = _MD_ACCEPT; fileI.multiple = true;
-  fileI.style.cssText = 'font-size:12px;color:var(--text);';
+  // Visually hidden, not display:none — needs to stay a real, clickable,
+  // change-firing input. The native filename text next to a plain file
+  // input is OS-rendered chrome that ignores `color` (esp. Android Chrome,
+  // black-on-dark) — so it's hidden and a fully custom button + label
+  // (below) drive it instead.
+  fileI.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none;';
+
+  var pickB = document.createElement('button');
+  pickB.type = 'button';
+  pickB.textContent = '📁 ფაილის არჩევა';
+  pickB.style.cssText = 'background:none;border:1px dashed var(--border);color:var(--text);font-size:12px;padding:10px;border-radius:6px;cursor:pointer;text-align:center;';
+  pickB.onclick = function () { fileI.click(); };
+
+  var chosenLabel = document.createElement('div');
+  chosenLabel.textContent = 'ფაილი არ არის არჩეული';
+  chosenLabel.style.cssText = 'font-size:11px;color:var(--muted);';
 
   var list = document.createElement('div');
   list.style.cssText = 'display:flex;flex-direction:column;gap:4px;font-size:11px;';
@@ -131,7 +146,7 @@ function _mdBuildModal(resolve) {
   uploadB.disabled = true;
   uploadB.style.cssText = 'background:var(--accent);border:none;color:#fff;font-size:12px;padding:6px 14px;border-radius:6px;cursor:pointer;opacity:.5;';
 
-  box.appendChild(title); box.appendChild(hint); box.appendChild(fileI); box.appendChild(list);
+  box.appendChild(title); box.appendChild(hint); box.appendChild(pickB); box.appendChild(fileI); box.appendChild(chosenLabel); box.appendChild(list);
   btnRow.appendChild(cancelB); btnRow.appendChild(uploadB);
   box.appendChild(btnRow);
   overlay.appendChild(box);
@@ -150,6 +165,9 @@ function _mdBuildModal(resolve) {
   fileI.onchange = function () {
     list.innerHTML = '';
     var files = Array.from(fileI.files || []);
+    chosenLabel.textContent = files.length === 0 ? 'ფაილი არ არის არჩეული'
+      : files.length === 1 ? files[0].name
+      : files.length + ' ფაილი არჩეულია';
     var anyValid = false;
     files.forEach(function (f) {
       var v = _mdValidateFile(f);

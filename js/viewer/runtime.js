@@ -870,7 +870,31 @@ function _gmOpenOverlay(node, parentNodes, parentPath, standalone) {
       body.appendChild(row);
     } else {
       const d = document.createElement('div'); d.className = 'gm-item';
-      d.innerHTML = (itObj.emoji || '•') + ' ' + parseLinks(itObj.label || '');
+      if (itObj.segments && itObj.segments.length) {
+        let html = (itObj.emoji || '•') + ' ';
+        itObj.segments.forEach(seg => {
+          if (seg.type === 'text') {
+            if (seg.value) html += '<span style="white-space:pre-wrap;">' + parseLinks(seg.value) + '</span>';
+          } else if (seg.type === 'files') {
+            html += '<div class="photo-report-grid" style="display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin:8px 0;">';
+            (seg.items || []).forEach(f => {
+              html += '<div class="photo-report-item" style="display:flex;flex-direction:column;align-items:center;gap:3px;width:80px;">';
+              if (f.type === 'image') {
+                html += '<img src="' + f.url + '" alt="' + (f.name || '') + '" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:pointer;" onclick="window.open(\'' + f.url + '\',\'_blank\')">';
+              } else {
+                const icon = f.type === 'audio' ? '🎵' : f.type === 'text' ? '📄' : f.type === 'video' ? '🎬' : f.type === 'epub' ? '📚' : f.type === 'pdf' ? '📕' : '📎';
+                html += '<a href="' + f.url + '" target="_blank" style="width:80px;height:80px;display:flex;align-items:center;justify-content:center;font-size:30px;background:var(--panel);border:1px solid var(--border);border-radius:8px;text-decoration:none;">' + icon + '</a>';
+              }
+              if (f.name) html += '<span style="font-size:10px;color:var(--muted);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + f.name + '</span>';
+              html += '</div>';
+            });
+            html += '</div>';
+          }
+        });
+        d.innerHTML = html;
+      } else {
+        d.innerHTML = (itObj.emoji || '•') + ' ' + parseLinks(itObj.label || '');
+      }
       body.appendChild(d);
     }
   });
