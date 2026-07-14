@@ -201,6 +201,17 @@ function _buildSegmentsPreview(itObj) {
           img.src = f.url; img.alt = f.name || "";
           img.style.cssText = "width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid var(--border);";
           cell.appendChild(img);
+        } else if (f.type === "youtube") {
+          const wrap = document.createElement("div");
+          wrap.style.cssText = "position:relative;width:64px;height:64px;";
+          const img = document.createElement("img");
+          img.src = "https://img.youtube.com/vi/" + f.videoId + "/hqdefault.jpg"; img.alt = "YouTube";
+          img.style.cssText = "width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid var(--border);";
+          const badge = document.createElement("div");
+          badge.textContent = "▶";
+          badge.style.cssText = "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:20px;color:#fff;text-shadow:0 0 4px rgba(0,0,0,.8);";
+          wrap.appendChild(img); wrap.appendChild(badge);
+          cell.appendChild(wrap);
         } else {
           const icon = document.createElement("div");
           icon.textContent = _segmentFileIcon(f);
@@ -396,6 +407,11 @@ function _generateMenuHTML(nodes, slugMap) {
                 html += `<div class="photo-report-item" style="display:flex; flex-direction:column; align-items:center; gap:3px; width:80px;">`;
                 if (f.type === "image") {
                   html += `<img src="${f.url}" alt="${f.name || ""}" style="width:80px; height:80px; object-fit:cover; border-radius:8px; border:1px solid var(--border); cursor:pointer;" onclick="window.open('${f.url}','_blank')">`;
+                } else if (f.type === "youtube") {
+                  html += `<a href="${f.url}" target="_blank" style="position:relative; display:block; width:80px; height:80px; text-decoration:none;">`;
+                  html += `<img src="https://img.youtube.com/vi/${f.videoId}/hqdefault.jpg" alt="YouTube" style="width:80px; height:80px; object-fit:cover; border-radius:8px; border:1px solid var(--border);">`;
+                  html += `<span style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:26px; color:#fff; text-shadow:0 0 4px rgba(0,0,0,.8);">▶</span>`;
+                  html += `</a>`;
                 } else {
                   const icon = _segmentFileIcon(f);
                   html += `<a href="${f.url}" target="_blank" style="width:80px; height:80px; display:flex; align-items:center; justify-content:center; font-size:30px; background:var(--panel); border:1px solid var(--border); border-radius:8px; text-decoration:none;">${icon}</a>`;
