@@ -1044,6 +1044,18 @@ function _gmOpenOverlay(node, parentNodes, parentPath, standalone) {
                 img.style.cssText = 'width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:pointer;';
                 img.onclick = () => _gmLightboxOpen(imgList, imgList.findIndex(x => x.url === f.url));
                 cell.appendChild(img);
+              } else if (f.type === 'youtube') {
+                const a = document.createElement('a');
+                a.href = f.url; a.target = '_blank';
+                a.style.cssText = 'position:relative;display:block;width:80px;height:80px;';
+                const img = document.createElement('img');
+                img.src = 'https://img.youtube.com/vi/' + f.videoId + '/hqdefault.jpg'; img.alt = 'YouTube';
+                img.style.cssText = 'width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--border);';
+                const badge = document.createElement('span');
+                badge.textContent = '▶';
+                badge.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:26px;color:#fff;text-shadow:0 0 4px rgba(0,0,0,.8);';
+                a.appendChild(img); a.appendChild(badge);
+                cell.appendChild(a);
               } else {
                 const icon = f.type === 'audio' ? '🎵' : f.type === 'text' ? '📄' : f.type === 'video' ? '🎬' : f.type === 'epub' ? '📚' : f.type === 'pdf' ? '📕' : '📎';
                 const a = document.createElement('a');

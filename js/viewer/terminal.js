@@ -155,7 +155,7 @@ function tmSend() {
   });
   ta.addEventListener('input', function () {
     if (_tmMulti) _tmTaResize(ta);
-    if (_tmEditMode === 'menuItem' && _tmEditMenuCtx && _tmEditMenuCtx.type === 'text') _tmMediaCheckTrigger(ta);
+    if (_tmEditMode === 'menuItem' && _tmEditMenuCtx && _tmEditMenuCtx.type === 'text') { _tmMediaCheckTrigger(ta); _tmYoutubeCheckTrigger(ta); }
   });
 })();
 
@@ -1902,7 +1902,10 @@ function _tmMenuEditOpen(node, idx, itObj) {
 
   _tmL('tsy', '─── [' + idx + '] ' + (node.title || '') + ' ──────────────');
   _tmL('tdm', 'ხაზი 1 — [emoji: X], მხოლოდ X გამოცვალე');
-  if (itObj.type === 'text' || !itObj.type) _tmL('tdm', 'ახალ ხაზზე დაწერე "/მედია" — jpg/png/webp/mp3/txt/mp4/epub/pdf ატვირთვისთვის');
+  if (itObj.type === 'text' || !itObj.type) {
+    _tmL('tdm', 'ახალ ხაზზე დაწერე "/მედია" — jpg/png/webp/mp3/txt/mp4/epub/pdf ატვირთვისთვის');
+    _tmL('tdm', '"/youtube <url> " (space ბოლოში) — YouTube thumbnail-ისთვის');
+  }
   _tmL('tdm', 'Ctrl+Enter — შენახვა · Esc — გაუქმება');
 }
 
@@ -1920,6 +1923,39 @@ function _tmMediaCheckTrigger(ta) {
   ta.setSelectionRange(cut.length, cut.length);
   _tmTaResize(ta);
   _tmMediaOpen(ta, cut.length);
+}
+
+// Detects "/youtube <url> " (note the trailing space — it's the terminator;
+// without one, this would fire on every keystroke of the url itself, since
+// any partial url still matches \S+). Fires once, right when that space is
+// typed.
+function _tmYoutubeCheckTrigger(ta) {
+  var pos = ta.selectionStart;
+  var before = ta.value.slice(0, pos);
+  var m = /(^|\n)\/(?:youtube|იუთუბი) (\S+) $/.exec(before);
+  if (!m) return;
+  var cut = before.slice(0, before.length - m[0].length) + m[1];
+  ta.value = cut + ta.value.slice(pos);
+  ta.setSelectionRange(cut.length, cut.length);
+  _tmTaResize(ta);
+  _tmYoutubeInsert(ta, cut.length, m[2]);
+}
+
+// Shared by /მედია and /youtube — pushes `items` as a new files-segment onto
+// the session's media buffer and drops a [[მედია:N]] token at `insertAt`,
+// padding with newlines only where the surrounding text needs it.
+function _tmInsertMediaToken(ta, insertAt, items) {
+  var n = _tmEditMediaBuf.length;
+  _tmEditMediaBuf.push({ items: items, _preexisting: false });
+  var v     = ta.value;
+  var pad   = (insertAt > 0 && v.charAt(insertAt - 1) !== '\n') ? '\n' : '';
+  var padAf = (v.charAt(insertAt) !== '\n' && v.charAt(insertAt) !== '') ? '\n' : '';
+  var chunk = pad + _tmMediaToken(n) + padAf;
+  ta.value = v.slice(0, insertAt) + chunk + v.slice(insertAt);
+  var caretAt = insertAt + chunk.length;
+  ta.focus();
+  ta.setSelectionRange(caretAt, caretAt);
+  _tmTaResize(ta);
 }
 
 // Opens upload.js's modal (mdMediaOpen, reused as-is — no index.html change),
@@ -1943,19 +1979,28 @@ async function _tmMediaOpen(ta, insertAt) {
     return;
   }
   if (!files || !files.length) return;
-
-  var n = _tmEditMediaBuf.length;
-  _tmEditMediaBuf.push({ items: files, _preexisting: false });
-  var v     = ta.value;
-  var pad   = (insertAt > 0 && v.charAt(insertAt - 1) !== '\n') ? '\n' : '';
-  var padAf = (v.charAt(insertAt) !== '\n' && v.charAt(insertAt) !== '') ? '\n' : '';
-  var chunk = pad + _tmMediaToken(n) + padAf;
-  ta.value = v.slice(0, insertAt) + chunk + v.slice(insertAt);
-  var caretAt = insertAt + chunk.length;
-  ta.focus();
-  ta.setSelectionRange(caretAt, caretAt);
-  _tmTaResize(ta);
+  _tmInsertMediaToken(ta, insertAt, files);
   _tmL('tok', '📎 მედია დაემატა (' + files.length + ' ფაილი)');
+}
+
+// Extracts the 11-ish char video ID out of any common YouTube URL shape —
+// watch?v=, youtu.be/, /shorts/, /embed/ — and ignores whatever comes after
+// (extra query params like &t=90s, playlist context, etc).
+function _tmYoutubeId(url) {
+  var m = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{6,15})/);
+  return m ? m[1] : null;
+}
+
+// No upload involved — just parses the ID, builds a thumbnail-only 'youtube'
+// item (opens the real YouTube link on click, never embeds a player — the
+// caretaker doesn't want an in-app cinematic experience for these, per
+// design, only for self-uploaded /play-style video) and inserts the token
+// the same way /მედია does.
+function _tmYoutubeInsert(ta, insertAt, url) {
+  var id = _tmYoutubeId(url);
+  if (!id) { _tmL('ter', '✗ ვერ ამოვიცანი YouTube ID: ' + url); return; }
+  _tmInsertMediaToken(ta, insertAt, [{ type: 'youtube', videoId: id, url: 'https://www.youtube.com/watch?v=' + id, name: id }]);
+  _tmL('tok', '▶ YouTube thumbnail დაემატა');
 }
 
 // Save the multiline editor content back into the item + push to Supabase.
