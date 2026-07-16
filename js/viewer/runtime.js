@@ -1132,9 +1132,14 @@ function _parseNodes(dialogue) {
 }
 function _dlgShowNode(nodeId, selectedLabel) {
   const node = _dlgNodes[nodeId]; if (!node) return;
-  // #if flag =>N — redirect if flag is set
-  if (node.condition && typeof flagHas === 'function' && flagHas(node.condition.flag)) {
-    _dlgShowNode(node.condition.target, selectedLabel); return;
+  // #if flag =>N — redirect on the first matching flag. A node may carry
+  // several conditions (conditions[]); condition{} (singular) is kept as a
+  // fallback for older saved dialogues that predate multi-condition support.
+  if (typeof flagHas === 'function') {
+    const conds = node.conditions || (node.condition ? [node.condition] : []);
+    for (let i = 0; i < conds.length; i++) {
+      if (flagHas(conds[i].flag)) { _dlgShowNode(conds[i].target, selectedLabel); return; }
+    }
   }
   const body = document.getElementById('hsPopupBody');
   const btnWrap = document.getElementById('hsPopupBtns');

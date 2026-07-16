@@ -9,6 +9,23 @@
 
   var STORAGE_KEY = 'mdelo_flags';
 
+  // Tier flags are mutually exclusive (a user is exactly one of these at a
+  // time), unlike ordinary narrative flags which accumulate forever. They
+  // live in their own single-value key so setting one can never leave a
+  // stale lower tier sitting in the array alongside it.
+  var TIER_KEY   = 'mdelo_tier';
+  var TIER_FLAGS = ['სტუმარი', 'მეურვე', 'მაცხოვრებელი'];
+
+  function _tierLoad() {
+    try { return localStorage.getItem(TIER_KEY) || ''; } catch (e) { return ''; }
+  }
+  function _tierSave(name) {
+    try {
+      if (name) localStorage.setItem(TIER_KEY, name);
+      else localStorage.removeItem(TIER_KEY);
+    } catch (e) {}
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // Flag storage (localStorage → JSON array of strings)
   // ─────────────────────────────────────────────────────────────────────────
@@ -29,6 +46,7 @@
   function flagSet(name) {
     name = String(name).trim();
     if (!name) return false;
+    if (TIER_FLAGS.indexOf(name) !== -1) { _tierSave(name); return true; }
     var arr = _load();
     if (arr.indexOf(name) === -1) { arr.push(name); _save(arr); }
     return true;
@@ -36,6 +54,11 @@
 
   function flagClear(name) {
     name = String(name).trim();
+    if (TIER_FLAGS.indexOf(name) !== -1) {
+      if (_tierLoad() !== name) return false;
+      _tierSave('');
+      return true;
+    }
     var arr = _load();
     var idx = arr.indexOf(name);
     if (idx === -1) return false;
@@ -45,15 +68,21 @@
   }
 
   function flagHas(name) {
-    return _load().indexOf(String(name).trim()) !== -1;
+    name = String(name).trim();
+    if (TIER_FLAGS.indexOf(name) !== -1) return _tierLoad() === name;
+    return _load().indexOf(name) !== -1;
   }
 
   function flagList() {
-    return _load().slice();
+    var arr = _load().slice();
+    var t = _tierLoad();
+    if (t) arr.push(t); // include the active tier so "/დროშა სია" stays complete
+    return arr;
   }
 
   function flagReset() {
     _save([]);
+    _tierSave('');
   }
 
   // ─────────────────────────────────────────────────────────────────────────
