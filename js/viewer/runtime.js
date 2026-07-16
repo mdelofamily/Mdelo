@@ -331,10 +331,12 @@ var _TIER_FLAG_MAP = {
   resident:  'მაცხოვრებელი'
 };
 
-// Idempotent by construction: flagHas() guards the write, so calling this on
-// every _authBoot() (fresh magic-link verify AND silent session refresh) is
-// safe — it only ever sets the flag once per tier, the first time that tier
-// is seen for this browser, never re-fires on repeat logins.
+// Safe to call on every _authBoot() (fresh magic-link verify AND silent
+// session refresh): flagSet() on a tier name now writes to unlock.js's
+// exclusive single-value tier store, so this both (a) never re-fires
+// pointlessly once a tier is already reflected, and (b) correctly replaces
+// the flag when the person's tier changes (e.g. caretaker → resident)
+// instead of leaving the old tier flag stacked alongside the new one.
 function _applyTierFlag() {
   if (!window._myTier) return;
   var flagName = _TIER_FLAG_MAP[window._myTier.tier];
