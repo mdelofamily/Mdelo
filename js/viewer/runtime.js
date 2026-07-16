@@ -318,6 +318,31 @@ async function _authLoadTier() {
   }
 }
 window.myRealTier = function () { return window._myTier ? window._myTier.tier : 'visitor'; };
+
+// ── Magic-Link → dialogue flag bridge ──────────────────────────────────────
+// Purely narrative: sets a unlock.js flag mirroring the person's tier, so
+// dialogue branches (canTrigger/completeDialog) can react to "ვინაა ეს
+// ადამიანი" without any privileged action ever depending on it (see
+// scope-command-access-and-flag-trigger.md, ნაწილი 2). shadow_admin has no
+// entry — /რეჟიმი already covers that visibility, no flag needed.
+var _TIER_FLAG_MAP = {
+  visitor:   'სტუმარი',
+  caretaker: 'მეურვე',
+  resident:  'მაცხოვრებელი'
+};
+
+// Idempotent by construction: flagHas() guards the write, so calling this on
+// every _authBoot() (fresh magic-link verify AND silent session refresh) is
+// safe — it only ever sets the flag once per tier, the first time that tier
+// is seen for this browser, never re-fires on repeat logins.
+function _applyTierFlag() {
+  if (!window._myTier) return;
+  var flagName = _TIER_FLAG_MAP[window._myTier.tier];
+  if (!flagName) return;
+  if (typeof window.flagHas !== 'function' || typeof window.flagSet !== 'function') return;
+  if (!window.flagHas(flagName)) window.flagSet(flagName);
+}
+window._applyTierFlag = _applyTierFlag;
 window.myTier = function () {
   const real = window.myRealTier();
   if (real === 'shadow_admin') {
@@ -425,6 +450,7 @@ async function _authBoot() {
   }
   if (window.isLoggedIn()) {
     await _authLoadTier();
+    _applyTierFlag();
     // fresh login (token_hash just verified) + no name yet → apply the name
     // that was collected up-front at /ლოგინი time; only ask again if it's
     // not there (e.g. the magic link was opened on a different device)
