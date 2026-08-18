@@ -1319,16 +1319,19 @@ function toggleQuest() {
   if (p.style.display === 'block') { p.style.display = 'none'; }
   else {
     p.style.display = 'block';
-    var full = p.dataset.full;
-    if (full == null) {
+    var raw = p.dataset.fullRaw;
+    if (raw == null) {
       // Nothing from Supabase yet (or an older export baked raw text in) —
-      // resolve through the same >>flag splitter used for overrides, so a
-      // stray ">>flag" line never renders literally. innerHTML→\n keeps any
-      // baked <br> line breaks intact for the splitter.
-      var rawBaked = p.innerHTML.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '');
-      full = (typeof _legendResolveText === 'function') ? _legendResolveText(rawBaked) : rawBaked;
-      p.dataset.full = full;
+      // derive the raw source from what's baked in the DOM. innerHTML→\n
+      // keeps any baked <br> line breaks intact for the splitter.
+      raw = p.innerHTML.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '');
+      p.dataset.fullRaw = raw;
     }
+    // Always re-resolve against the *current* flag state — flags can change
+    // mid-session (/flag commands), so a cached resolution from an earlier
+    // open would show a stale block instead of what the viewer's flags say now.
+    var full = (typeof _legendResolveText === 'function') ? _legendResolveText(raw) : raw;
+    p.dataset.full = full;
     p.textContent = ''; _typewriter(p, full, 60);
   }
 }
