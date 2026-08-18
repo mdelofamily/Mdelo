@@ -201,7 +201,7 @@ async function doExportHTML() {
     // have an element to write into after export.
     const questHtml = questDefaultText
       ? `<button id="questBtn" onclick="toggleQuest()">?</button><div id="questPopup">${questDefaultText.replace(/\n/g, "<br>")}</div>`
-      : `<button id="questBtn" style="display:none">?</button><div id="questPopup"></div>`;
+      : `<button id="questBtn" onclick="toggleQuest()" style="display:none">?</button><div id="questPopup"></div>`;
 
     // canvas renderer is only injected when needed
     const canvasRendererBlock = useCanvasRenderer ? canvasRendererJS : "";
