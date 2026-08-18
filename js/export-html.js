@@ -185,9 +185,23 @@ async function doExportHTML() {
       : `<img id="mapImg" src="${b64}" width="${w}" height="${h}">`;
 
     // quest / legend HTML
-    const questHtml = mapDesc
-      ? `<button id="questBtn" onclick="toggleQuest()">?</button><div id="questPopup">${mapDesc.replace(/\n/g, "<br>")}</div>`
-      : `<button id="questBtn" style="display:none">?</button>`;
+    // NOTE: mapDesc may contain ">>flag" block syntax (same convention the
+    // legend editor / _legendResolveText use at runtime — see runtime.js).
+    // Only the *default* block (everything before the first ">>flag" line)
+    // gets baked into the static export; flag-specific blocks are resolved
+    // client-side only, from the live legend_overrides row, never here —
+    // so raw ">>" tags must never leak into the baked HTML.
+    function _legendDefaultOnly(raw) {
+      const m = String(raw || "").match(/^\s*>>\s*\S+\s*$/m);
+      return (m ? raw.slice(0, m.index) : raw).trim();
+    }
+    const questDefaultText = _legendDefaultOnly(mapDesc);
+    // #questPopup must always exist in the DOM — even with no export-time
+    // description — so /ლეგენდა რედაქტირება and Supabase overrides always
+    // have an element to write into after export.
+    const questHtml = questDefaultText
+      ? `<button id="questBtn" onclick="toggleQuest()">?</button><div id="questPopup">${questDefaultText.replace(/\n/g, "<br>")}</div>`
+      : `<button id="questBtn" style="display:none">?</button><div id="questPopup"></div>`;
 
     // canvas renderer is only injected when needed
     const canvasRendererBlock = useCanvasRenderer ? canvasRendererJS : "";
