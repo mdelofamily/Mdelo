@@ -2274,6 +2274,34 @@ window.macroOverrideDelete = async function (name) {
   } catch (e) { return { ok: false, status: 0, msg: e.message }; }
 };
 
+// ── legend "?" text: >>flag block splitter ──
+// Splits raw legend text into blocks on lines that start with '>>flag'.
+// Everything before the first '>>flag' line is the default/fallback block.
+// Mirrors the dialogue engine's conditions[] convention (see _dlgShowNode):
+// first matching flag wins, order-of-appearance breaks ties for non-tier flags.
+function _legendSplitBlocks(raw) {
+  const lines = String(raw || '').split('\n');
+  const reFlag = /^\s*>>\s*(\S+)\s*$/;
+  const blocks = [{ flag: null, lines: [] }];
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(reFlag);
+    if (m) blocks.push({ flag: m[1], lines: [] });
+    else blocks[blocks.length - 1].lines.push(lines[i]);
+  }
+  return blocks.map(b => ({ flag: b.flag, text: b.lines.join('\n').trim() }));
+}
+function _legendResolveText(raw) {
+  const blocks = _legendSplitBlocks(raw);
+  const defaultText = (blocks.find(b => b.flag === null) || {}).text || '';
+  if (typeof flagHas === 'function') {
+    for (let i = 0; i < blocks.length; i++) {
+      if (blocks[i].flag && flagHas(blocks[i].flag)) return blocks[i].text;
+    }
+  }
+  return defaultText;
+}
+window._legendResolveText = _legendResolveText;
+
 // ── main "?" legend override (Supabase) ──
 // The legend's baked-in text (export time) lives in #questPopup. A single row
 // per map_id is enough — there's only one legend, not a tree like the menu.
@@ -2287,7 +2315,12 @@ async function loadLegendOverride() {
     var rows = await r.json();
     if (rows && rows[0] && rows[0].text != null) {
       var p = document.getElementById('questPopup');
-      if (p) { p.dataset.full = rows[0].text; if (p.style.display === 'block') p.textContent = rows[0].text; }
+      if (p) {
+        p.dataset.fullRaw = rows[0].text;
+        var resolved = _legendResolveText(rows[0].text);
+        p.dataset.full = resolved;
+        if (p.style.display === 'block') p.textContent = resolved;
+      }
     }
   } catch (e) {}
 }
