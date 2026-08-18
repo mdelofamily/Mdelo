@@ -2333,6 +2333,11 @@ async function loadLegendOverride() {
         var resolved = _legendResolveText(rows[0].text);
         p.dataset.full = resolved;
         if (p.style.display === 'block') p.textContent = resolved;
+        // Button visibility was frozen at export time (hidden if the map had
+        // no description then) — every fresh page load should reflect the
+        // live override, not just the session that saved it.
+        var btn = document.getElementById('questBtn');
+        if (btn) btn.style.display = resolved ? '' : 'none';
       }
     }
   } catch (e) {}

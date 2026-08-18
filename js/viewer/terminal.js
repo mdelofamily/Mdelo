@@ -871,7 +871,10 @@ function _tmLegend(args) {
 function _tmLegendEditOpen() {
   var p = document.getElementById('questPopup');
   if (!p) { _tmL('ter', '✗ ლეგენდის ელემენტი ვერ მოიძებნა'); return; }
-  var current = p.dataset.full || p.textContent || '';
+  // Prefill with the raw source (>>flag syntax intact), not the resolved
+  // per-viewer text — otherwise re-editing would silently drop whichever
+  // flag blocks didn't match the currently logged-in author's own tier.
+  var current = p.dataset.fullRaw || p.dataset.full || p.textContent || '';
 
   if (!_tmMulti) tmToggleMulti();
   document.getElementById('tmTa').value = current;
@@ -889,10 +892,16 @@ function _tmLegendEditOpen() {
 async function _tmSaveLegend(text) {
   var p = document.getElementById('questPopup');
   if (p) {
-    p.dataset.full = text;
+    p.dataset.fullRaw = text;
+    var resolved = (typeof _legendResolveText === 'function') ? _legendResolveText(text) : text;
+    p.dataset.full = resolved;
+    // Button visibility was frozen at export time (hidden if the map had no
+    // description then) — reflect the freshly-saved content now instead.
+    var btn = document.getElementById('questBtn');
+    if (btn) btn.style.display = (text && text.trim()) ? '' : 'none';
     if (p.style.display === 'block') {
       p.textContent = '';
-      if (typeof _typewriter === 'function') _typewriter(p, text, 60); else p.textContent = text;
+      if (typeof _typewriter === 'function') _typewriter(p, resolved, 60); else p.textContent = resolved;
     }
   }
 
