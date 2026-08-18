@@ -1317,7 +1317,20 @@ function _typewriterHTML(el, html, speed, onDone, onTick) {
 function toggleQuest() {
   const p = document.getElementById('questPopup'); if (!p) return;
   if (p.style.display === 'block') { p.style.display = 'none'; }
-  else { p.style.display = 'block'; const full = p.dataset.full || (p.dataset.full = p.textContent); p.textContent = ''; _typewriter(p, full, 60); }
+  else {
+    p.style.display = 'block';
+    var full = p.dataset.full;
+    if (full == null) {
+      // Nothing from Supabase yet (or an older export baked raw text in) —
+      // resolve through the same >>flag splitter used for overrides, so a
+      // stray ">>flag" line never renders literally. innerHTML→\n keeps any
+      // baked <br> line breaks intact for the splitter.
+      var rawBaked = p.innerHTML.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '');
+      full = (typeof _legendResolveText === 'function') ? _legendResolveText(rawBaked) : rawBaked;
+      p.dataset.full = full;
+    }
+    p.textContent = ''; _typewriter(p, full, 60);
+  }
 }
 
 // ── spot link popup ──
