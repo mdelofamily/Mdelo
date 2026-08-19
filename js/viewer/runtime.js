@@ -427,6 +427,21 @@ window.listUsers = async function () {
   } catch (e) { return { ok: false, status: 0, msg: e.message }; }
 };
 
+// Refreshes the session if it's expired or about to be (within 60s). A
+// tab left open longer than the access-token lifetime (~1h by default)
+// would otherwise sit past expires_at with nothing re-checking it until
+// the next full page load — isLoggedIn() would then wrongly report
+// logged-out even though the refresh_token is still perfectly valid.
+// Called once at boot, and then on a recurring timer (see the 'load'
+// listener at the bottom of this file) so a long-lived tab never goes stale.
+async function _authMaybeRefresh() {
+  const s = _authGetSession();
+  if (s && s.refresh_token && s.expires_at < Date.now() + 60000) {
+    const refreshed = await _authRefresh(s.refresh_token);
+    if (refreshed) _authStoreFromTokenResponse(refreshed); else _authSetSession(null);
+  }
+}
+
 // Handles the ?token_hash=...&type=... redirect on load, or silently
 // refreshes/restores an existing session. Awaited from
 // window.addEventListener('load', ...) below, before anything that might
@@ -444,11 +459,7 @@ async function _authBoot() {
     history.replaceState(null, '', clean);
     if (typeof toast === 'function') toast(data ? '✓ ავტორიზებული ხარ' : '✗ login ბმული აღარ არის ვალიდური');
   } else {
-    const s = _authGetSession();
-    if (s && s.refresh_token && s.expires_at < Date.now() + 60000) {
-      const refreshed = await _authRefresh(s.refresh_token);
-      if (refreshed) _authStoreFromTokenResponse(refreshed); else _authSetSession(null);
-    }
+    await _authMaybeRefresh();
   }
   if (window.isLoggedIn()) {
     await _authLoadTier();
@@ -2386,6 +2397,13 @@ window.addEventListener('load', async () => {
   applySpotHash();
   applyAreaHash();
   _tmInit();
+  // Access tokens expire ~1h after issue (Supabase default). _authBoot()
+  // only catches a near-expiry token at the moment the page loads — a tab
+  // left open longer than that would otherwise silently drop to
+  // isLoggedIn() === false with a perfectly good refresh_token sitting
+  // unused. Recheck every 4 min (comfortably inside the 60s pre-expiry
+  // refresh window) so a long-lived tab stays logged in.
+  setInterval(() => { _authMaybeRefresh().then(() => { if (window.isLoggedIn()) _applyTierFlag(); }); }, 4 * 60 * 1000);
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').then(reg => {
       if ('periodicSync' in reg) { reg.periodicSync.register('notif-check', { minInterval: 5 * 60 * 1000 }).catch(() => {}); }
