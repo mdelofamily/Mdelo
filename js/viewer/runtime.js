@@ -1017,7 +1017,7 @@ function _gmOpenOverlay(node, parentNodes, parentPath, standalone) {
         _gmTodoState.set(itObj.id, next);
         row.classList.toggle('checked', next);
         box.textContent = next ? '✅' : '⬜';
-        _gmSaveTodoState(itObj.id, next);
+        _gmSaveTodoStateSafe(itObj.id, next);
       };
       body.appendChild(row);
     } else {
@@ -2067,8 +2067,28 @@ async function _gmSaveTodoState(todoId, checked) {
         updated_at: new Date().toISOString()
       })
     });
-    if (!r.ok) console.error('todo save failed', r.status, await r.text());
-  } catch (e) {}
+    if (r.ok) return true;
+    const errBody = r.text ? await r.text().catch(function () { return ''; }) : '';
+    return { ok: false, status: r.status, msg: errBody.slice(0, 150) };
+  } catch (e) { return { ok: false, status: 0, msg: e.message }; }
+}
+
+// Offline-safe wrapper — the todo-checkbox click handler in _gmOpenOverlay
+// already applies the toggle to _gmTodoState (and the DOM) before calling
+// this, so there's nothing extra to "apply locally" here; only the
+// persistence step needs guarding, same pattern as _tmMenuSaveNode in
+// terminal.js.
+async function _gmSaveTodoStateSafe(todoId, checked) {
+  if (!navigator.onLine) {
+    window.pendingAdd('todo', todoId, 'todo item', { todoId: todoId, checked: checked });
+    return;
+  }
+  var res;
+  try { res = await _gmSaveTodoState(todoId, checked); }
+  catch (e) { res = { ok: false, status: 0, msg: e.message }; }
+  if (res !== true) {
+    window.pendingAdd('todo', todoId, 'todo item', { todoId: todoId, checked: checked });
+  }
 }
 
 async function loadDialogueOverrides() {
@@ -2421,6 +2441,7 @@ async function _pendingFlushOne(entry) {
   if (entry.kind === 'dlg') return await window.dlgOverrideSave(entry.payload.title, entry.payload.nodes, entry.payload.dsl);
   if (entry.kind === 'menuItem') return await window.menuOverrideSave(entry.payload.nodeId, entry.payload.fields);
   if (entry.kind === 'legend') return await window.legendOverrideSave(entry.payload.text);
+  if (entry.kind === 'todo') return await _gmSaveTodoState(entry.payload.todoId, entry.payload.checked);
   return { ok: false, status: 0, msg: 'უცნობი queue ტიპი: ' + entry.kind };
 }
 

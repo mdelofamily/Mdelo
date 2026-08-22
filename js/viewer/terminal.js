@@ -19,7 +19,7 @@ var _tmFilesCache = [];    // last /ფაილები result — lets /play 
 var _tmEditMediaBuf = [];  // [{items:[{type,url,name}...]}...] — files-segments captured via /მედია
                             // during the current 'text' menuItem session; [[მედია:N]] tokens in tmTa
                             // point into this by index. Cleared on every session open/close/save/cancel.
-var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/მარკერი','/დახურვა','/დროშა','/მეტსახელი','/მე','/ვინ','/ფერი','/help','/გზა','/ჩვ','/გად','/md','/წაშ','/რედ','/ფოთოლი','/მაკრო','/ლოგინი','/ლოგაუთი','/სახელი','/სესია','/სია','/სურვილი','/შენახვა','/ჩატვირთვა','/შესრულება','/play','/მუსიკა','/ფაილები','/ფაილი'];
+var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/მარკერი','/დახურვა','/დროშა','/მეტსახელი','/მე','/ვინ','/ფერი','/help','/გზა','/ჩვ','/გად','/md','/წაშ','/რედ','/ფოთოლი','/მაკრო','/ლოგინი','/ლოგაუთი','/სახელი','/სესია','/სია','/სურვილი','/შენახვა','/ჩატვირთვა','/სინქრონიზაცია','/შესრულება','/play','/მუსიკა','/ფაილები','/ფაილი'];
 
 function toggleTerm() { _tmOpen ? closeTerm() : _tmOpen_(); }
 function _tmOpen_() {
@@ -491,7 +491,9 @@ async function _tmRun(raw) {
     'დაწინაურება': _tmRequestTierUp,
     'სურვილი':     _tmRequestTierUp,
     'შენახვა':     _tmSavePending,
-    'ჩატვირთვა':   _tmLoadPending
+    'ჩატვირთვა':   _tmLoadPending,
+    'სინქრონიზაცია': _tmSyncPending,
+    'sync':        _tmSyncPending
   };
   var fn = map[cmd];
   if (fn) {
@@ -554,6 +556,7 @@ function _tmHelp() {
     ['/სურვილი', 'შემდეგი ტიერის თხოვნა კონსენსუსით (სტუმარი→მეურვე, მეურვე→მაცხოვრებელი)'],
     ['/შენახვა [ფაილის სახელი]', 'offline queue-ს გადმოწერა JSON ფაილად (მხოლოდ დაუსინქრონებელი ცვლილებები)'],
     ['/ჩატვირთვა', 'JSON ფაილიდან queue-ს ატვირთვა — ერთვის მიმდინარე queue-ს, ერთი და იმავე target-ის ჩანაწერი გადაიწერება'],
+    ['/სინქრონიზაცია', 'queue-ს ხელით სინქრონიზაცია (session-refresh + flush) — automatic reconnect-ის alternative'],
     ['/ლოგინი',           'შესვლა (popup: email + სახელი), ან სტატუსის ჩვენება'],
     ['/ლოგაუთი',          'გამოსვლა სისტემიდან'],
     ['/სახელი <ახალი სახელი>', 'display_name-ის შეცვლა (დიალოგებში ჩანს)'],
@@ -838,6 +841,42 @@ async function _tmLoadPending() {
     }
   } else {
     _tmL('ter', '✗ ' + (res.msg || 'უცნობი შეცდომა'));
+  }
+}
+
+// /სინქრონიზაცია — manual retry of the offline pending-queue. The
+// automatic path (runtime.js's 'online' listener) already does this on
+// reconnect, but that DOM event doesn't always fire reliably — the tab may
+// have been open already when connectivity actually returned, or a flaky
+// mobile network transition never crosses the browser's online/offline
+// threshold at all. This lets someone force the same refresh-then-flush
+// sequence by hand instead of waiting/reloading the page.
+async function _tmSyncPending() {
+  if (typeof window.pendingCount !== 'function' || window.pendingCount() === 0) {
+    _tmL('tdm', 'queue ცარიელია — დასინქრონებელი არაფერია');
+    return;
+  }
+  if (!navigator.onLine) {
+    _tmL('ter', '✗ ჯერ კიდევ ოფლაინ ხარ (' + window.pendingCount() + ' queue-ში)');
+    return;
+  }
+  _tmL('tdm', '↑ სინქრონიზაცია (' + window.pendingCount() + ')...');
+  if (typeof _authMaybeRefresh === 'function') await _authMaybeRefresh();
+  if (typeof window.isLoggedIn === 'function' && !window.isLoggedIn()) {
+    _tmL('ter', '✗ სესია ვადაგასულია — /ლოგინი ხელახლა, ან /შენახვა queue-ს შესანარჩუნებლად');
+    return;
+  }
+  if (typeof window.pendingFlush !== 'function') {
+    _tmL('ter', '✗ pendingFlush ვერ მოიძებნა (runtime.js?)');
+    return;
+  }
+  var res = await window.pendingFlush();
+  if (res.flushed) _tmL('tok', '✓ ' + res.flushed + ' ცვლილება დასინქრონდა');
+  if (res.remaining) {
+    var em = res.error && res.error.msg ? (' — ' + res.error.msg) : '';
+    _tmL('ter', '⚠ კიდევ ' + res.remaining + ' queue-ში დარჩა' + em);
+  } else if (!res.flushed) {
+    _tmL('tdm', 'queue ცარიელია');
   }
 }
 
@@ -2143,7 +2182,7 @@ async function _tmMenuSaveNode(nodeId, fields) {
 // A macro IS a brand-new command: once saved, typing its exact name (with /) runs
 // the whole stored chain. Local scope takes precedence over shared on a name clash.
 var _TM_RESERVED = ['macro','მაკრო','marker','მარკერი','cd','გად','md','rm','წაშ','ls','ჩვ','pwd','გზა','edit','რედ','ფოთოლი','flag','დროშა','nick','მეტსახელი','me','მე','who','ვინ','color','ფერი','help','play','მუსიკა','music','ფაილები','files','ფაილი',
-  'დახმარება','გასუფთავება','ინფო','მასშტაბი','ზონები','ობიექტები','დიალოგი','წასვლა','ლეგენდა','მენიუ','გახსნა','შეყვანა','სრული','ისტორია','ვადა','ტექსტი','შეტყობინება','დახურვა','სია','დაწინაურება','სურვილი','შენახვა','ჩატვირთვა','შესრულება'];
+  'დახმარება','გასუფთავება','ინფო','მასშტაბი','ზონები','ობიექტები','დიალოგი','წასვლა','ლეგენდა','მენიუ','გახსნა','შეყვანა','სრული','ისტორია','ვადა','ტექსტი','შეტყობინება','დახურვა','სია','დაწინაურება','სურვილი','შენახვა','ჩატვირთვა','სინქრონიზაცია','sync','შესრულება'];
 
 // Splits a chain on ";" — but only when ";" is followed by "/" (so a stray
 // ";" inside ordinary command args is left alone) — PLUS treats any [...]
