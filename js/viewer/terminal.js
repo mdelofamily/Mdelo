@@ -19,7 +19,7 @@ var _tmFilesCache = [];    // last /ფაილები result — lets /play 
 var _tmEditMediaBuf = [];  // [{items:[{type,url,name}...]}...] — files-segments captured via /მედია
                             // during the current 'text' menuItem session; [[მედია:N]] tokens in tmTa
                             // point into this by index. Cleared on every session open/close/save/cancel.
-var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/მარკერი','/დახურვა','/დროშა','/მეტსახელი','/მე','/ვინ','/ფერი','/help','/გზა','/ჩვ','/გად','/md','/წაშ','/რედ','/ფოთოლი','/მაკრო','/ლოგინი','/ლოგაუთი','/სახელი','/სესია','/სია','/სურვილი','/რეჟიმი','/შესრულება','/play','/მუსიკა','/ფაილები','/ფაილი'];
+var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/მარკერი','/დახურვა','/დროშა','/მეტსახელი','/მე','/ვინ','/ფერი','/help','/გზა','/ჩვ','/გად','/md','/წაშ','/რედ','/ფოთოლი','/მაკრო','/ლოგინი','/ლოგაუთი','/სახელი','/სესია','/სია','/სურვილი','/შენახვა','/ჩატვირთვა','/შესრულება','/play','/მუსიკა','/ფაილები','/ფაილი'];
 
 function toggleTerm() { _tmOpen ? closeTerm() : _tmOpen_(); }
 function _tmOpen_() {
@@ -490,7 +490,8 @@ async function _tmRun(raw) {
     'სია':         _tmUserList,
     'დაწინაურება': _tmRequestTierUp,
     'სურვილი':     _tmRequestTierUp,
-    'რეჟიმი':      _tmDevViewTier
+    'შენახვა':     _tmSavePending,
+    'ჩატვირთვა':   _tmLoadPending
   };
   var fn = map[cmd];
   if (fn) {
@@ -551,7 +552,8 @@ function _tmHelp() {
     ['/ფაილი წაშ <N|სახელი>', 'ცალკე bucket-ფაილის წაშლა — item-ზე მიბმულობის მიუხედავად'],
     ['/სია', 'დალოგინებული იუზერების სია (მხოლოდ shadow_admin)'],
     ['/სურვილი', 'შემდეგი ტიერის თხოვნა კონსენსუსით (სტუმარი→მეურვე, მეურვე→მაცხოვრებელი)'],
-    ['/რეჟიმი <tier>', 'ტესტ რეჟიმი — UI ხედავს სხვა ტიერად (მხოლოდ shadow_admin, /რეჟიმი გამორთვა-ით იხურება)'],
+    ['/შენახვა [ფაილის სახელი]', 'offline queue-ს გადმოწერა JSON ფაილად (მხოლოდ დაუსინქრონებელი ცვლილებები)'],
+    ['/ჩატვირთვა', 'JSON ფაილიდან queue-ს ატვირთვა — ერთვის მიმდინარე queue-ს, ერთი და იმავე target-ის ჩანაწერი გადაიწერება'],
     ['/ლოგინი',           'შესვლა (popup: email + სახელი), ან სტატუსის ჩვენება'],
     ['/ლოგაუთი',          'გამოსვლა სისტემიდან'],
     ['/სახელი <ახალი სახელი>', 'display_name-ის შეცვლა (დიალოგებში ჩანს)'],
@@ -793,41 +795,50 @@ async function _tmRequestTierUp() {
   }
 }
 
-// /რეჟიმი <tier> — shadow_admin only. Local view-tier override: UI-gating
-// (buttons, macro tier-checks, command tier-checks) sees the given tier
-// instead of the real one, WITHOUT logging out/in. Gated on myRealTier(),
-// never myTier() — otherwise once viewing as visitor there'd be no way to
-// switch back. Does NOT touch the real Supabase session — RLS-enforced
-// writes underneath still run as the real shadow_admin, so this only proves
-// what the UI shows/hides for a tier, not what the server would block.
-var _TM_TIER_ALIASES = {
-  'ვიზიტორი': 'visitor', 'სტუმარი': 'visitor', 'visitor': 'visitor',
-  'ქეართეიქერი': 'caretaker', 'მეურვე': 'caretaker', 'caretaker': 'caretaker',
-  'რეზიდენტი': 'resident', 'მაცხოვრებელი': 'resident', 'resident': 'resident',
-  'შედოუადმინი': 'shadow_admin', 'ადმინი': 'shadow_admin', 'shadow_admin': 'shadow_admin'
-};
-function _tmDevViewTier(args) {
-  if (typeof window.myRealTier !== 'function' || window.myRealTier() !== 'shadow_admin') {
-    _tmL('ter', '✗ "/რეჟიმი" საჭიროებს "shadow_admin" — შენი: ' + (typeof window.myTier === 'function' ? window.myTier() : 'visitor'));
+// /შენახვა [ფაილის სახელი] — downloads the current offline pending-queue
+// (dialogue/menu/legend edits made while disconnected, not yet synced to
+// Supabase) as a portable JSON file. See scope-offline-viewer.md ნაწილი 3:
+// this is the escape hatch for when the outage outlasts the refresh_token
+// itself and pendingFlush() can no longer authenticate from this device.
+function _tmSavePending(args) {
+  if (typeof window.pendingExportDownload !== 'function') {
+    _tmL('ter', '✗ pendingExportDownload ვერ მოიძებნა (runtime.js?)');
     return;
   }
-  var arg = (args || [])[0];
-  if (!arg) {
-    var cur = localStorage.getItem('mdelo_dev_view_tier');
-    _tmL('tdm', cur ? ('ტესტ რეჟიმი აქტიურია: ' + cur) : 'ტესტ რეჟიმი გამორთულია (ხედავ როგორც shadow_admin)');
-    _tmL('tdm', 'გამოყენება: /რეჟიმი visitor|caretaker|resident|shadow_admin  ან  /რეჟიმი გამორთვა');
+  var name = (args || []).join(' ').trim();
+  if (!name) name = 'mdelo-pending-' + new Date().toISOString().replace(/[:.]/g, '-') + '.json';
+  else if (!/\.json$/i.test(name)) name += '.json';
+  var res = window.pendingExportDownload(name);
+  if (res.ok) _tmL('tok', '✓ ჩამოტვირთულია: ' + name + ' (' + res.count + ' ცვლილება)');
+  else _tmL('tdm', 'queue ცარიელია — შესანახი არაფერია');
+}
+
+// /ჩატვირთვა — opens the file picker, merges a previously-exported queue
+// back into the local pending-queue. Doesn't flush automatically — the
+// person still needs to be online + logged in, at which point the normal
+// 'online' reconnect handler (runtime.js) or the next natural sync picks
+// it up, same as any other queued entry.
+async function _tmLoadPending() {
+  if (typeof window.pendingImportPrompt !== 'function') {
+    _tmL('ter', '✗ pendingImportPrompt ვერ მოიძებნა (runtime.js?)');
     return;
   }
-  if (arg === 'გამორთვა' || arg === 'off' || arg === 'shadow_admin') {
-    window.clearDevViewTier();
-    _tmL('tok', '✓ ტესტ რეჟიმი გამორთულია — ისევ shadow_admin ხედვაა');
-    return;
+  _tmL('tdm', 'ფაილის არჩევა...');
+  var res = await window.pendingImportPrompt();
+  if (res.ok) {
+    _tmL('tok', '✓ ჩატვირთულია: ' + res.count + ' ცვლილება queue-ში დაემატა');
+    if (typeof _MAP_ID !== 'undefined' && res.mapId && res.mapId !== _MAP_ID) {
+      _tmL('tdm', '⚠ ფაილი სხვა რუკისთვისაა (' + res.mapId + ') — ' + _MAP_ID + '-ზე მაინც შეინახება queue-ში');
+    }
+    if (navigator.onLine && typeof window.isLoggedIn === 'function' && window.isLoggedIn() && typeof window.pendingFlush === 'function') {
+      _tmL('tdm', '↑ ონლაინ ხარ — ვცდი დაუყოვნებლივ სინქრონიზაციას...');
+      var flushRes = await window.pendingFlush();
+      if (flushRes.flushed) _tmL('tok', '✓ ' + flushRes.flushed + ' ცვლილება დასინქრონდა');
+      if (flushRes.remaining) _tmL('tdm', '⚠ კიდევ ' + flushRes.remaining + ' queue-ში დარჩა');
+    }
+  } else {
+    _tmL('ter', '✗ ' + (res.msg || 'უცნობი შეცდომა'));
   }
-  var tier = _TM_TIER_ALIASES[arg];
-  if (!tier) { _tmL('ter', '✗ უცნობი ტიერი: "' + arg + '"'); return; }
-  var res = window.setDevViewTier(tier);
-  if (res.ok) _tmL('tok', '✓ ტესტ რეჟიმი: ხედავ როგორც "' + tier + '"');
-  else _tmL('ter', '✗ ვერ ჩაირთო (' + res.reason + ')');
 }
 
 async function _tmSetName(args) {
@@ -910,12 +921,23 @@ async function _tmSaveLegend(text) {
   document.getElementById('tmTa').value = '';
   if (_tmMulti) tmToggleMulti();
 
-  _tmL('tdm', '↑ ' + label + ' — ვინახავ...');
   if (typeof window.legendOverrideSave !== 'function') {
     _tmL('ter', '✗ legendOverrideSave ვერ მოიძებნა (runtime.js?)');
     return;
   }
-  var res = await window.legendOverrideSave(text);
+  if (!navigator.onLine) {
+    window.pendingAdd('legend', '__legend__', label, { text: text });
+    _tmL('tdm', '⚠ ოფლაინ — ' + label + ' ლოკალურად გამოიყენება, queue-შია (' + window.pendingCount() + ')');
+    return;
+  }
+  _tmL('tdm', '↑ ' + label + ' — ვინახავ...');
+  var res;
+  try { res = await window.legendOverrideSave(text); }
+  catch (e) {
+    window.pendingAdd('legend', '__legend__', label, { text: text });
+    _tmL('ter', '✗ ქსელის შეცდომა — queue-ში ჩავარდა (' + window.pendingCount() + '): ' + e.message);
+    return;
+  }
   if (res === true) _tmL('tok', label + ' — შენახულია ✓ (ყველა viewer-ს ეჩვენება)');
   else _tmL('ter', '✗ Supabase: ' + (res && res.msg ? res.msg : 'უცნობი'));
 }
@@ -1458,6 +1480,23 @@ async function _tmSaveDlg(dsl) {
     return;
   }
 
+  var label = _tmEditLabel;
+
+  // Offline: apply the parsed nodes locally right away (same effect
+  // dlgOverrideSave has on success — _applyDlgOverride patches _OBJS so the
+  // edit is immediately visible/testable) and queue the Supabase write for
+  // when the connection comes back, instead of letting fetch() itself fail
+  // with a generic network error.
+  if (!navigator.onLine) {
+    if (typeof _applyDlgOverride === 'function') _applyDlgOverride({ obj_title: title, nodes_json: nodes, dsl: dsl });
+    window.pendingAdd('dlg', title, label, { title: title, nodes: nodes, dsl: dsl });
+    _tmEditObj = null; _tmEditMode = null; _tmEditLabel = null; _tmEditBuf = null; _tmEditMediaBuf = [];
+    document.getElementById('tmTa').value = '';
+    if (_tmMulti) tmToggleMulti();
+    _tmL('tdm', '⚠ ოფლაინ — ' + label + ' ლოკალურად გამოიყენება, queue-შია (' + window.pendingCount() + ')');
+    return;
+  }
+
   _tmL('tdm', '↑ ' + title + ' — ვინახავ...');
 
   if (typeof dlgOverrideSave !== 'function') {
@@ -1469,19 +1508,27 @@ async function _tmSaveDlg(dsl) {
   try {
     okResult = await dlgOverrideSave(title, nodes, dsl); ok = okResult === true;
   } catch (e) {
-    _tmL('ter', '✗ Supabase: ' + e.message);
+    // Connection dropped mid-request (not just a stale navigator.onLine
+    // flag) — queue it the same as the upfront offline check above, rather
+    // than discarding the edit.
+    if (typeof _applyDlgOverride === 'function') _applyDlgOverride({ obj_title: title, nodes_json: nodes, dsl: dsl });
+    window.pendingAdd('dlg', title, label, { title: title, nodes: nodes, dsl: dsl });
+    _tmEditObj = null; _tmEditMode = null; _tmEditLabel = null; _tmEditBuf = null; _tmEditMediaBuf = [];
+    document.getElementById('tmTa').value = '';
+    if (_tmMulti) tmToggleMulti();
+    _tmL('ter', '✗ ქსელის შეცდომა — queue-ში ჩავარდა (' + window.pendingCount() + '): ' + e.message);
     return;
   }
 
   if (ok) {
-    _tmEditObj = null;
-    _tmEditMode = null;
-    _tmEditLabel = null;
-    _tmEditBuf = null; _tmEditMediaBuf = [];
+    _tmEditObj = null; _tmEditMode = null; _tmEditLabel = null; _tmEditBuf = null; _tmEditMediaBuf = [];
     document.getElementById('tmTa').value = '';
     if (_tmMulti) tmToggleMulti();
-    _tmL('tok', title + ' — შენახულია ✓  (ყველა viewer განახლდება)');
+    _tmL('tok', label + ' — შენახულია ✓  (ყველა viewer განახლდება)');
   } else {
+    // Real server-side rejection (we got an HTTP response, connectivity is
+    // fine) — NOT queued, since replaying the same payload later would just
+    // fail again the same way. Leave it in the textarea to fix and retry.
     var _em = okResult && okResult.msg ? ('HTTP ' + okResult.status + ': ' + okResult.msg) : 'უცნობი';
     _tmL('ter', '✗ Supabase ' + _em);
     _tmL('tdm', 'DSL textarea-ში რჩება, შეგიძლია კვლავ სცადო');
@@ -2063,12 +2110,26 @@ async function _tmSaveMenuItem(text) {
 }
 
 // Partial upsert into menu_overrides — only the given fields get written/replaced server-side.
+// The caller (_tmSaveMenuItem) already mutated the in-memory node.items
+// locally before calling this, so there's nothing extra to "apply" here on
+// the offline path — only the persistence step needs guarding.
 async function _tmMenuSaveNode(nodeId, fields) {
   if (typeof window.menuOverrideSave !== 'function') {
     _tmL('ter', '✗ menuOverrideSave ვერ მოიძებნა (runtime.js?)');
     return;
   }
-  var res = await window.menuOverrideSave(nodeId, fields);
+  if (!navigator.onLine) {
+    window.pendingAdd('menuItem', nodeId, 'მენიუ item', { nodeId: nodeId, fields: fields });
+    _tmL('tdm', '⚠ ოფლაინ — ლოკალურად გამოიყენება, queue-შია (' + window.pendingCount() + ')');
+    return;
+  }
+  var res;
+  try { res = await window.menuOverrideSave(nodeId, fields); }
+  catch (e) {
+    window.pendingAdd('menuItem', nodeId, 'მენიუ item', { nodeId: nodeId, fields: fields });
+    _tmL('ter', '✗ ქსელის შეცდომა — queue-ში ჩავარდა (' + window.pendingCount() + '): ' + e.message);
+    return;
+  }
   if (res !== true) {
     var em = res && res.msg ? ('HTTP ' + res.status + ': ' + res.msg) : 'უცნობი';
     _tmL('ter', '✗ Supabase: ' + em);
@@ -2082,7 +2143,7 @@ async function _tmMenuSaveNode(nodeId, fields) {
 // A macro IS a brand-new command: once saved, typing its exact name (with /) runs
 // the whole stored chain. Local scope takes precedence over shared on a name clash.
 var _TM_RESERVED = ['macro','მაკრო','marker','მარკერი','cd','გად','md','rm','წაშ','ls','ჩვ','pwd','გზა','edit','რედ','ფოთოლი','flag','დროშა','nick','მეტსახელი','me','მე','who','ვინ','color','ფერი','help','play','მუსიკა','music','ფაილები','files','ფაილი',
-  'დახმარება','გასუფთავება','ინფო','მასშტაბი','ზონები','ობიექტები','დიალოგი','წასვლა','ლეგენდა','მენიუ','გახსნა','შეყვანა','სრული','ისტორია','ვადა','ტექსტი','შეტყობინება','დახურვა','სია','დაწინაურება','სურვილი','რეჟიმი','შესრულება'];
+  'დახმარება','გასუფთავება','ინფო','მასშტაბი','ზონები','ობიექტები','დიალოგი','წასვლა','ლეგენდა','მენიუ','გახსნა','შეყვანა','სრული','ისტორია','ვადა','ტექსტი','შეტყობინება','დახურვა','სია','დაწინაურება','სურვილი','შენახვა','ჩატვირთვა','შესრულება'];
 
 // Splits a chain on ";" — but only when ";" is followed by "/" (so a stray
 // ";" inside ordinary command args is left alone) — PLUS treats any [...]

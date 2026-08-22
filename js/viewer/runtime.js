@@ -345,50 +345,15 @@ function _applyTierFlag() {
   if (!window.flagHas(flagName)) window.flagSet(flagName);
 }
 window._applyTierFlag = _applyTierFlag;
-window.myTier = function () {
-  const real = window.myRealTier();
-  if (real === 'shadow_admin') {
-    const dev = localStorage.getItem('mdelo_dev_view_tier');
-    if (dev && _TIER_RANK.hasOwnProperty(dev)) return dev;
-  }
-  return real;
-};
+// No dev-view-tier override anymore (removed — /რეჟიმი is free again):
+// myTier() is now just an alias for the real tier.
+window.myTier = function () { return window.myRealTier(); };
 window.myUserId = function () { const s = _authGetSession(); return (s && s.user && s.user.id) || null; };
 window.myDisplayName = function () {
   return (window._myTier && window._myTier.display_name) || localStorage.getItem('mdelo_nick') || 'მოგზაური';
 };
 // tier-order check used by dialogue buttons / menu gating — e.g. _tierAtLeast('resident')
 window._tierAtLeast = function (min) { return (_TIER_RANK[window.myTier()] || 0) >= (_TIER_RANK[min] || 0); };
-
-// shadow_admin only (checked against the REAL tier, never the overridden
-// view — otherwise there'd be no way back). Sets/clears the local
-// dev-view-tier override and (re)draws the "test mode" banner.
-window.setDevViewTier = function (tier) {
-  if (window.myRealTier() !== 'shadow_admin') return { ok: false, reason: 'not_shadow_admin' };
-  if (!_TIER_RANK.hasOwnProperty(tier)) return { ok: false, reason: 'unknown_tier' };
-  localStorage.setItem('mdelo_dev_view_tier', tier);
-  _renderDevViewBanner();
-  if (typeof scheduleRender === 'function') scheduleRender();
-  return { ok: true };
-};
-window.clearDevViewTier = function () {
-  localStorage.removeItem('mdelo_dev_view_tier');
-  _renderDevViewBanner();
-  if (typeof scheduleRender === 'function') scheduleRender();
-};
-function _renderDevViewBanner() {
-  var old = document.getElementById('_devViewBanner');
-  if (old) old.remove();
-  if (window.myRealTier() !== 'shadow_admin') return;
-  var dev = localStorage.getItem('mdelo_dev_view_tier');
-  if (!dev || !_TIER_RANK.hasOwnProperty(dev)) return;
-  var bar = document.createElement('div');
-  bar.id = '_devViewBanner';
-  bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999999;background:#a34d00;color:#fff;font-size:12px;padding:6px 10px;display:flex;align-items:center;justify-content:center;gap:10px;font-family:inherit;';
-  bar.innerHTML = '🎭 ტესტ რეჟიმი — UI ხედავს როგორც: <b>' + dev + '</b> (რეალურად შენ shadow_admin ხარ) &nbsp; <span id="_devViewOff" style="text-decoration:underline;cursor:pointer;">გამორთვა</span>';
-  document.body.prepend(bar);
-  document.getElementById('_devViewOff').onclick = function () { window.clearDevViewTier(); };
-}
 
 // Sets display_name on first login — replaces /nick for authenticated users.
 // (Anonymous /nick in terminal.js is untouched for now; that consolidation
@@ -1941,6 +1906,28 @@ function goToArea() {
 
 const _MAP_ID = (_CFG && _CFG.title) ? _CFG.title : 'map';
 
+// ── local "last synced" snapshot (dialogue/menu/legend overrides) ──────
+// Every successful load of these three override tables gets mirrored into
+// localStorage. If a later page load happens fully offline (no network at
+// all — not just a slow one, which fetch would still eventually resolve or
+// reject on its own), the corresponding load*Overrides() function below
+// falls back to this cached copy instead of leaving _OBJS / _CFG.menu /
+// #questPopup on their stale export-time baked content. This is separate
+// from the pending-edit queue (which holds NOT-YET-SYNCED local edits) —
+// this snapshot holds the last state we know Supabase actually agreed on.
+function _syncSnapKey(part) { return 'mdelo_sync_' + part + '_' + _MAP_ID; }
+function _syncSnapSave(part, rows) {
+  try { localStorage.setItem(_syncSnapKey(part), JSON.stringify(rows)); } catch (e) {}
+}
+function _syncSnapRestore(part, applyFn) {
+  try {
+    var raw = localStorage.getItem(_syncSnapKey(part));
+    if (!raw) return;
+    var rows = JSON.parse(raw);
+    if (rows) applyFn(rows);
+  } catch (e) {}
+}
+
 // Find _OBJS index by hotspot data-title
 function _findOiByTitle(title) {
   var hs = document.querySelector('.hotspot[data-title="' + title.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"]:not(.hs-area):not(.no-interact)');
@@ -2090,10 +2077,17 @@ async function loadDialogueOverrides() {
       SUPA_URL + '/rest/v1/dialogue_overrides?map_id=eq.' + encodeURIComponent(_MAP_ID),
       { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY } }
     );
-    if (!r.ok) return;
+    if (!r.ok) { _syncSnapRestore('dialogue', function (rows) { rows.forEach(_applyDlgOverride); }); return; }
     var rows = await r.json();
     rows.forEach(_applyDlgOverride);
-  } catch (e) {}
+    _syncSnapSave('dialogue', rows);
+  } catch (e) {
+    // No network at all (offline page load) — fall back to whatever the
+    // last successful online load left cached, so a reload while offline
+    // doesn't silently revert every object to its stale export-time
+    // dialogue.
+    _syncSnapRestore('dialogue', function (rows) { rows.forEach(_applyDlgOverride); });
+  }
 }
 
 // Save/update a dialogue override — called from terminal.js
@@ -2221,10 +2215,13 @@ async function loadMenuOverrides() {
       SUPA_URL + '/rest/v1/menu_overrides?map_id=eq.' + encodeURIComponent(_MAP_ID),
       { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY } }
     );
-    if (!r.ok) return;
+    if (!r.ok) { _syncSnapRestore('menu', _applyMenuOverrides); return; }
     var rows = await r.json();
     _applyMenuOverrides(rows);
-  } catch (e) {}
+    _syncSnapSave('menu', rows);
+  } catch (e) {
+    _syncSnapRestore('menu', _applyMenuOverrides);
+  }
 }
 
 // Partial upsert — called from terminal.js. `fields` may include any of:
@@ -2332,29 +2329,35 @@ window._legendResolveText = _legendResolveText;
 // ── main "?" legend override (Supabase) ──
 // The legend's baked-in text (export time) lives in #questPopup. A single row
 // per map_id is enough — there's only one legend, not a tree like the menu.
+function _applyLegendOverrideRows(rows) {
+  if (rows && rows[0] && rows[0].text != null) {
+    var p = document.getElementById('questPopup');
+    if (p) {
+      p.dataset.fullRaw = rows[0].text;
+      var resolved = _legendResolveText(rows[0].text);
+      p.dataset.full = resolved;
+      if (p.style.display === 'block') p.textContent = resolved;
+      // Button visibility was frozen at export time (hidden if the map had
+      // no description then) — every fresh page load should reflect the
+      // live override, not just the session that saved it.
+      var btn = document.getElementById('questBtn');
+      if (btn) btn.style.display = resolved ? '' : 'none';
+    }
+  }
+}
 async function loadLegendOverride() {
   try {
     var r = await fetch(
       SUPA_URL + '/rest/v1/legend_overrides?map_id=eq.' + encodeURIComponent(_MAP_ID),
       { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY } }
     );
-    if (!r.ok) return;
+    if (!r.ok) { _syncSnapRestore('legend', _applyLegendOverrideRows); return; }
     var rows = await r.json();
-    if (rows && rows[0] && rows[0].text != null) {
-      var p = document.getElementById('questPopup');
-      if (p) {
-        p.dataset.fullRaw = rows[0].text;
-        var resolved = _legendResolveText(rows[0].text);
-        p.dataset.full = resolved;
-        if (p.style.display === 'block') p.textContent = resolved;
-        // Button visibility was frozen at export time (hidden if the map had
-        // no description then) — every fresh page load should reflect the
-        // live override, not just the session that saved it.
-        var btn = document.getElementById('questBtn');
-        if (btn) btn.style.display = resolved ? '' : 'none';
-      }
-    }
-  } catch (e) {}
+    _applyLegendOverrideRows(rows);
+    _syncSnapSave('legend', rows);
+  } catch (e) {
+    _syncSnapRestore('legend', _applyLegendOverrideRows);
+  }
 }
 
 window.legendOverrideSave = async function (text) {
@@ -2374,6 +2377,141 @@ window.legendOverrideSave = async function (text) {
   } catch (e) { return { ok: false, status: 0, msg: e.message }; }
 };
 
+// ── offline pending-edit queue ──────────────────────────────────────────
+// Dialogue/menu-item/legend saves normally go straight to Supabase
+// (dlgOverrideSave / menuOverrideSave / legendOverrideSave above). When the
+// device is offline at save time, terminal.js pushes the same payload here
+// instead of calling those functions directly. Each entry is a FULL
+// snapshot, not a delta — same convention as the override tables
+// themselves — so a second offline edit to the same target simply replaces
+// the first in the queue rather than stacking two edits to be replayed in
+// order.
+var _PENDING_KEY = 'mdelo_pending_queue';
+
+function _pendingGet() {
+  try { return JSON.parse(localStorage.getItem(_PENDING_KEY) || '[]'); } catch (e) { return []; }
+}
+function _pendingSet(arr) {
+  try { localStorage.setItem(_PENDING_KEY, JSON.stringify(arr)); } catch (e) {}
+}
+function _pendingKeyFor(kind, key) { return kind + '::' + (key || ''); }
+
+// Add/replace a pending entry. `kind` is 'dlg' | 'menuItem' | 'legend'.
+// `key` identifies the target within that kind (obj title / node id / fixed
+// '__legend__'). `payload` is whatever the matching *OverrideSave function
+// needs at flush time — see _pendingFlushOne.
+window.pendingAdd = function (kind, key, label, payload) {
+  var arr = _pendingGet();
+  var pk = _pendingKeyFor(kind, key);
+  var entry = { pk: pk, kind: kind, key: key, label: label, payload: payload, ts: Date.now() };
+  var idx = arr.findIndex(function (e) { return e.pk === pk; });
+  if (idx >= 0) arr[idx] = entry; else arr.push(entry);
+  _pendingSet(arr);
+  return arr.length;
+};
+window.pendingList  = function () { return _pendingGet(); };
+window.pendingCount = function () { return _pendingGet().length; };
+window.pendingRemove = function (pk) { _pendingSet(_pendingGet().filter(function (e) { return e.pk !== pk; })); };
+window.pendingClear  = function () { _pendingSet([]); };
+
+// Dispatches one queued entry to its real Supabase save function. Returns
+// whatever that function returns: `true` on success, or an { ok:false,
+// status, msg } error object.
+async function _pendingFlushOne(entry) {
+  if (entry.kind === 'dlg') return await window.dlgOverrideSave(entry.payload.title, entry.payload.nodes, entry.payload.dsl);
+  if (entry.kind === 'menuItem') return await window.menuOverrideSave(entry.payload.nodeId, entry.payload.fields);
+  if (entry.kind === 'legend') return await window.legendOverrideSave(entry.payload.text);
+  return { ok: false, status: 0, msg: 'უცნობი queue ტიპი: ' + entry.kind };
+}
+
+// Replays the whole queue in arrival order (oldest first). Stops at the
+// first failure — e.g. still offline, or a genuine server error — so the
+// remaining entries stay queued for the next attempt instead of every one
+// of them failing in a burst. Persists to localStorage after every step,
+// so a page reload mid-flush never loses progress already made.
+window.pendingFlush = async function () {
+  var arr = _pendingGet();
+  if (!arr.length) return { flushed: 0, remaining: 0, error: null };
+  var flushed = 0;
+  while (arr.length) {
+    var entry = arr[0];
+    var res;
+    try { res = await _pendingFlushOne(entry); } catch (e) { res = { ok: false, status: 0, msg: e.message }; }
+    if (res === true) {
+      arr.shift();
+      flushed++;
+      _pendingSet(arr);
+    } else {
+      _pendingSet(arr);
+      return { flushed: flushed, remaining: arr.length, error: res };
+    }
+  }
+  return { flushed: flushed, remaining: 0, error: null };
+};
+
+// ── /შენახვა /ჩატვირთვა — portable JSON snapshot of the pending queue ──
+// The localStorage queue survives a page reload but not a dead access
+// token: if the refresh_token itself expires while still offline (long
+// trip, dead zone), pendingFlush() will keep failing with an auth error
+// forever on THIS device. Exporting the queue to a JSON file lets it be
+// carried to any browser/device with a fresh login and flushed from there
+// — the file format is just { map_id, exported_at, entries[] }, and
+// entries[] is exactly what pendingAdd() already stores, so importing is a
+// straight merge into the local queue using the same pk-replace semantics.
+window.pendingExportDownload = function (filename) {
+  var arr = _pendingGet();
+  if (!arr.length) return { ok: false, count: 0 };
+  var snapshot = {
+    map_id: (typeof _MAP_ID !== 'undefined' ? _MAP_ID : null),
+    exported_at: new Date().toISOString(),
+    entries: arr
+  };
+  var blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+  return { ok: true, count: arr.length };
+};
+
+// Opens the OS file picker, parses the chosen JSON, and merges its entries
+// into the local pending-queue (pk-replace — an imported entry overwrites
+// a same-target local one, mirroring the merge-duplicates upsert the
+// override tables themselves use once the entry actually reaches Supabase).
+window.pendingImportPrompt = function () {
+  return new Promise(function (resolve) {
+    var inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'application/json,.json';
+    inp.style.display = 'none';
+    inp.addEventListener('change', function () {
+      var f = inp.files && inp.files[0];
+      if (inp.parentNode) document.body.removeChild(inp);
+      if (!f) { resolve({ ok: false, msg: 'ფაილი არჩეული არ არის' }); return; }
+      var reader = new FileReader();
+      reader.onload = function () {
+        try {
+          var data = JSON.parse(reader.result);
+          var entries = (data && Array.isArray(data.entries)) ? data.entries : [];
+          if (!entries.length) { resolve({ ok: false, msg: 'ფაილში ცვლილებები არ არის' }); return; }
+          var arr = _pendingGet();
+          entries.forEach(function (e) {
+            if (!e || !e.pk) return;
+            var idx = arr.findIndex(function (x) { return x.pk === e.pk; });
+            if (idx >= 0) arr[idx] = e; else arr.push(e);
+          });
+          _pendingSet(arr);
+          resolve({ ok: true, count: entries.length, mapId: data.map_id || null });
+        } catch (err) { resolve({ ok: false, msg: 'JSON ვერ დაიპარსა: ' + err.message }); }
+      };
+      reader.onerror = function () { resolve({ ok: false, msg: 'ფაილის წაკითხვა ვერ მოხერხდა' }); };
+      reader.readAsText(f);
+    });
+    document.body.appendChild(inp);
+    inp.click();
+  });
+};
+
 // ── init ──
 // Toggle handler for the legend-tree static todo items (exportMenuHTML output).
 // Visual-only for now — no persistence; resets on reload.
@@ -2386,7 +2524,6 @@ window.toggleTodoInExport = function(todoId) {
 
 window.addEventListener('load', async () => {
   await _authBoot();
-  _renderDevViewBanner();
   loadNotifs();
   loadDialogueOverrides().then(_markerRestore);
   loadTodoState();
@@ -2404,6 +2541,13 @@ window.addEventListener('load', async () => {
   // unused. Recheck every 4 min (comfortably inside the 60s pre-expiry
   // refresh window) so a long-lived tab stays logged in.
   setInterval(() => { _authMaybeRefresh().then(() => { if (window.isLoggedIn()) _applyTierFlag(); }); }, 4 * 60 * 1000);
+  // A queue can survive from a previous session (tab closed offline, or
+  // reopened before ever regaining connection) — try it once at boot too,
+  // not just on the 'online' event below, in case the tab loads already
+  // connected. Same refresh-before-flush ordering as the 'online' handler.
+  if (navigator.onLine && window.pendingCount() > 0) {
+    _authMaybeRefresh().then(() => { if (window.isLoggedIn()) window.pendingFlush(); });
+  }
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').then(reg => {
       if ('periodicSync' in reg) { reg.periodicSync.register('notif-check', { minInterval: 5 * 60 * 1000 }).catch(() => {}); }
@@ -2413,3 +2557,26 @@ window.addEventListener('load', async () => {
   }
 });
 window.addEventListener('hashchange', () => { applySpotHash(); applyAreaHash(); });
+
+// ── reconnect sequencing ──
+// Order matters here: the access token can go stale WHILE offline (it's
+// just a timer, it doesn't know or care about connectivity), so the very
+// first thing to do on reconnect is refresh the session — flushing the
+// queue against a dead token would just fail every entry with the same
+// auth error. Only once isLoggedIn() is confirmed fresh do we attempt the
+// queue. If the refresh itself fails (refresh_token also expired — a long
+// enough outage), the queue is left untouched for /შენახვა to rescue.
+window.addEventListener('online', () => {
+  _authMaybeRefresh().then(() => {
+    if (!window.isLoggedIn()) {
+      if (typeof toast === 'function') toast('კავშირი დაბრუნდა, მაგრამ სესია ამოიწურა — /ლოგინი ხელახლა, ან /შენახვა queue-ს შესანარჩუნებლად');
+      return;
+    }
+    if (window.pendingCount() === 0) return;
+    window.pendingFlush().then((res) => {
+      if (typeof toast !== 'function') return;
+      if (res.flushed) toast('✓ ' + res.flushed + ' ცვლილება დასინქრონდა');
+      if (res.remaining) toast('⚠ კიდევ ' + res.remaining + ' queue-ში — /შენახვა შესანახად');
+    });
+  });
+});
