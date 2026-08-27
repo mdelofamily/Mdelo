@@ -283,6 +283,13 @@ window.showNotifyFormModal = function (opts) {
 // ── tier cache (one row per user in user_tiers) ──
 window._myTier = null; // { user_id, tier, view_mode, display_name } once loaded
 
+// Mirrors the last successfully-fetched tier row to localStorage, keyed by
+// user id. Purely a fallback for the offline-reload case below — never
+// consulted while a live fetch is possible.
+function _tierCacheKey(userId) { return 'mdelo_tier_cache_' + userId; }
+function _tierCacheSave(userId, row) { try { localStorage.setItem(_tierCacheKey(userId), JSON.stringify(row)); } catch (e) {} }
+function _tierCacheLoad(userId) { try { return JSON.parse(localStorage.getItem(_tierCacheKey(userId)) || 'null'); } catch (e) { return null; } }
+
 async function _authLoadTier() {
   const s = _authGetSession();
   if (!s || !s.user) { window._myTier = null; return null; }
@@ -295,7 +302,7 @@ async function _authLoadTier() {
       return null;
     }
     const rows = await r.json();
-    if (rows[0]) { window._myTier = rows[0]; return rows[0]; }
+    if (rows[0]) { window._myTier = rows[0]; _tierCacheSave(s.user.id, rows[0]); return rows[0]; }
     // first login for this account — create the row; DB default tier='visitor'
     const c = await fetch(SUPA_URL + '/rest/v1/user_tiers', {
       method: 'POST',
@@ -310,8 +317,21 @@ async function _authLoadTier() {
     }
     const created = await c.json();
     window._myTier = created[0] || null;
+    if (window._myTier) _tierCacheSave(s.user.id, window._myTier);
     return window._myTier;
   } catch (e) {
+    // No network at all (offline page load/reload) — distinct from the
+    // `!r.ok` branch above, which is a real server-confirmed rejection and
+    // correctly nulls out. A network failure here just means we can't ask
+    // right now; falling back to the last known-good tier keeps the
+    // local-staging commands (/დიალოგი, /მენიუ, /ლეგენდა, todo-toggle)
+    // usable through an offline reload instead of silently demoting to
+    // visitor and locking someone out of their own queued edits. Real
+    // writes still go through _authHeaders() with the real access token,
+    // so an actually-expired/invalid session still fails at sync time
+    // regardless of this cache — see scope-offline-viewer.md §2.
+    const cached = _tierCacheLoad(s.user.id);
+    if (cached) { window._myTier = cached; return cached; }
     if (typeof toast === 'function') toast('✗ tier load exception: ' + e.message);
     window._myTier = null;
     return null;
@@ -760,6 +780,60 @@ function fitAreas(title) {
 // ── game menu (drill-down) ──
 var _gmCfg = null;
 
+// ── offline/queue status row ────────────────────────────────────────────
+// A persistent row, always visible whenever the burger menu is open (not
+// just a one-off toast at save-time) — someone can easily close the
+// terminal after an offline edit and never think to check again whether
+// it actually synced. Sits right under the breadcrumb, same "row card"
+// visual language as the existing gm-progress-row items, so it reads as
+// part of the menu rather than a bolted-on banner. Click = manual sync
+// (same refresh-then-flush sequence as /სინქრონიზაცია).
+function _gmEnsureSyncStatusEl() {
+  var el = document.getElementById('gmSyncStatus');
+  if (el) return el;
+  el = document.createElement('div');
+  el.id = 'gmSyncStatus';
+  el.style.cssText = 'display:none;align-items:center;gap:8px;padding:9px 14px;margin:8px 12px 4px;font-size:13px;border-radius:10px;cursor:pointer;transition:opacity .15s;';
+  var bc = document.getElementById('gmBreadcrumb');
+  var panel = document.getElementById('gmPanel');
+  if (bc && bc.parentNode) bc.parentNode.insertBefore(el, bc);
+  else if (panel && panel.parentNode) panel.parentNode.insertBefore(el, panel);
+  el.onclick = function () {
+    if (!navigator.onLine || typeof window.pendingFlush !== 'function' || window.pendingCount() === 0) return;
+    el.style.opacity = '0.5';
+    (async () => {
+      if (typeof _authMaybeRefresh === 'function') await _authMaybeRefresh();
+      if (typeof window.isLoggedIn === 'function' && !window.isLoggedIn()) {
+        if (typeof toast === 'function') toast('სესია ვადაგასულია — /ლოგინი ტერმინალში');
+        _gmUpdateSyncStatus();
+        return;
+      }
+      await window.pendingFlush();
+      _gmUpdateSyncStatus();
+    })();
+  };
+  return el;
+}
+function _gmUpdateSyncStatus() {
+  var el = _gmEnsureSyncStatusEl();
+  var n = (typeof window.pendingCount === 'function') ? window.pendingCount() : 0;
+  var offline = !navigator.onLine;
+  el.style.opacity = '1';
+  if (!n && !offline) { el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  if (offline && n) {
+    el.style.background = 'rgba(163,77,0,0.25)'; el.style.color = '#ffb066'; el.style.cursor = 'default';
+    el.textContent = '📴 ოფლაინ — ' + n + ' ცვლილება queue-ში';
+  } else if (offline) {
+    el.style.background = 'rgba(255,255,255,0.06)'; el.style.color = '#aaa'; el.style.cursor = 'default';
+    el.textContent = '📴 ოფლაინ ხარ';
+  } else {
+    el.style.background = 'rgba(74,222,128,0.15)'; el.style.color = '#4ade80'; el.style.cursor = 'pointer';
+    el.textContent = '↑ დასინქრონება — ' + n + ' ცვლილება (დააჭირე)';
+  }
+}
+window.addEventListener('offline', _gmUpdateSyncStatus);
+
 function toggleMenu() {
   const gm = document.getElementById('gameMenu');
   const open = gm.classList.toggle('open');
@@ -768,6 +842,7 @@ function toggleMenu() {
     gm.classList.remove('ov-open');
     document.getElementById('gmOverlay').classList.remove('open');
   }
+  if (open) _gmUpdateSyncStatus();
   if (open && !window._cfgLoaded) {
     window._cfgLoaded = true;
     _gmCfg = _CFG;
@@ -2427,12 +2502,19 @@ window.pendingAdd = function (kind, key, label, payload) {
   var idx = arr.findIndex(function (e) { return e.pk === pk; });
   if (idx >= 0) arr[idx] = entry; else arr.push(entry);
   _pendingSet(arr);
+  if (typeof _gmUpdateSyncStatus === 'function') _gmUpdateSyncStatus();
   return arr.length;
 };
 window.pendingList  = function () { return _pendingGet(); };
 window.pendingCount = function () { return _pendingGet().length; };
-window.pendingRemove = function (pk) { _pendingSet(_pendingGet().filter(function (e) { return e.pk !== pk; })); };
-window.pendingClear  = function () { _pendingSet([]); };
+window.pendingRemove = function (pk) {
+  _pendingSet(_pendingGet().filter(function (e) { return e.pk !== pk; }));
+  if (typeof _gmUpdateSyncStatus === 'function') _gmUpdateSyncStatus();
+};
+window.pendingClear  = function () {
+  _pendingSet([]);
+  if (typeof _gmUpdateSyncStatus === 'function') _gmUpdateSyncStatus();
+};
 
 // Dispatches one queued entry to its real Supabase save function. Returns
 // whatever that function returns: `true` on success, or an { ok:false,
