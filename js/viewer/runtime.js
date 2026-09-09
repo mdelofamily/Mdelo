@@ -1865,6 +1865,16 @@ window.requestTierUp = async function (targetTier, requestText, detail) {
     });
 
     if (typeof loadNotifs === 'function') loadNotifs();
+
+    // OS-level push (Scope C) — was missing here, unlike the regular
+    // notify-button path. Without it, anyone whose app is closed never
+    // finds out a tier-change request is waiting for their vote.
+    fetch(SUPA_URL + '/functions/v1/send-push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': 'sb_publishable_soE_2V-VW_fIu0DyM6QdzQ_TOvYNxF2' },
+      body: JSON.stringify({ map_id: _MAP_ID, title: 'მდელო', body: text, url: '/' })
+    }).catch(() => {});
+
     return { ok: true, id: row.id };
   } catch (e) { return { ok: false, reason: 'exception', msg: e.message }; }
 };
