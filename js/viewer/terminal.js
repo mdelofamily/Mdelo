@@ -15,11 +15,14 @@ var _tmEditMode = null;    // 'dlg' | 'menuItem' | null
 var _tmEditMenuCtx = null; // { node, idx, type } — set only when _tmEditMode === 'menuItem'
 var _tmEditLabel = null;   // human-readable label shown in cancel/header messages
 var _tmEditBuf = null;     // raw content buffered from a chain segment, consumed by /შეყვანა
+var _tmEditLang = 'ka';    // 'ka' | 'en' — session-wide dialogue/menu edit-language target,
+                            // set by /ენა. Drives the prompt text (see _tmApplyLangPrompt) and
+                            // will drive .ka/.en field routing in tmSend() once that lands.
 var _tmFilesCache = [];    // last /ფაილები result — lets /play & /მუსიკა take an index or filename instead of a full URL
 var _tmEditMediaBuf = [];  // [{items:[{type,url,name}...]}...] — files-segments captured via /მედია
                             // during the current 'text' menuItem session; [[მედია:N]] tokens in tmTa
                             // point into this by index. Cleared on every session open/close/save/cancel.
-var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/მარკერი','/დახურვა','/დროშა','/მეტსახელი','/მე','/ვინ','/ფერი','/help','/გზა','/ჩვ','/გად','/md','/წაშ','/რედ','/ფოთოლი','/მაკრო','/ლოგინი','/ლოგაუთი','/სახელი','/სესია','/სია','/სურვილი','/შენახვა','/ჩატვირთვა','/სინქრონიზაცია','/შესრულება','/play','/მუსიკა','/ფაილები','/ფაილი'];
+var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/მარკერი','/დახურვა','/დროშა','/მეტსახელი','/მე','/ვინ','/ფერი','/help','/გზა','/ჩვ','/გად','/md','/წაშ','/რედ','/ფოთოლი','/მაკრო','/ლოგინი','/ლოგაუთი','/სახელი','/სესია','/სია','/სურვილი','/შენახვა','/ჩატვირთვა','/სინქრონიზაცია','/შესრულება','/play','/მუსიკა','/ფაილები','/ფაილი','/ენა'];
 
 function toggleTerm() { _tmOpen ? closeTerm() : _tmOpen_(); }
 function _tmOpen_() {
@@ -191,6 +194,27 @@ function _tmBoot() {
     (function (l, delay) { setTimeout(function () { _tmL(l[0], l[1]); }, delay); })(lines[i], i * 55);
   }
   setTimeout(_histLoad, lines.length * 55 + 80);
+  _tmApplyLangPrompt();
+}
+
+// ── /ენა en|ka — session-wide dialogue/menu edit-language target ──
+// Persists for the whole terminal session (not just one edit), until switched
+// again. Currently drives only the prompt text below; tmSend() will read
+// _tmEditLang to route input into .ka/.en fields once that lands.
+function _tmApplyLangPrompt() {
+  var pr = document.getElementById('tmPr');
+  if (pr) pr.textContent = _tmEditLang === 'en' ? '~/mdelo' : '~/მდელო';
+}
+
+function _tmLangSwitch(args) {
+  var target = (args[0] || '').trim().toLowerCase();
+  if (target !== 'en' && target !== 'ka') {
+    _tmL('ter', 'გამოყენება: /ენა en|ka — მიმდინარე: ' + _tmEditLang);
+    return;
+  }
+  _tmEditLang = target;
+  _tmApplyLangPrompt();
+  _tmL('tok', 'რედაქტირების ენა: ' + (target === 'en' ? 'English' : 'ქართული'));
 }
 
 // ── inline history popup (backspace on empty input) ──
@@ -493,7 +517,8 @@ async function _tmRun(raw) {
     'შენახვა':     _tmSavePending,
     'ჩატვირთვა':   _tmLoadPending,
     'სინქრონიზაცია': _tmSyncPending,
-    'sync':        _tmSyncPending
+    'sync':        _tmSyncPending,
+    'ენა':         _tmLangSwitch
   };
   var fn = map[cmd];
   if (fn) {
@@ -557,6 +582,7 @@ function _tmHelp() {
     ['/შენახვა [ფაილის სახელი]', 'offline queue-ს გადმოწერა JSON ფაილად (მხოლოდ დაუსინქრონებელი ცვლილებები)'],
     ['/ჩატვირთვა', 'JSON ფაილიდან queue-ს ატვირთვა — ერთვის მიმდინარე queue-ს, ერთი და იმავე target-ის ჩანაწერი გადაიწერება'],
     ['/სინქრონიზაცია', 'queue-ს ხელით სინქრონიზაცია (session-refresh + flush) — automatic reconnect-ის alternative'],
+    ['/ენა en|ka', 'რედაქტირების ენის switch — icon prompt-ში (~/mdelo=en, ~/მდელო=ka)'],
     ['/ლოგინი',           'შესვლა (popup: email + სახელი), ან სტატუსის ჩვენება'],
     ['/ლოგაუთი',          'გამოსვლა სისტემიდან'],
     ['/სახელი <ახალი სახელი>', 'display_name-ის შეცვლა (დიალოგებში ჩანს)'],

@@ -30,8 +30,6 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
 .tm-wm{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:0;}
 .tm-wm img{width:78%;max-width:340px;opacity:.15;filter:grayscale(1);user-select:none;}
 .tm-hdr{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;padding:6px 13px;border-bottom:1px solid rgba(0,255,136,.09);flex-shrink:0;background:rgba(0,0,0,.18);}
-.tm-path{color:#00ff88;font-family:'Courier New',monospace;font-size:11px;letter-spacing:.07em;opacity:.75;}
-.tm-path em{opacity:.38;font-style:normal;}
 .tm-ctrl{display:flex;gap:5px;}
 .tm-ctrl button{background:transparent;border:1px solid rgba(0,255,136,.16);color:rgba(0,255,136,.5);font-family:'Courier New',monospace;font-size:11px;padding:2px 8px;cursor:pointer;border-radius:2px;transition:all .12s;line-height:1.4;}
 .tm-ctrl button:hover{background:rgba(0,255,136,.08);border-color:rgba(0,255,136,.38);color:#00ff88;}
@@ -189,8 +187,7 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
 <div id="mdlTerm">
   <div class="tm-wm"><img src="logo.png" alt="" onerror="this.style.display='none'"></div>
   <div class="tm-hdr">
-    <span class="tm-path"><em>~/</em>mdelo</span>
-    <div class="tm-ctrl">
+    <div class="tm-ctrl" style="margin-left:auto;">
       <button id="tmFullBtn" onclick="tmToggleFull()">⛶</button>
       <button onclick="tmClear()">⌫</button>
       <button onclick="closeTerm()">✕</button>
@@ -201,7 +198,7 @@ body{background:#111;overflow:hidden;width:100vw;height:100dvh;}
     <div id="tmHistPop" class="tm-hist-pop"></div>
     <textarea id="tmTa" autocomplete="off" spellcheck="false" placeholder="..."></textarea>
     <div class="tm-ir-row">
-      <span class="tm-pr">~/mdelo $</span>
+      <span class="tm-pr" id="tmPr">~/მდელო</span>
       <button id="tmMlBtn" onclick="tmToggleMulti()">□</button>
       <button id="tmSlashBtn" onclick="tmInsertSlash()" title="/ ბრძანება">/</button>
       <input id="tmIn" autocomplete="off" spellcheck="false" placeholder="...">
