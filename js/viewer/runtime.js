@@ -2366,13 +2366,13 @@ window.dlgOverrideSave = async function(objTitle, nodesJson, dsl) {
 };
 
 // Get current DSL string for an object — called from terminal.js
-window.dlgGetCurrentDsl = function(objTitle) {
+window.dlgGetCurrentDsl = function(objTitle, lang) {
   var oi = _findOiByTitle(objTitle);
   if (oi < 0 || typeof _OBJS === 'undefined' || !_OBJS[oi]) return '';
   var obj = _OBJS[oi];
   var dsl = '';
   if (obj.dialogue && obj.dialogue.length && typeof unparseDialogue === 'function') {
-    dsl = unparseDialogue({ lb: obj.lb || objTitle, dialogue: obj.dialogue, marker: obj.marker || '' });
+    dsl = unparseDialogue({ lb: obj.lb || objTitle, dialogue: obj.dialogue, marker: obj.marker || '' }, lang);
   }
   if (typeof unparseUnlockHeaders === 'function') {
     var headers = unparseUnlockHeaders(obj);
