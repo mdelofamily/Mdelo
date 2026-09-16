@@ -637,7 +637,7 @@ function _tmObjects() {
     var title = el.dataset.title || '(უსახელო)';
     var oi = el.dataset.oi;
     var obj = (oi != null && typeof _OBJS !== 'undefined' && _OBJS[+oi]) ? _OBJS[+oi] : null;
-    var displayName = (obj && obj.lb) ? obj.lb : title;
+    var displayName = (obj && typeof _objDisplayName === 'function' ? _objDisplayName(obj) : '') || title;
     var suffix = '';
     if (obj && obj.dialogue && obj.dialogue.length) {
       suffix = ' [💬 ' + obj.dialogue.length + ']';
@@ -1527,7 +1527,7 @@ function _tmDlgEdit(args) {
   var hs = document.querySelector('.hotspot[data-title="' + title.replace(/"/g, '\\"') + '"]:not(.hs-area):not(.no-interact)');
   if (!hs && typeof _OBJS !== 'undefined') {
     for (var _i = 0; _i < _OBJS.length; _i++) {
-      if (_OBJS[_i] && _OBJS[_i].lb === title) {
+      if (_OBJS[_i] && typeof _lbMatches === 'function' && _lbMatches(_OBJS[_i].lb, title)) {
         var _c = document.querySelector('.hotspot[data-oi="' + _i + '"]:not(.hs-area):not(.no-interact)');
         if (_c) { hs = _c; break; }
       }
@@ -1545,6 +1545,9 @@ function _tmDlgEdit(args) {
   var dsl = '';
   if (typeof dlgGetCurrentDsl === 'function') dsl = dlgGetCurrentDsl(objKey, _tmEditLang);
 
+  var objForLb = (_OBJS && _OBJS[+hs.dataset.oi]) || null;
+  var dispLabel = (objForLb && typeof _objDisplayName === 'function' ? _objDisplayName(objForLb) : '') || objKey;
+
   // fallback template if no dialogue exists yet — only valid in ka mode:
   // ka is authoritative, so a translation pass needs something to translate.
   if (!dsl) {
@@ -1552,7 +1555,7 @@ function _tmDlgEdit(args) {
       _tmL('ter', '✗ ჯერ საჭიროა ქართული დიალოგის შექმნა (/ენა ka), მერე — თარგმნა');
       return;
     }
-    dsl = '@0 ' + ((_OBJS && _OBJS[+hs.dataset.oi] && _OBJS[+hs.dataset.oi].lb) || objKey) + '\n\n<> \n\n-> ';
+    dsl = '@0 ' + dispLabel + '\n\n<> \n\n-> ';
   }
 
   // switch to multiline mode and load DSL
@@ -1561,9 +1564,9 @@ function _tmDlgEdit(args) {
   _tmTaResize();
   _tmEditObj = objKey;
   _tmEditMode = 'dlg';
-  _tmEditLabel = (_OBJS && _OBJS[+hs.dataset.oi] && _OBJS[+hs.dataset.oi].lb) || objKey;
+  _tmEditLabel = dispLabel;
 
-  _tmL('tsy', '─── ' + ((_OBJS && _OBJS[+hs.dataset.oi] && _OBJS[+hs.dataset.oi].lb) || objKey) + ' — DSL ' + (_tmEditLang === 'en' ? '(EN)' : '') + ' ──────────────');
+  _tmL('tsy', '─── ' + dispLabel + ' — DSL ' + (_tmEditLang === 'en' ? '(EN)' : '') + ' ──────────────');
   if (_tmEditLang === 'en') {
     _tmL('tdm', 'EN რეჟიმი — მხოლოდ ტექსტი/ღილაკები ითარგმნება; =>, >>, კვანძების რაოდენობა იგნორირდება');
   }
@@ -1623,13 +1626,21 @@ function _tmMergeDlgNodes(existingNodes, freshNodes, lang) {
       var target = byId[fn.id];
       if (!target) return { error: 'კვანძი ' + fn.id.replace('node_', '@') + ' არ არსებობს ქართულ ვერსიაში — en-რეჟიმში ახალი კვანძი ვერ იქმნება' };
       touched[fn.id] = true;
-      target.text.en = fn.text || '';
+      // Only write .en if it actually differs from .ka — an untouched
+      // node/button still shows its ka text as a reference/placeholder
+      // while editing (see _tmDlgEdit), and saving that back verbatim
+      // would wrongly record the ka text as if it were the translation.
+      var fnText = fn.text || '';
+      if (fnText !== target.text.ka) target.text.en = fnText;
       var fb = fn.buttons || [];
       if (fb.length !== target.buttons.length) {
         warnings.push('კვანძი ' + fn.id.replace('node_', '@') + ': ღილაკების რაოდენობა არ ემთხვევა (' + fb.length + ' ≠ ' + target.buttons.length + ') — მხოლოდ ემთხვევადი ითარგმნა');
       }
       var n2 = Math.min(fb.length, target.buttons.length);
-      for (var j = 0; j < n2; j++) target.buttons[j].label.en = fb[j].label || '';
+      for (var j = 0; j < n2; j++) {
+        var fbLabel = fb[j].label || '';
+        if (fbLabel !== target.buttons[j].label.ka) target.buttons[j].label.en = fbLabel;
+      }
     }
     // Existing nodes the person didn't include in this en-pass (e.g. deleted
     // the @N header, or just left it out) are NOT removed — ka structure is
@@ -1656,6 +1667,21 @@ function _tmMergeDlgNodes(existingNodes, freshNodes, lang) {
     return newNode;
   });
   return { nodes: mergedKa };
+}
+
+// Merges the object's display name into {ka,en}, mirroring the node-text
+// model: ka mode is a structural rename (authoritative, replaces .ka
+// outright); en mode only records a translation if the typed value
+// actually differs from the ka reference shown while editing — an
+// untouched header line must not get saved back as a false "translation".
+function _tmMergeDlgTitle(existingLb, freshTitle, lang) {
+  var oldKa = (typeof existingLb === 'string') ? existingLb : ((existingLb && existingLb.ka) || '');
+  var oldEn = (existingLb && typeof existingLb === 'object') ? (existingLb.en || '') : '';
+  var ft = freshTitle || '';
+  if (lang === 'en') {
+    return { ka: oldKa, en: (ft && ft !== oldKa) ? ft : oldEn };
+  }
+  return { ka: ft || oldKa, en: oldEn };
 }
 
 // Save DSL to Supabase and patch _OBJS locally
@@ -1701,6 +1727,10 @@ async function _tmSaveDlg(dsl) {
   // marker extraction and future ka edits sourced from this same field.
   var dslToSave = (_tmEditLang === 'en' && typeof dlgGetCurrentDsl === 'function') ? (dlgGetCurrentDsl(title, 'ka') || dsl) : dsl;
 
+  var existingLb = (oi >= 0 && typeof _OBJS !== 'undefined' && _OBJS[oi]) ? _OBJS[oi].lb : '';
+  var titleMerge = _tmMergeDlgTitle(existingLb, result.title, _tmEditLang);
+  var titleEnToSave = titleMerge.en;
+
   var label = _tmEditLabel;
 
   // Offline: apply the parsed nodes locally right away (same effect
@@ -1709,8 +1739,8 @@ async function _tmSaveDlg(dsl) {
   // when the connection comes back, instead of letting fetch() itself fail
   // with a generic network error.
   if (!navigator.onLine) {
-    if (typeof _applyDlgOverride === 'function') _applyDlgOverride({ obj_title: title, nodes_json: nodes, dsl: dslToSave });
-    window.pendingAdd('dlg', title, label, { title: title, nodes: nodes, dsl: dslToSave });
+    if (typeof _applyDlgOverride === 'function') _applyDlgOverride({ obj_title: title, nodes_json: nodes, dsl: dslToSave, title_en: titleEnToSave });
+    window.pendingAdd('dlg', title, label, { title: title, nodes: nodes, dsl: dslToSave, titleEn: titleEnToSave });
     _tmEditObj = null; _tmEditMode = null; _tmEditLabel = null; _tmEditBuf = null; _tmEditMediaBuf = [];
     document.getElementById('tmTa').value = '';
     if (_tmMulti) tmToggleMulti();
@@ -1727,13 +1757,13 @@ async function _tmSaveDlg(dsl) {
 
   var ok = false, okResult = null;
   try {
-    okResult = await dlgOverrideSave(title, nodes, dslToSave); ok = okResult === true;
+    okResult = await dlgOverrideSave(title, nodes, dslToSave, titleEnToSave); ok = okResult === true;
   } catch (e) {
     // Connection dropped mid-request (not just a stale navigator.onLine
     // flag) — queue it the same as the upfront offline check above, rather
     // than discarding the edit.
-    if (typeof _applyDlgOverride === 'function') _applyDlgOverride({ obj_title: title, nodes_json: nodes, dsl: dslToSave });
-    window.pendingAdd('dlg', title, label, { title: title, nodes: nodes, dsl: dslToSave });
+    if (typeof _applyDlgOverride === 'function') _applyDlgOverride({ obj_title: title, nodes_json: nodes, dsl: dslToSave, title_en: titleEnToSave });
+    window.pendingAdd('dlg', title, label, { title: title, nodes: nodes, dsl: dslToSave, titleEn: titleEnToSave });
     _tmEditObj = null; _tmEditMode = null; _tmEditLabel = null; _tmEditBuf = null; _tmEditMediaBuf = [];
     document.getElementById('tmTa').value = '';
     if (_tmMulti) tmToggleMulti();

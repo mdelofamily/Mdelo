@@ -33,6 +33,24 @@ function _i18n(field) {
 window._mdeloSetLang = _mdeloSetLang;
 window._i18n = _i18n;
 
+// Resolves an object's display name for the current visitor language,
+// preferring .title over .lb if both are set (mirrors the existing
+// title-then-lb fallback order used at the call sites below).
+function _objDisplayName(obj) {
+  if (!obj) return '';
+  return _i18n(obj.title) || _i18n(obj.lb) || '';
+}
+
+// Plain-text equality check against a field that may be a legacy string or
+// a { ka, en } object — matches either language, since callers here pass a
+// title string of unknown origin/language (e.g. from a saved link or
+// notification payload) rather than going through _mdeloLang.
+function _lbMatches(field, str) {
+  if (field == null) return false;
+  if (typeof field === 'string') return field === str;
+  return field.ka === str || field.en === str;
+}
+
 // ── zoom / pan ──
 const wrap = document.getElementById('mapWrap'),
       inner = document.getElementById('mapInner'),
@@ -697,7 +715,7 @@ wrap.addEventListener('click', e => {
     } else {
       const oi = hs.dataset.oi;
       const objData = (oi != null && _OBJS[+oi]) ? _OBJS[+oi] : null;
-      const displayTitle = (objData && (objData.title || objData.lb)) || hs.dataset.title || '';
+      const displayTitle = _objDisplayName(objData) || hs.dataset.title || '';
       const _dlgId = hs.dataset.dialogId;
       const _dlgEntry = (_dlgId && window.DIALOGS) ? window.DIALOGS[_dlgId] : null;
       if (_dlgEntry && typeof canTrigger === 'function' && !canTrigger(_dlgEntry)) return;
@@ -880,7 +898,7 @@ function _gotoNamedLocation(title) {
   // fallback: search by obj.lb or obj.title (renamed objects)
   if (!hs && typeof _OBJS !== 'undefined') {
     for (var _i = 0; _i < _OBJS.length; _i++) {
-      if (_OBJS[_i] && (_OBJS[_i].lb === title || _OBJS[_i].title === title)) {
+      if (_OBJS[_i] && (_lbMatches(_OBJS[_i].lb, title) || _lbMatches(_OBJS[_i].title, title))) {
         hs = document.querySelector('.hotspot[data-oi="' + _i + '"]');
         if (hs) break;
       }
@@ -1342,7 +1360,7 @@ function _dlgShowNode(nodeId, selectedLabel) {
     body.appendChild(ans);
   }
 
-  const objTitle = (_dlgObj && (_dlgObj.title || _dlgObj.lb)) || '';
+  const objTitle = _objDisplayName(_dlgObj);
   const _he = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const txt = (_i18n(node.text) || '')
     .replace(/\[\]/g, (window.myDisplayName ? window.myDisplayName() : (localStorage.getItem('mdelo_nick') || 'მოგზაური')) + ':')
@@ -2243,7 +2261,16 @@ function _applyDlgOverride(row) {
       var parsed = parseBulkDSL(dslRaw.trim() || '@0\n');
       var mk = parsed.marker === '...' ? '💬' : (parsed.marker || '');
       if (mk) _OBJS[oi].marker = mk;
-      if (parsed.title) { _OBJS[oi].lb = parsed.title; _OBJS[oi].title = parsed.title; }
+      if (parsed.title) {
+        // dsl is always the ka-canonical structure (see _tmSaveDlg), so
+        // parsed.title is always the ka name here — title_en travels
+        // separately since it never lives inside dsl.
+        var oldLb = _OBJS[oi].lb;
+        var oldTitleEn = (oldLb && typeof oldLb === 'object') ? (oldLb.en || '') : '';
+        var newLb = { ka: parsed.title, en: (row.title_en != null ? row.title_en : oldTitleEn) };
+        _OBJS[oi].lb = newLb;
+        _OBJS[oi].title = newLb;
+      }
       var hsEl = document.querySelector('.hotspot[data-oi="' + oi + '"]:not(.hs-area)');
       // only apply Supabase marker if: has marker AND user has no local override
       var _mkStored = JSON.parse(localStorage.getItem(_MK_KEY) || '{}');
@@ -2338,13 +2365,14 @@ async function loadDialogueOverrides() {
 }
 
 // Save/update a dialogue override — called from terminal.js
-window.dlgOverrideSave = async function(objTitle, nodesJson, dsl) {
+window.dlgOverrideSave = async function(objTitle, nodesJson, dsl, titleEn) {
   try {
     var body = JSON.stringify({
       map_id: _MAP_ID,
       obj_title: objTitle,
       nodes_json: nodesJson,
       dsl: dsl,
+      title_en: (titleEn != null ? titleEn : ''),
       updated_at: new Date().toISOString()
     });
     var r = await fetch(SUPA_URL + '/rest/v1/dialogue_overrides', {
@@ -2357,7 +2385,7 @@ window.dlgOverrideSave = async function(objTitle, nodesJson, dsl) {
     });
     if (r.ok) {
       // reuse _applyDlgOverride for nodes + marker + lb — single source of truth
-      _applyDlgOverride({ obj_title: objTitle, nodes_json: nodesJson, dsl: dsl });
+      _applyDlgOverride({ obj_title: objTitle, nodes_json: nodesJson, dsl: dsl, title_en: titleEn });
       return true;
     }
     var errBody = r.text ? await r.text().catch(function(){return "";}) : "";
@@ -2674,7 +2702,7 @@ window.pendingClear  = function () {
 // whatever that function returns: `true` on success, or an { ok:false,
 // status, msg } error object.
 async function _pendingFlushOne(entry) {
-  if (entry.kind === 'dlg') return await window.dlgOverrideSave(entry.payload.title, entry.payload.nodes, entry.payload.dsl);
+  if (entry.kind === 'dlg') return await window.dlgOverrideSave(entry.payload.title, entry.payload.nodes, entry.payload.dsl, entry.payload.titleEn);
   if (entry.kind === 'menuItem') return await window.menuOverrideSave(entry.payload.nodeId, entry.payload.fields);
   if (entry.kind === 'legend') return await window.legendOverrideSave(entry.payload.text);
   if (entry.kind === 'todo') return await _gmSaveTodoState(entry.payload.todoId, entry.payload.checked);
