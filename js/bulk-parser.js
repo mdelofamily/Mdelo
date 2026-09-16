@@ -242,9 +242,6 @@ function _esc(s) {
 // ── dialogue[] → DSL serializer ────────────────────────────
 function unparseDialogue(o, lang) {
   const nodes  = o.dialogue || [];
-  const title  = o.title  || o.lb || '';
-  const marker = o.marker || '';
-  if (!nodes.length && !title) return '';
 
   // resolves a { ka, en } field (or a legacy plain string) to one language's
   // text for display — mirrors runtime.js's _i18n, duplicated here since
@@ -257,6 +254,10 @@ function unparseDialogue(o, lang) {
     if (typeof field === 'string') return field;
     return lang === 'en' ? (field.en || field.ka || '') : (field.ka || field.en || '');
   };
+
+  const title  = _pick(o.title) || _pick(o.lb) || '';
+  const marker = o.marker || '';
+  if (!nodes.length && !title) return '';
 
   const mrkSym = marker === '!' ? '!' : marker === '?' ? '?' : marker === '💬' ? '...' : '';
   const lines  = [];
