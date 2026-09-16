@@ -2608,10 +2608,9 @@ function _applyLegendOverrideRows(rows) {
   if (rows && rows[0] && rows[0].text != null) {
     var p = document.getElementById('questPopup');
     if (p) {
-      var rawField = rows[0].text;
-      p.dataset.fullRawKa = (typeof rawField === 'string') ? rawField : (rawField.ka || '');
-      p.dataset.fullRawEn = (typeof rawField === 'string') ? '' : (rawField.en || '');
-      var resolved = _legendResolveText(_i18n(rawField));
+      p.dataset.fullRawKa = rows[0].text || '';
+      p.dataset.fullRawEn = rows[0].text_en || '';
+      var resolved = _legendResolveText(_i18n({ ka: p.dataset.fullRawKa, en: p.dataset.fullRawEn }));
       p.dataset.full = resolved;
       if (p.style.display === 'block') p.textContent = resolved;
       // Button visibility was frozen at export time (hidden if the map had
@@ -2637,9 +2636,9 @@ async function loadLegendOverride() {
   }
 }
 
-window.legendOverrideSave = async function (text) {
+window.legendOverrideSave = async function (textKa, textEn) {
   try {
-    var body = { map_id: _MAP_ID, text: text, updated_at: new Date().toISOString() };
+    var body = { map_id: _MAP_ID, text: textKa, text_en: (textEn != null ? textEn : ''), updated_at: new Date().toISOString() };
     var r = await fetch(SUPA_URL + '/rest/v1/legend_overrides', {
       method: 'POST',
       headers: Object.assign({
@@ -2704,7 +2703,7 @@ window.pendingClear  = function () {
 async function _pendingFlushOne(entry) {
   if (entry.kind === 'dlg') return await window.dlgOverrideSave(entry.payload.title, entry.payload.nodes, entry.payload.dsl, entry.payload.titleEn);
   if (entry.kind === 'menuItem') return await window.menuOverrideSave(entry.payload.nodeId, entry.payload.fields);
-  if (entry.kind === 'legend') return await window.legendOverrideSave(entry.payload.text);
+  if (entry.kind === 'legend') return await window.legendOverrideSave(entry.payload.textKa, entry.payload.textEn);
   if (entry.kind === 'todo') return await _gmSaveTodoState(entry.payload.todoId, entry.payload.checked);
   return { ok: false, status: 0, msg: 'უცნობი queue ტიპი: ' + entry.kind };
 }

@@ -992,10 +992,26 @@ function _tmLegend(args) {
 function _tmLegendEditOpen() {
   var p = document.getElementById('questPopup');
   if (!p) { _tmL('ter', '✗ ლეგენდის ელემენტი ვერ მოიძებნა'); return; }
+  if (p.dataset.fullRawKa == null) {
+    // Nothing from Supabase yet (or an older export baked raw text in) —
+    // derive the raw source from what's baked in the DOM (always Georgian,
+    // export time), same fallback toggleQuest() uses.
+    var derivedRaw = p.innerHTML.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '');
+    p.dataset.fullRawKa = derivedRaw;
+    p.dataset.fullRawEn = p.dataset.fullRawEn || '';
+  }
+
+  if (_tmEditLang === 'en' && !p.dataset.fullRawKa) {
+    _tmL('ter', '✗ ჯერ საჭიროა ქართული ლეგენდის შექმნა (/ენა ka), მერე — თარგმნა');
+    return;
+  }
+
   // Prefill with the raw source (>>flag syntax intact), not the resolved
   // per-viewer text — otherwise re-editing would silently drop whichever
   // flag blocks didn't match the currently logged-in author's own tier.
-  var current = p.dataset.fullRaw || p.dataset.full || p.textContent || '';
+  // In en mode this is the en raw text, or the ka raw as a reference/
+  // placeholder to translate from if no en exists yet.
+  var current = (_tmEditLang === 'en') ? _i18n({ ka: p.dataset.fullRawKa, en: p.dataset.fullRawEn }) : p.dataset.fullRawKa;
 
   if (!_tmMulti) tmToggleMulti();
   document.getElementById('tmTa').value = current;
@@ -1004,7 +1020,10 @@ function _tmLegendEditOpen() {
   _tmEditMode  = 'legend';
   _tmEditLabel = 'მთავარი ლეგენდა';
 
-  _tmL('tsy', '─── მთავარი ლეგენდა ──────────────');
+  _tmL('tsy', '─── მთავარი ლეგენდა ' + (_tmEditLang === 'en' ? '(EN)' : '') + ' ──────────────');
+  if (_tmEditLang === 'en') {
+    _tmL('tdm', 'EN რეჟიმი — >>flag ბლოკები არ ითარგმნება ცალკე, მთელი ტექსტი ერთიანად ითარგმნება');
+  }
   _tmL('tdm', 'Ctrl+Enter — შენახვა · Esc — გაუქმება');
 }
 
@@ -1012,14 +1031,30 @@ function _tmLegendEditOpen() {
 // live popup immediately and pushes the override to Supabase for every viewer.
 async function _tmSaveLegend(text) {
   var p = document.getElementById('questPopup');
+  var oldKa = p ? (p.dataset.fullRawKa || '') : '';
+  var oldEn = p ? (p.dataset.fullRawEn || '') : '';
+
+  var newKa = oldKa, newEn = oldEn;
+  if (_tmEditLang === 'en') {
+    // Only record as translated if it actually differs from the ka
+    // reference shown while editing — an untouched textarea (still
+    // showing the ka fallback) must not be saved back as a false
+    // "translation", same reasoning as the dialogue merge.
+    if (text !== oldKa) newEn = text;
+  } else {
+    newKa = text; // ka authoritative — full rewrite, flag-blocks and all
+  }
+
   if (p) {
-    p.dataset.fullRaw = text;
-    var resolved = (typeof _legendResolveText === 'function') ? _legendResolveText(text) : text;
+    p.dataset.fullRawKa = newKa;
+    p.dataset.fullRawEn = newEn;
+    var raw = _i18n({ ka: newKa, en: newEn });
+    var resolved = (typeof _legendResolveText === 'function') ? _legendResolveText(raw) : raw;
     p.dataset.full = resolved;
     // Button visibility was frozen at export time (hidden if the map had no
     // description then) — reflect the freshly-saved content now instead.
     var btn = document.getElementById('questBtn');
-    if (btn) btn.style.display = (text && text.trim()) ? '' : 'none';
+    if (btn) btn.style.display = (newKa && newKa.trim()) ? '' : 'none';
     if (p.style.display === 'block') {
       p.textContent = '';
       if (typeof _typewriter === 'function') _typewriter(p, resolved, 60); else p.textContent = resolved;
@@ -1036,15 +1071,15 @@ async function _tmSaveLegend(text) {
     return;
   }
   if (!navigator.onLine) {
-    window.pendingAdd('legend', '__legend__', label, { text: text });
+    window.pendingAdd('legend', '__legend__', label, { textKa: newKa, textEn: newEn });
     _tmL('tdm', '⚠ ოფლაინ — ' + label + ' ლოკალურად გამოიყენება, queue-შია (' + window.pendingCount() + ')');
     return;
   }
   _tmL('tdm', '↑ ' + label + ' — ვინახავ...');
   var res;
-  try { res = await window.legendOverrideSave(text); }
+  try { res = await window.legendOverrideSave(newKa, newEn); }
   catch (e) {
-    window.pendingAdd('legend', '__legend__', label, { text: text });
+    window.pendingAdd('legend', '__legend__', label, { textKa: newKa, textEn: newEn });
     _tmL('ter', '✗ ქსელის შეცდომა — queue-ში ჩავარდა (' + window.pendingCount() + '): ' + e.message);
     return;
   }
