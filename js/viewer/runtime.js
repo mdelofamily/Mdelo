@@ -657,15 +657,19 @@ function _gmSlugify(title) {
 function _gmBuildSlugIndex() {
   const index = new Map(); // slug -> {node, nodes, path}
   const seen  = new Map(); // base slug -> count
+  // Slugs are stable cross-reference ids ([[label|menu:slug]] links) — they
+  // must not shift when the visitor's display language changes, so always
+  // derive from .ka specifically, never through _i18n/_mdeloLang.
+  const kaTitle = (f) => (typeof f === 'string') ? f : ((f && f.ka) || '');
   function walk(nodes, path) {
     nodes.forEach(node => {
-      const base  = _gmSlugify(node.title) || node.id;
+      const base  = _gmSlugify(kaTitle(node.title)) || node.id;
       const count = (seen.get(base) || 0) + 1;
       seen.set(base, count);
       const slug  = count === 1 ? base : base + '-' + count;
       index.set(slug, { node, nodes, path });
       if (node.children && node.children.length) {
-        walk(node.children, [...path, {title: node.title, nodes: node.children}]);
+        walk(node.children, [...path, {title: _i18n(node.title), nodes: node.children}]);
       }
     });
   }
@@ -1017,7 +1021,7 @@ function _gmShowPanel(nodes, path) {
     bc.innerHTML = '';
     const root = document.createElement('span');
     root.className = 'gm-bc-part';
-    root.textContent = (_gmCfg && _gmCfg.title) || '☰';
+    root.textContent = _i18n((_gmCfg && _gmCfg.title)) || '☰';
     root.onclick = () => _gmShowPanel((_gmCfg.menu || []), []);
     bc.appendChild(root);
     path.forEach((p, i) => {
@@ -1037,7 +1041,7 @@ function _gmShowPanel(nodes, path) {
     const el = document.createElement('div');
     el.className = 'gm-panel-item' + (hasItems && !hasChildren ? ' has-items' : '');
     const icon  = document.createElement('span'); icon.className = 'gm-pi-icon'; icon.textContent = node.icon || '📁';
-    const title = document.createElement('span'); title.className = 'gm-pi-title'; title.textContent = node.title || '';
+    const title = document.createElement('span'); title.className = 'gm-pi-title'; title.textContent = _i18n(node.title) || '';
     el.appendChild(icon); el.appendChild(title);
     if (hasChildren && hasItems) {
       const txtBtn = document.createElement('span'); txtBtn.className = 'gm-pi-textbtn'; txtBtn.textContent = '📄';
@@ -1045,11 +1049,11 @@ function _gmShowPanel(nodes, path) {
       el.appendChild(txtBtn);
       const arr = document.createElement('span'); arr.className = 'gm-pi-arrow'; arr.textContent = '›';
       el.appendChild(arr);
-      el.onclick = () => _gmShowPanel(node.children, [...path, {title: node.title, nodes: node.children}]);
+      el.onclick = () => _gmShowPanel(node.children, [...path, {title: _i18n(node.title), nodes: node.children}]);
     } else if (hasChildren) {
       const arr = document.createElement('span'); arr.className = 'gm-pi-arrow'; arr.textContent = '›';
       el.appendChild(arr);
-      el.onclick = () => _gmShowPanel(node.children, [...path, {title: node.title, nodes: node.children}]);
+      el.onclick = () => _gmShowPanel(node.children, [...path, {title: _i18n(node.title), nodes: node.children}]);
     } else if (hasItems) {
       const arr = document.createElement('span'); arr.className = 'gm-pi-arrow'; arr.textContent = '↗';
       el.appendChild(arr);
@@ -1221,7 +1225,7 @@ function _gmOpenOverlay(node, parentNodes, parentPath, standalone) {
   const ov   = document.getElementById('gmOverlay');
   const body = document.getElementById('gmOverlayBody');
   const titleEl = document.getElementById('gmOverlayTitle');
-  titleEl.textContent = (node.icon ? node.icon + ' ' : '') + (node.title || '');
+  titleEl.textContent = (node.icon ? node.icon + ' ' : '') + (_i18n(node.title) || '');
   body.innerHTML = '';
   (node.items || []).forEach(item => {
     const itObj = typeof item === 'string' ? { type: 'text', emoji: '•', label: item } : item;
@@ -1230,14 +1234,14 @@ function _gmOpenOverlay(node, parentNodes, parentPath, standalone) {
       const color = v > 60 ? '#4ade80' : v > 30 ? '#facc15' : '#f87171';
       const row = document.createElement('div'); row.className = 'gm-progress-row';
       const pfx = itObj.emoji ? itObj.emoji + ' ' : '';
-      row.innerHTML = '<span class="gm-progress-label">' + pfx + itObj.label + '</span><div class="gm-bar"><div class="gm-bar-fill" style="width:' + v + '%;background:' + color + ';"></div></div><span class="gm-bar-pct">' + v + '%</span>';
+      row.innerHTML = '<span class="gm-progress-label">' + pfx + _i18n(itObj.label) + '</span><div class="gm-bar"><div class="gm-bar-fill" style="width:' + v + '%;background:' + color + ';"></div></div><span class="gm-bar-pct">' + v + '%</span>';
       body.appendChild(row);
     } else if (itObj.type === 'todo') {
       const checked = _gmTodoState.has(itObj.id) ? _gmTodoState.get(itObj.id) : !!itObj.checked;
       const row = document.createElement('div'); row.className = 'gm-todo-row' + (checked ? ' checked' : '');
       const box = document.createElement('span'); box.className = 'gm-todo-box'; box.textContent = checked ? '✅' : '⬜';
       const lbl = document.createElement('span'); lbl.className = 'gm-todo-label';
-      lbl.innerHTML = parseLinks(itObj.label || '');
+      lbl.innerHTML = parseLinks(_i18n(itObj.label) || '');
       row.appendChild(box); row.appendChild(lbl);
       row.onclick = (e) => {
         if (e.target.closest('a')) return;
@@ -1256,10 +1260,11 @@ function _gmOpenOverlay(node, parentNodes, parentPath, standalone) {
         d.appendChild(head);
         itObj.segments.forEach(seg => {
           if (seg.type === 'text') {
-            if (!seg.value) return;
+            var segText = _i18n(seg.value);
+            if (!segText) return;
             const span = document.createElement('span');
             span.style.cssText = 'white-space:pre-wrap;';
-            span.innerHTML = parseLinks(seg.value);
+            span.innerHTML = parseLinks(segText);
             d.appendChild(span);
           } else if (seg.type === 'files') {
             const grid = document.createElement('div');
@@ -1307,7 +1312,7 @@ function _gmOpenOverlay(node, parentNodes, parentPath, standalone) {
           }
         });
       } else {
-        d.innerHTML = (itObj.emoji || '•') + ' ' + parseLinks(itObj.label || '');
+        d.innerHTML = (itObj.emoji || '•') + ' ' + parseLinks(_i18n(itObj.label) || '');
       }
       body.appendChild(d);
     }
@@ -2479,7 +2484,18 @@ function _applyMenuOverrides(rows) {
   rows.forEach(function (r) {
     if (r.deleted) { _mnRemoveNodeById(r.node_id); return; }
     var node = _mnFindNode(r.node_id);
-    if (node && Array.isArray(r.items_json)) node.items = r.items_json;
+    if (!node) return;
+    if (Array.isArray(r.items_json)) node.items = r.items_json;
+    // Only touch title if this row actually carries one — an items-only
+    // save never sets the title column, and PostgREST's partial upsert
+    // leaves it null/undefined in that row rather than empty-stringing it,
+    // so this correctly skips nodes that have never had a /სექცია save.
+    if (r.title != null && r.title !== '') {
+      var oldTitle = node.title;
+      var oldEn = (oldTitle && typeof oldTitle === 'object') ? (oldTitle.en || '') : '';
+      node.title = { ka: r.title, en: (r.title_en != null ? r.title_en : oldEn) };
+    }
+    if (r.icon) node.icon = r.icon;
   });
 }
 

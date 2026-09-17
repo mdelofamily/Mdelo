@@ -15,14 +15,14 @@ var _tmEditMode = null;    // 'dlg' | 'menuItem' | null
 var _tmEditMenuCtx = null; // { node, idx, type } — set only when _tmEditMode === 'menuItem'
 var _tmEditLabel = null;   // human-readable label shown in cancel/header messages
 var _tmEditBuf = null;     // raw content buffered from a chain segment, consumed by /შეყვანა
-var _tmEditLang = 'ka';    // 'ka' | 'en' — session-wide dialogue/menu edit-language target,
+var _tmEditLang = (typeof _mdeloLang !== 'undefined' && _mdeloLang === 'en') ? 'en' : 'ka'; // 'ka' | 'en' — session-wide dialogue/menu edit-language target,
                             // set by /ენა. Drives the prompt text (see _tmApplyLangPrompt) and
                             // will drive .ka/.en field routing in tmSend() once that lands.
 var _tmFilesCache = [];    // last /ფაილები result — lets /play & /მუსიკა take an index or filename instead of a full URL
 var _tmEditMediaBuf = [];  // [{items:[{type,url,name}...]}...] — files-segments captured via /მედია
                             // during the current 'text' menuItem session; [[მედია:N]] tokens in tmTa
                             // point into this by index. Cleared on every session open/close/save/cancel.
-var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/მარკერი','/დახურვა','/დროშა','/მეტსახელი','/მე','/ვინ','/ფერი','/help','/გზა','/ჩვ','/გად','/md','/წაშ','/რედ','/ფოთოლი','/მაკრო','/ლოგინი','/ლოგაუთი','/სახელი','/სესია','/სია','/სურვილი','/შენახვა','/ჩატვირთვა','/სინქრონიზაცია','/შესრულება','/play','/მუსიკა','/ფაილები','/ფაილი','/ენა'];
+var _TMCMDS = ['/დახმარება','/გასუფთავება','/ინფო','/მასშტაბი','/ზონები','/ობიექტები','/დიალოგი','/წასვლა','/ლეგენდა','/მენიუ','/გახსნა','/შეყვანა','/სრული','/ისტორია','/ვადა','/ტექსტი','/შეტყობინება','/მარკერი','/დახურვა','/დროშა','/მეტსახელი','/მე','/ვინ','/ფერი','/help','/გზა','/ჩვ','/გად','/md','/წაშ','/რედ','/ფოთოლი','/მაკრო','/ლოგინი','/ლოგაუთი','/სახელი','/სესია','/სია','/სურვილი','/შენახვა','/ჩატვირთვა','/სინქრონიზაცია','/შესრულება','/play','/მუსიკა','/ფაილები','/ფაილი','/ენა','/სექცია'];
 
 function toggleTerm() { _tmOpen ? closeTerm() : _tmOpen_(); }
 function _tmOpen_() {
@@ -134,8 +134,9 @@ function tmSend() {
 
   // DSL/menu-item/legend edit mode intercept — don't treat as chat
   if (_tmEditObj) {
-    if (_tmEditMode === 'menuItem') { _tmSaveMenuItem(v); return; }
-    if (_tmEditMode === 'legend')   { _tmSaveLegend(v); return; }
+    if (_tmEditMode === 'menuItem')  { _tmSaveMenuItem(v); return; }
+    if (_tmEditMode === 'menuTitle') { _tmSaveMenuTitle(v); return; }
+    if (_tmEditMode === 'legend')    { _tmSaveLegend(v); return; }
     _tmSaveDlg(v); return;
   }
 
@@ -467,6 +468,16 @@ async function _tmRun(raw) {
   var menuPathM = full.match(/^მენიუ\/(.+)$/);
   if (menuPathM) { _tmMenuOpenPath(menuPathM[1].split('/').map(function (s) { return s.trim(); }).filter(Boolean)); return; }
 
+  // /სექცია/<სექცია>/.../<სექცია> — edit that section's OWN title (rename in
+  // ka, translate in en) — distinct from /md (create) and item-editing.
+  var sectionPathM = full.match(/^სექცია\/(.+)$/);
+  if (sectionPathM) {
+    var ssegs = sectionPathM[1].split('/').map(function (s) { return s.trim(); }).filter(Boolean);
+    if (!ssegs.length) { _tmL('ter', 'გამოყენება: /სექცია/სახელი/.../სახელი'); return; }
+    _tmMenuTitleEditOpen(ssegs);
+    return;
+  }
+
   var parts = full.split(/\s+/), cmd = parts[0], args = parts.slice(1);
   var map = {
     'დახმარება':   _tmHelp,
@@ -587,6 +598,7 @@ function _tmHelp() {
     ['/ჩატვირთვა', 'JSON ფაილიდან queue-ს ატვირთვა — ერთვის მიმდინარე queue-ს, ერთი და იმავე target-ის ჩანაწერი გადაიწერება'],
     ['/სინქრონიზაცია', 'queue-ს ხელით სინქრონიზაცია (session-refresh + flush) — automatic reconnect-ის alternative'],
     ['/ენა en|ka', 'რედაქტირების ენის switch — icon prompt-ში (~/mdelo=en, ~/მდელო=ka)'],
+    ['/სექცია/ა/ბ', 'მენიუს სექციის საკუთარი სახელის რედაქტირება (rename ka-ში, თარგმანი en-ში)'],
     ['/ლოგინი',           'შესვლა (popup: email + სახელი), ან სტატუსის ჩვენება'],
     ['/ლოგაუთი',          'გამოსვლა სისტემიდან'],
     ['/სახელი <ახალი სახელი>', 'display_name-ის შეცვლა (დიალოგებში ჩანს)'],
@@ -1099,10 +1111,10 @@ function _tmFindMenuNodeByPath(segs) {
   if (!_gmCfg) _gmCfg = _CFG;
   var nodes = _gmCfg.menu || [], node = null;
   for (var i = 0; i < segs.length; i++) {
-    node = nodes.find(function (n) { return (n.title || '').trim() === segs[i]; });
+    node = nodes.find(function (n) { return typeof _lbMatches === 'function' && _lbMatches(n.title, segs[i]); });
     if (!node) { _tmL('ter', 'მენიუში ვერ მოიძებნა: "' + segs[i] + '"'); return null; }
     if (i < segs.length - 1) {
-      if (!node.children || !node.children.length) { _tmL('ter', '"' + node.title + '" — ქვესექციები არ აქვს'); return null; }
+      if (!node.children || !node.children.length) { _tmL('ter', '"' + _i18n(node.title) + '" — ქვესექციები არ აქვს'); return null; }
       nodes = node.children;
     }
   }
@@ -1119,11 +1131,11 @@ function _tmMenuOpenPath(segs) {
 
   var nodes = _gmCfg.menu || [], path = [], node = null;
   for (var i = 0; i < segs.length; i++) {
-    node = nodes.find(function (n) { return (n.title || '').trim() === segs[i]; });
+    node = nodes.find(function (n) { return typeof _lbMatches === 'function' && _lbMatches(n.title, segs[i]); });
     if (!node) { _tmL('ter', 'მენიუში ვერ მოიძებნა: "' + segs[i] + '"'); return; }
     if (i < segs.length - 1) {
-      if (!node.children || !node.children.length) { _tmL('ter', '"' + node.title + '" — ქვესექციები არ აქვს'); return; }
-      path.push({ title: node.title, nodes: node.children });
+      if (!node.children || !node.children.length) { _tmL('ter', '"' + _i18n(node.title) + '" — ქვესექციები არ აქვს'); return; }
+      path.push({ title: _i18n(node.title), nodes: node.children });
       nodes = node.children;
     }
   }
@@ -1147,7 +1159,7 @@ function _tmMenuOpenPath(segs) {
       }, 80);
     }
   } else if (node.children && node.children.length) {
-    _gmShowPanel(node.children, path.concat([{ title: node.title, nodes: node.children }]));
+    _gmShowPanel(node.children, path.concat([{ title: _i18n(node.title), nodes: node.children }]));
   } else {
     _gmShowPanel(nodes, path);
   }
@@ -1169,8 +1181,9 @@ function _tmSubmitCmd() {
   var v = (_tmEditBuf != null) ? _tmEditBuf : document.getElementById('tmTa').value.trim();
   _tmEditBuf = null;
   if (!v) { _tmL('ter', '/შეყვანა: შესანახი ტექსტი არ მოიძებნა'); return; }
-  if (_tmEditMode === 'menuItem') { _tmSaveMenuItem(v); return; }
-  if (_tmEditMode === 'legend')   { _tmSaveLegend(v); return; }
+  if (_tmEditMode === 'menuItem')  { _tmSaveMenuItem(v); return; }
+  if (_tmEditMode === 'menuTitle') { _tmSaveMenuTitle(v); return; }
+  if (_tmEditMode === 'legend')    { _tmSaveLegend(v); return; }
   _tmSaveDlg(v);
 }
 
@@ -1847,7 +1860,7 @@ function _tmMenuCwdList() {
   return n.children;
 }
 function _tmMenuPathStr() {
-  var parts = _tmMenuStack.map(function (n) { return n.title || '(უსახელო)'; });
+  var parts = _tmMenuStack.map(function (n) { return _i18n(n.title) || '(უსახელო)'; });
   return 'root' + (parts.length ? '/' + parts.join('/') : '');
 }
 
@@ -1862,14 +1875,14 @@ function _tmMenuLs() {
   if (!list.length && !items.length) _tmL('tdm', '(ცარიელია)');
   list.forEach(function (n) {
     var hasKids = (n.children && n.children.length) || (n.items && n.items.length);
-    _tmL('tnf', (n.icon || '📁') + ' ' + (n.title || '(უსახელო)') + (hasKids ? '/' : ''));
+    _tmL('tnf', (n.icon || '📁') + ' ' + (_i18n(n.title) || '(უსახელო)') + (hasKids ? '/' : ''));
   });
   items.forEach(function (it, idx) {
     var itObj = typeof it === 'string' ? { type: 'text', emoji: '•', label: it } : it;
     if (itObj.type === 'progress') {
-      _tmL('tnf', '  [' + idx + '] ინდიკატორი: "' + (itObj.label || '') + '" (' + (itObj.value != null ? itObj.value : 0) + '%)');
+      _tmL('tnf', '  [' + idx + '] ინდიკატორი: "' + (_i18n(itObj.label) || '') + '" (' + (itObj.value != null ? itObj.value : 0) + '%)');
     } else {
-      var lbl = (itObj.label || '').replace(/\n/g, ' ');
+      var lbl = (_i18n(itObj.label) || '').replace(/\n/g, ' ');
       if (lbl.length > 60) lbl = lbl.slice(0, 60) + '…';
       _tmL('tnf', '  [' + idx + '] ტექსტი: "' + lbl + '"');
     }
@@ -1887,7 +1900,7 @@ function _tmMenuCd(args) {
   if (name.indexOf('/') >= 0) { _tmMenuCdPath(name); return; }
 
   var list  = _tmMenuCwdList();
-  var found = list.find(function (n) { return (n.title || '').trim() === name; });
+  var found = list.find(function (n) { return typeof _lbMatches === 'function' && _lbMatches(n.title, name); });
   if (!found) { _tmL('ter', 'ვერ მოიძებნა: "' + name + '"'); _tmL('tdm', 'სია: /ls'); return; }
   _tmMenuStack.push(found);
   _tmL('tok', _tmMenuPathStr());
@@ -1915,7 +1928,7 @@ function _tmMenuCdPath(path) {
     }
     var topNode  = stack.length ? stack[stack.length - 1] : null;
     var children = topNode ? (topNode.children || []) : (_CFG.menu || []);
-    var found = children.find(function (n) { return (n.title || '').trim() === seg; });
+    var found = children.find(function (n) { return typeof _lbMatches === 'function' && _lbMatches(n.title, seg); });
     if (!found) {
       _tmL('ter', 'ვერ მოიძებნა: "' + seg + '" (სეგმენტი ' + (i + 1) + '/' + segments.length + ') — cwd უცვლელია');
       return;
@@ -1946,7 +1959,7 @@ async function _tmMenuMd(args) {
   if (!name) { _tmL('ter', 'გამოყენება: /md <სახელი> [ემოჯი]'); return; }
   var parent = _tmMenuCwdNode();
   var list   = _tmMenuCwdList();
-  if (list.find(function (n) { return (n.title || '').trim() === name; })) {
+  if (list.find(function (n) { return typeof _lbMatches === 'function' && _lbMatches(n.title, name); })) {
     _tmL('ter', 'უკვე არსებობს: "' + name + '"'); return;
   }
   var node = { id: 'nd_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), icon: icon, title: name, items: [], children: [] };
@@ -2062,7 +2075,7 @@ async function _tmMenuRm(args) {
     await _tmMenuSaveNode(node.id, { items_json: node.items });
   } else {
     var list = _tmMenuCwdList();
-    var fIdx = list.findIndex(function (n) { return (n.title || '').trim() === arg; });
+    var fIdx = list.findIndex(function (n) { return typeof _lbMatches === 'function' && _lbMatches(n.title, arg); });
     if (fIdx < 0) { _tmL('ter', 'ვერ მოიძებნა: "' + arg + '" — /ls'); return; }
     var removed = list[fIdx];
     if (typeof window.mdMediaDelete === 'function') {
@@ -2155,8 +2168,9 @@ function _tmMediaCleanupOnCancel() {
 function _tmMenuItemToEditText(itObj) {
   var emoji = itObj.emoji || (itObj.type === 'progress' ? '📊' : '•');
   var head  = '[emoji: ' + emoji + ']';
+  var lbl   = _i18n(itObj.label);
   if (itObj.type === 'progress') {
-    return head + '\n' + (itObj.label || '') + '\n\n' + (itObj.value != null ? itObj.value : 0) + '%';
+    return head + '\n' + lbl + '\n\n' + (itObj.value != null ? itObj.value : 0) + '%';
   }
   if (itObj.type === 'text' && itObj.segments && itObj.segments.length) {
     var body = itObj.segments.map(function (seg) {
@@ -2165,11 +2179,11 @@ function _tmMenuItemToEditText(itObj) {
         _tmEditMediaBuf.push({ items: seg.items || [], _preexisting: true });
         return _tmMediaToken(n);
       }
-      return seg.value || '';
+      return _i18n(seg.value) || '';
     }).join('\n');
     return head + '\n' + body;
   }
-  return head + '\n' + (itObj.label || '');
+  return head + '\n' + lbl;
 }
 
 // Parse text-editor lines (emoji tag already stripped) into segments[] + a
@@ -2231,6 +2245,69 @@ function _tmParseMenuEditText(text, type, fallbackEmoji) {
   return { emoji: emoji, label: rest.join('\n').trim(), value: null };
 }
 
+// Open the multiline editor for a menu SECTION's own title (not an item) —
+// triggered by /სექცია/<path>. ka mode renames (authoritative, full
+// rewrite); en mode translates only, guarded the same way as items/dialogue.
+function _tmMenuTitleEditOpen(segs) {
+  var node = (typeof _tmFindMenuNodeByPath === 'function') ? _tmFindMenuNodeByPath(segs) : null;
+  if (!node) return; // _tmFindMenuNodeByPath already logged the "not found" error
+
+  var oldTitle = node.title;
+  var oldKa = (typeof oldTitle === 'string') ? oldTitle : ((oldTitle && oldTitle.ka) || '');
+  var oldEn = (oldTitle && typeof oldTitle === 'object') ? (oldTitle.en || '') : '';
+
+  if (_tmEditLang === 'en' && !oldKa) {
+    _tmL('ter', '✗ ჯერ საჭიროა ქართული სახელის დაყენება (/ენა ka), მერე — თარგმნა');
+    return;
+  }
+
+  var current = (_tmEditLang === 'en') ? (oldEn || oldKa) : oldKa;
+
+  if (!_tmMulti) tmToggleMulti();
+  document.getElementById('tmTa').value = current;
+  _tmTaResize();
+  _tmEditObj     = node.id;
+  _tmEditMode    = 'menuTitle';
+  _tmEditMenuCtx = { node: node };
+  _tmEditLabel   = 'სექცია: ' + oldKa;
+
+  _tmL('tsy', '─── სექციის სახელი ' + (_tmEditLang === 'en' ? '(EN)' : '') + ' ──────────────');
+  if (_tmEditLang === 'en') {
+    _tmL('tdm', 'EN რეჟიმი — მხოლოდ სახელის თარგმანი, structure/items უცვლელია');
+  }
+  _tmL('tdm', 'Ctrl+Enter — შენახვა · Esc — გაუქმება');
+}
+
+// Save the section-title edit — merges into {ka,en}, same reference-text
+// guard as dialogue/legend/items: an untouched en-mode textarea (still
+// showing the ka fallback) is never saved back as a false translation.
+async function _tmSaveMenuTitle(text) {
+  var ctx = _tmEditMenuCtx;
+  if (!ctx || !ctx.node) { _tmEditCancel(); return; }
+  var node = ctx.node;
+
+  var oldTitle = node.title;
+  var oldKa = (typeof oldTitle === 'string') ? oldTitle : ((oldTitle && oldTitle.ka) || '');
+  var oldEn = (oldTitle && typeof oldTitle === 'object') ? (oldTitle.en || '') : '';
+
+  var newKa = oldKa, newEn = oldEn;
+  if (_tmEditLang === 'en') {
+    if (text && text !== oldKa) newEn = text;
+  } else {
+    newKa = text || oldKa;
+  }
+  node.title = { ka: newKa, en: newEn };
+
+  var label = _tmEditLabel;
+  _tmEditObj = null; _tmEditMode = null; _tmEditMenuCtx = null; _tmEditLabel = null; _tmEditBuf = null; _tmEditMediaBuf = [];
+  document.getElementById('tmTa').value = '';
+  if (_tmMulti) tmToggleMulti();
+
+  _tmL('tdm', '↑ ' + label + ' — ვინახავ...');
+  await _tmMenuSaveNode(node.id, { title: newKa, title_en: newEn });
+  _tmL('tok', label + ' — შენახულია ✓');
+}
+
 // Open the multiline editor for item [idx] of `node`.
 function _tmMenuEditOpen(node, idx, itObj) {
   _tmEditMediaBuf = []; // fresh scope for this session — _tmMenuItemToEditText repopulates from existing segments, if any
@@ -2240,9 +2317,13 @@ function _tmMenuEditOpen(node, idx, itObj) {
   _tmEditObj     = node.id;
   _tmEditMode    = 'menuItem';
   _tmEditMenuCtx = { node: node, idx: idx, type: itObj.type || 'text' };
-  _tmEditLabel   = '[' + idx + '] ' + (node.title || '');
+  var nodeTitle  = _i18n(node.title) || '';
+  _tmEditLabel   = '[' + idx + '] ' + nodeTitle;
 
-  _tmL('tsy', '─── [' + idx + '] ' + (node.title || '') + ' ──────────────');
+  _tmL('tsy', '─── [' + idx + '] ' + nodeTitle + ' ' + (_tmEditLang === 'en' ? '(EN)' : '') + ' ──────────────');
+  if (_tmEditLang === 'en') {
+    _tmL('tdm', 'EN რეჟიმი — მხოლოდ ტექსტი ითარგმნება, emoji/სტრუქტურა უცვლელია');
+  }
   _tmL('tdm', 'ხაზი 1 — [emoji: X], მხოლოდ X გამოცვალე');
   if (itObj.type === 'text' || !itObj.type) {
     _tmL('tdm', 'ახალ ხაზზე დაწერე "/მედია" — jpg/png/webp/mp3/txt/mp4/epub/pdf ატვირთვისთვის');
@@ -2363,11 +2444,39 @@ async function _tmSaveMenuItem(text) {
   var currentEmoji  = (existing && typeof existing === 'object' && existing.emoji) ? existing.emoji : (ctx.type === 'progress' ? '📊' : '•');
   var parsed        = _tmParseMenuEditText(text, ctx.type, currentEmoji);
   var itObj         = typeof existing === 'string' ? { type: ctx.type } : existing;
+
+  var oldLabel   = itObj.label;
+  var oldLabelKa = (typeof oldLabel === 'string') ? oldLabel : ((oldLabel && oldLabel.ka) || '');
+  var oldLabelEn = (oldLabel && typeof oldLabel === 'object') ? (oldLabel.en || '') : '';
+
   itObj.type  = ctx.type;
   itObj.emoji = parsed.emoji;
-  itObj.label = parsed.label;
+  // Only record as translated if it actually differs from the ka reference
+  // shown while editing — untouched text must not be saved back as a false
+  // "translation" (same reasoning as dialogue/legend).
+  if (_tmEditLang === 'en') {
+    itObj.label = { ka: oldLabelKa, en: (parsed.label && parsed.label !== oldLabelKa) ? parsed.label : oldLabelEn };
+  } else {
+    itObj.label = { ka: parsed.label || '', en: oldLabelEn };
+  }
+
   if (ctx.type === 'text') {
-    if (parsed.segments && parsed.segments.length) itObj.segments = parsed.segments;
+    if (parsed.segments && parsed.segments.length) {
+      var oldSegs = itObj.segments || [];
+      if (oldSegs.length && oldSegs.length !== parsed.segments.length) {
+        _tmL('ter', '⚠ სეგმენტების რაოდენობა შეიცვალა (' + oldSegs.length + ' → ' + parsed.segments.length + ') — თარგმანის მიბმა შესაძლოა არასწორად მოხდეს');
+      }
+      itObj.segments = parsed.segments.map(function (seg, si) {
+        if (seg.type === 'files') return seg; // structure/media never changes via translation
+        var oldSeg   = oldSegs[si];
+        var oldValKa = oldSeg ? ((typeof oldSeg.value === 'string') ? oldSeg.value : ((oldSeg.value && oldSeg.value.ka) || '')) : '';
+        var oldValEn = (oldSeg && oldSeg.value && typeof oldSeg.value === 'object') ? (oldSeg.value.en || '') : '';
+        if (_tmEditLang === 'en') {
+          return { type: 'text', value: { ka: oldValKa, en: (seg.value && seg.value !== oldValKa) ? seg.value : oldValEn } };
+        }
+        return { type: 'text', value: { ka: seg.value || '', en: oldValEn } };
+      });
+    }
     else delete itObj.segments; // nothing left but plain text — label-only fallback
   }
   if (ctx.type === 'progress' && parsed.value != null) itObj.value = parsed.value;
