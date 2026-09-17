@@ -845,11 +845,11 @@ async function _tmRequestTierUp() {
   var tierOptions;
   if (myTier === 'visitor') {
     tierOptions = [
-      { value: 'caretaker', label: 'მეურვე' },
-      { value: 'resident', label: 'მაცხოვრებელი' }
+      { value: 'caretaker', label: { ka: 'მეურვე', en: 'Caretaker' } },
+      { value: 'resident', label: { ka: 'მაცხოვრებელი', en: 'Resident' } }
     ];
   } else if (myTier === 'caretaker') {
-    tierOptions = [{ value: 'resident', label: 'მაცხოვრებელი' }];
+    tierOptions = [{ value: 'resident', label: { ka: 'მაცხოვრებელი', en: 'Resident' } }];
   } else {
     _tmL('tdm', 'შენი ტიერიდან (' + myTier + ') აღარაფერი მოითხოვება ავტომატურად ამ გზით.');
     return;
@@ -859,12 +859,14 @@ async function _tmRequestTierUp() {
     return;
   }
   var fres = await window.showNotifyFormModal({
-    title: 'დაწინაურების განაცხადი',
+    title: (typeof _i18n === 'function' ? _i18n({ ka: 'დაწინაურების განაცხადი', en: 'Promotion request' }) : 'დაწინაურების განაცხადი'),
     tierOptions: tierOptions,
     lockText: true,
     textForTier: function (tier) {
-      var lbl = tier === 'caretaker' ? 'მეურვე' : 'მაცხოვრებელი';
-      return window.myDisplayName() + '-ს სურს გახდეს ' + lbl;
+      var lbl = tier === 'caretaker' ? { ka: 'მეურვე', en: 'caretaker' } : { ka: 'მაცხოვრებელი', en: 'resident' };
+      return (typeof _i18n === 'function' && _mdeloLang === 'en')
+        ? (window.myDisplayName() + ' wants to become ' + lbl.en)
+        : (window.myDisplayName() + '-ს სურს გახდეს ' + lbl.ka);
     }
   });
   if (!fres) { _tmL('tdm', 'გაუქმდა'); return; }
@@ -1437,8 +1439,8 @@ async function _tmNotify(typeChar, rest) {
     // Popup path — used both for a person typing bare "/შეტყობინება^" AND for
     // a low-tier macro that bundles "/შეტყობინება^" without hardcoding the
     // request text. Name is automatic (shown in the popup, never re-typed).
-    var typeLabel = { '*': 'ინფო', '!': 'გაფრთხილება', '~': 'საფრთხე', '^': 'კონსენსუსი', '+': 'პროექტი', '.': 'დასრულება', '': 'ინფო' }[typeChar] || 'ინფო';
-    var fres = await window.showNotifyFormModal({ title: 'შეტყობინება (' + typeLabel + ')' });
+    var typeLabelPair = { '*': { ka: 'ინფო', en: 'Info' }, '!': { ka: 'გაფრთხილება', en: 'Warning' }, '~': { ka: 'საფრთხე', en: 'Danger' }, '^': { ka: 'კონსენსუსი', en: 'Consensus' }, '+': { ka: 'პროექტი', en: 'Project' }, '.': { ka: 'დასრულება', en: 'Done' }, '': { ka: 'ინფო', en: 'Info' } }[typeChar] || { ka: 'ინფო', en: 'Info' };
+    var fres = await window.showNotifyFormModal({ title: (typeof _i18n === 'function' ? _i18n({ ka: 'შეტყობინება (' + typeLabelPair.ka + ')', en: 'Notification (' + typeLabelPair.en + ')' }) : 'შეტყობინება (' + typeLabelPair.ka + ')') });
     if (!fres) { _tmL('tdm', 'გაუქმდა'); return; }
     rest = (fres.text || '').trim();
     modalDetail = (fres.detail || '').trim();

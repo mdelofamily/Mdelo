@@ -293,20 +293,20 @@ window.showNotifyFormModal = function (opts) {
     if (hasTierChoice) {
       tierRowHtml = '<div id="_nfTierRow" style="display:flex;gap:6px;margin-bottom:12px;">' +
         opts.tierOptions.map(function (t, i) {
-          return '<button type="button" data-tier="' + t.value + '" style="flex:1;height:34px;border-radius:8px;font-size:13px;cursor:pointer;border:1px solid rgba(88,166,255,' + (i === 0 ? '0.7' : '0.25') + ');background:rgba(88,166,255,' + (i === 0 ? '0.22' : '0.05') + ');color:#e6edf3;">' + t.label + '</button>';
+          return '<button type="button" data-tier="' + t.value + '" style="flex:1;height:34px;border-radius:8px;font-size:13px;cursor:pointer;border:1px solid rgba(88,166,255,' + (i === 0 ? '0.7' : '0.25') + ');background:rgba(88,166,255,' + (i === 0 ? '0.22' : '0.05') + ');color:#e6edf3;">' + _i18n(t.label) + '</button>';
         }).join('') +
       '</div>';
     }
     wrap.innerHTML =
       '<div style="background:#161b22;border:1px solid rgba(88,166,255,0.4);border-radius:12px;padding:20px;width:min(92vw,360px);color:#e6edf3;font-family:inherit;">' +
-        '<div style="font-size:15px;font-weight:600;margin-bottom:4px;">' + (opts.title || 'შეტყობინება') + '</div>' +
+        '<div style="font-size:15px;font-weight:600;margin-bottom:4px;">' + (opts.title || _i18n({ ka: 'შეტყობინება', en: 'Notification' })) + '</div>' +
         '<div style="font-size:12px;opacity:0.6;margin-bottom:12px;">👤 ' + name + '</div>' +
         tierRowHtml +
-        '<textarea id="_nfText" placeholder="რას აცხადებ?" rows="' + (opts.lockText ? '1' : '3') + '"' + (opts.lockText ? ' readonly' : '') + ' style="width:100%;box-sizing:border-box;margin-bottom:10px;padding:8px 10px;background:' + (opts.lockText ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.06)') + ';border:1px solid rgba(255,255,255,' + (opts.lockText ? '0.08' : '0.15') + ');border-radius:8px;color:' + (opts.lockText ? '#9aa4ae' : '#e6edf3') + ';font-size:14px;font-family:inherit;resize:vertical;' + (opts.lockText ? 'cursor:default;' : '') + '"></textarea>' +
-        '<textarea id="_nfDetail" placeholder="დეტალი (არასავალდებულო)" rows="4" style="width:100%;box-sizing:border-box;margin-bottom:14px;padding:8px 10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:#e6edf3;font-size:14px;font-family:inherit;resize:vertical;"></textarea>' +
+        '<textarea id="_nfText" placeholder="' + _i18n({ ka: 'რას აცხადებ?', en: 'What are you announcing?' }) + '" rows="' + (opts.lockText ? '1' : '3') + '"' + (opts.lockText ? ' readonly' : '') + ' style="width:100%;box-sizing:border-box;margin-bottom:10px;padding:8px 10px;background:' + (opts.lockText ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.06)') + ';border:1px solid rgba(255,255,255,' + (opts.lockText ? '0.08' : '0.15') + ');border-radius:8px;color:' + (opts.lockText ? '#9aa4ae' : '#e6edf3') + ';font-size:14px;font-family:inherit;resize:vertical;' + (opts.lockText ? 'cursor:default;' : '') + '"></textarea>' +
+        '<textarea id="_nfDetail" placeholder="' + _i18n({ ka: 'დეტალი (არასავალდებულო)', en: 'Detail (optional)' }) + '" rows="4" style="width:100%;box-sizing:border-box;margin-bottom:14px;padding:8px 10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:#e6edf3;font-size:14px;font-family:inherit;resize:vertical;"></textarea>' +
         '<div style="display:flex;gap:8px;">' +
-          '<button id="_nfCancel" style="flex:1;height:36px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);color:#e6edf3;border-radius:8px;font-size:13px;cursor:pointer;">გაუქმება</button>' +
-          '<button id="_nfSubmit" style="flex:1;height:36px;background:rgba(88,166,255,0.25);border:1px solid rgba(88,166,255,0.6);color:#e6edf3;border-radius:8px;font-size:13px;cursor:pointer;">გაგზავნა</button>' +
+          '<button id="_nfCancel" style="flex:1;height:36px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);color:#e6edf3;border-radius:8px;font-size:13px;cursor:pointer;">' + _i18n({ ka: 'გაუქმება', en: 'Cancel' }) + '</button>' +
+          '<button id="_nfSubmit" style="flex:1;height:36px;background:rgba(88,166,255,0.25);border:1px solid rgba(88,166,255,0.6);color:#e6edf3;border-radius:8px;font-size:13px;cursor:pointer;">' + _i18n({ ka: 'გაგზავნა', en: 'Send' }) + '</button>' +
         '</div>' +
       '</div>';
     document.body.appendChild(wrap);
@@ -2045,7 +2045,7 @@ function _renderConsensusFeed() {
   const feed = document.getElementById('cpFeed');
   feed.innerHTML = '';
   if (!_consensusVotes.length) {
-    feed.innerHTML = '<div class="cp-feed-empty">ჯერ არავის უხმია</div>';
+    feed.innerHTML = '<div class="cp-feed-empty">' + _i18n({ ka: 'ჯერ ხმა არავის მიუცია', en: 'No votes yet' }) + '</div>';
   } else {
     _consensusVotes.forEach(v => {
       const row = document.createElement('div');
