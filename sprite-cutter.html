@@ -124,8 +124,7 @@ body{display:flex;flex-direction:column;}
   <button class="tbtn" style="border-color:#a78bfa;color:#a78bfa;" onclick="exportAutoTile()" title="AutoTile Pack (name_0..name_15)">🔲</button>
   <button class="tbtn" style="border-color:#4ade80;color:#4ade80;" onclick="exportDualGrid()" title="Dual Grid Export — 4×4 sheet ან name_0..name_15">⬡ <span>Dual</span></button>
   <div class="sep"></div>
-  <button class="tbtn" id="modeCoords" onclick="toggleCoords()" title="Coords mode — კოორდინატები base64-ის ნაცვლად">📐 <span>Coords</span></button>
-  <input id="sheetUrlInp" type="text" placeholder="PNG URL (sprites.png)" style="display:none;background:var(--bg);border:1px solid var(--accent);color:var(--text);font-size:11px;padding:3px 8px;border-radius:4px;width:180px;font-family:monospace;" title="Spritesheet PNG-ის URL — JSON-ში ჩაიწერება spritesheet ველად">
+  <input id="sheetUrlInp" type="text" placeholder="PNG URL (sprites.png)" style="background:var(--bg);border:1px solid var(--accent);color:var(--text);font-size:11px;padding:3px 8px;border-radius:4px;width:180px;font-family:monospace;" title="Spritesheet PNG-ის URL — JSON-ში ჩაიწერება spritesheet ველად">
 </div>
 
 <div id="main">
@@ -642,17 +641,7 @@ function updateSidePanel(){
 async function downloadJson(json, filename){
   await saveFileAs(json, filename);
 }
-let useCoords=false;
-function toggleCoords(){
-  useCoords=!useCoords;
-  document.getElementById("modeCoords").classList.toggle("on",useCoords);
-  const inp=document.getElementById("sheetUrlInp");
-  inp.style.display=useCoords?"":"none";
-  if(useCoords){inp.focus();}
-  toast(useCoords?"📐 Coords — URL შეიყვანე":"🖼 Base64 mode");
-}
 function getSheetUrl(){
-  if(!useCoords) return "";
   const v=document.getElementById("sheetUrlInp").value.trim();
   if(v) try{localStorage.setItem("sc_sheetUrl",v);}catch(e){}
   return v;
@@ -666,23 +655,21 @@ function getSheetUrl(){
 })();
 const _TRIM=1;
 function _coordCrop(s){return {x:s.x+_TRIM,y:s.y+_TRIM,w:s.w-_TRIM*2,h:s.h-_TRIM*2};}
-function spriteRef(s){const u=getSheetUrl();return u?_coordCrop(s):{src:s.canvas.toDataURL("image/png")};}
-function spriteVal(s){const u=getSheetUrl();return u?_coordCrop(s):s.canvas.toDataURL("image/png");}
 async function exportPack(){
   if(!selected.length){toast("ჯერ ფილები შეარჩიე");return;}
+  const sheetUrl=getSheetUrl();
+  if(!sheetUrl){toast("⚠ PNG URL შეიყვანე");return;}
   const fname=(prompt("ფაილის სახელი:","sprite-pack")||"").trim();
   if(!fname)return;
   const cat=(prompt("კატეგორია (ცარიელი=ყველა):\nსამეურნეო / კონსტრუქციები / მცენარეები / მარკერები","")||"").trim();
-  const sheetUrl=getSheetUrl();
-  if(useCoords&&!sheetUrl){toast("⚠ Coords mode: URL შეიყვანე");return;}
   const tiles=selected.map(s=>({
     id:(s.isObject?"obj_":"custom_")+s.name.replace(/\s+/g,"_"),
     lb:s.name,
-    ...spriteRef(s),
+    ..._coordCrop(s),
     ...(cat?{category:cat}:{}),
     ...(s.isObject?{isObject:true,cols:s.cols,rows:s.rows}:{})
   }));
-  const json=JSON.stringify({...(sheetUrl?{spritesheet:sheetUrl}:{}),tiles},null,2);
+  const json=JSON.stringify({spritesheet:sheetUrl,tiles},null,2);
   await downloadJson(json,fname+".json");
   toast("📦 "+tiles.length+" ფილა ექსპორტირდა");
 }
@@ -691,6 +678,8 @@ async function exportPack(){
 // detects groups: "grass_0".."grass_15" or "grass_N","grass_NE" etc.
 async function exportAutoTile(){
   if(!selected.length){toast("ჯერ ფილები შეარჩიე");return;}
+  const sheetUrl=getSheetUrl();
+  if(!sheetUrl){toast("⚠ PNG URL შეიყვანე");return;}
 
   // group by base name — strip trailing _0.._15 or _N/_NE/_S etc.
   const groups={};
@@ -704,7 +693,7 @@ async function exportAutoTile(){
     if(m){
       const base=m[1], idx=parseInt(m[2]);
       if(!groups[base]) groups[base]={type:'index', sprites:Array(16).fill(null), name:base};
-      if(idx>=0&&idx<=15) groups[base].sprites[idx]=spriteVal(s);
+      if(idx>=0&&idx<=15) groups[base].sprites[idx]=_coordCrop(s);
       return;
     }
     const m2=s.name.match(/^(.+?)_([NESW]+)$/);
@@ -712,7 +701,7 @@ async function exportAutoTile(){
       const base=m2[1], dirs=m2[2];
       if(dirMap[dirs]!==undefined){
         if(!groups[base]) groups[base]={type:'dir', sprites:Array(16).fill(null), name:base};
-        groups[base].sprites[dirMap[dirs]]=spriteVal(s);
+        groups[base].sprites[dirMap[dirs]]=_coordCrop(s);
         return;
       }
     }
@@ -720,7 +709,7 @@ async function exportAutoTile(){
     if(!groups['__standalone__']) groups['__standalone__']={type:'standalone', tiles:[]};
     groups['__standalone__'].tiles.push({
       id:"custom_"+s.name.replace(/\s+/g,"_"), lb:s.name,
-      ...spriteRef(s)
+      ..._coordCrop(s)
     });
   });
 
@@ -749,9 +738,7 @@ async function exportAutoTile(){
   const compatRaw=(prompt("თავსებადი ფილები (ID-ები მძიმით, ან ცარიელი):","")||"").trim();
   const compatibleWith=compatRaw?compatRaw.split(",").map(s=>s.trim()).filter(Boolean):[];
 
-  const sheetUrl=getSheetUrl();
-  if(useCoords&&!sheetUrl){toast("⚠ Coords mode: URL შეიყვანე");return;}
-  const json=JSON.stringify({...(sheetUrl?{spritesheet:sheetUrl}:{}),autoTiles:autoTiles.map(t=>({...t,...(compatibleWith.length?{compatibleWith}:{})})), tiles},null,2);
+  const json=JSON.stringify({spritesheet:sheetUrl,autoTiles:autoTiles.map(t=>({...t,...(compatibleWith.length?{compatibleWith}:{})})), tiles},null,2);
   await downloadJson(json,fname+".json");
   toast("🔲 AutoTile: "+summary);
 }
@@ -760,10 +747,12 @@ async function exportAutoTile(){
 // Two methods:
 //   A) selected tiles named  name_0 .. name_15  → export as dualTiles (full 16 required)
 //   B) 4×4 grid sheet auto-slice              → cell(col,row) → sprites[row*4+col = mask]
-// Output: {dualTiles:[{id,lb,dualTile:true,sprites:[src0..src15]}]}
+// Output: {spritesheet, dualTiles:[{id,lb,dualTile:true,sprites:[{x,y,w,h} × 16]}]}
 // compatible with map-editor loadSpritePack and renderDualGrid (TL=1,TR=2,BL=4,BR=8)
 async function exportDualGrid(){
   if(!sheetImg){toast("ჯერ სპრაიტშიტი ჩატვირთე");return;}
+  const sheetUrl=getSheetUrl();
+  if(!sheetUrl){toast("⚠ PNG URL შეიყვანე");return;}
 
   // ── Method A: name-based (name_0..name_15) from selected ──
   if(selected.length){
@@ -774,7 +763,7 @@ async function exportDualGrid(){
         const base=m[1],idx=parseInt(m[2]);
         if(idx>=0&&idx<=15){
           if(!groups[base])groups[base]=Array(16).fill(null);
-          groups[base][idx]=spriteVal(s);
+          groups[base][idx]=_coordCrop(s);
         }
       }
     });
@@ -787,10 +776,8 @@ async function exportDualGrid(){
       if(!fname)return;
       const compatRaw=(prompt("თავსებადი ფილები (ID-ები მძიმით, ან ცარიელი):","")||"").trim();
       const compatibleWith=compatRaw?compatRaw.split(",").map(s=>s.trim()).filter(Boolean):[];
-      const sheetUrl=getSheetUrl();
-      if(useCoords&&!sheetUrl){toast("⚠ Coords mode: URL შეიყვანე");return;}
       const dualTilesOut=dualTiles.map(t=>({...t,...(compatibleWith.length?{compatibleWith}:{})}));
-      await saveFileAs(JSON.stringify({...(sheetUrl?{spritesheet:sheetUrl}:{}),dualTiles:dualTilesOut},null,2),fname+".json");
+      await saveFileAs(JSON.stringify({spritesheet:sheetUrl,dualTiles:dualTilesOut},null,2),fname+".json");
       toast("⬡ Dual: "+dualTiles.map(t=>t.lb).join(", ")+" — ექსპორტირდა!");
       return;
     }
@@ -814,25 +801,15 @@ async function exportDualGrid(){
   const tname=prompt("Dual Tile სახელი:","terrain");
   if(!tname)return;
 
-  const sheetUrl=getSheetUrl();
-  if(useCoords&&!sheetUrl){toast("⚠ Coords mode: URL შეიყვანე");return;}
   const sprites=Array(16).fill(null);
   for(let mask=0;mask<16;mask++){
     const col=mask%4, row=~~(mask/4);
-    if(sheetUrl){
-      sprites[mask]={x:col*gridSize, y:row*gridSize, w:gridSize, h:gridSize};
-    } else {
-      const off=document.createElement("canvas");
-      off.width=gridSize;off.height=gridSize;
-      const octx=off.getContext("2d");octx.imageSmoothingEnabled=false;
-      octx.drawImage(sheetImg,-(col*gridSize),-(row*gridSize));
-      sprites[mask]=off.toDataURL("image/png");
-    }
+    sprites[mask]={x:col*gridSize, y:row*gridSize, w:gridSize, h:gridSize};
   }
 
   const id=tname.replace(/\s+/g,"_");
   await saveFileAs(
-    JSON.stringify({...(sheetUrl?{spritesheet:sheetUrl}:{}),dualTiles:[{id,lb:tname,dualTile:true,sprites}]},null,2),
+    JSON.stringify({spritesheet:sheetUrl,dualTiles:[{id,lb:tname,dualTile:true,sprites}]},null,2),
     "dual-"+id+".json"
   );
   toast("⬡ "+tname+" — 16 sprite ექსპორტირდა!");
