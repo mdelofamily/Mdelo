@@ -1,12 +1,15 @@
 // ============================================================
-//  export-html.js  —  HTML Viewer Export & Config Export
+//  export-html.js  —  Viewer Export (index.html + data.js) & Config Export
 //  Depends on: state.js, tile-engine.js, render.js, save-load.js, menu-builder.js
-//  Viewer template lives in: viewer/viewer.html
-//  Runtime JS:               viewer/runtime.js
-//  Upload JS:                viewer/upload.js   (must load after runtime.js, before terminal.js)
-//  Terminal JS:              viewer/terminal.js
-//  Canvas renderer:          viewer/canvas-renderer.js
-//  Bulk parser:              js/bulk-parser.js
+//
+//  Output per export (2 files, both go to the mdeloviewer repo root):
+//    data.js     — per-map data only: window._CFG, _OBJS, _W, _H, _TS, DIALOGS
+//    index.html  — light shell from js/viewer/viewer.html (only {{TITLE}} is replaced)
+//
+//  All viewer code (runtime, terminal, canvas-renderer, unlock, upload,
+//  bulk-parser, chat...) is static and lives in the mdeloviewer repo (js/).
+//  Hotspots, map canvas, legend button and info line are built client-side
+//  by runtime.js from window._CFG — nothing is baked here anymore.
 // ============================================================
 
 // ── helpers ──
@@ -16,6 +19,10 @@ async function _fetchViewerAsset(path) {
   const text = await r.text();
   if (text.includes('\x00')) throw new Error(path + ' — binary/corrupted response (null bytes). Try again.');
   return text;
+}
+
+function _expEscTitle(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 function getMenuData() {
@@ -47,7 +54,7 @@ async function doExportHTML() {
     const mapDesc = (document.getElementById("legTabDesc")?.value || "").trim();
     const mapData = getMapData();
 
-    // embed object sprites as base64
+    // embed object sprites as base64 (one canvas crop per placed object)
     const _objUrls = [...new Set(mapData.objects
       .map(o => { const d = tileMap.get(o.id); return d?.sheetUrl || null; })
       .filter(Boolean))];
@@ -64,173 +71,91 @@ async function doExportHTML() {
       }).catch(() => {})
     ));
 
-    const _objsWithSrc = mapData.objects.map(o => {
+    const cfgObjects = mapData.objects.map((o, oi) => {
+      const g = objects[oi] || {};   // live editor object — fallback for hotspot fields
+      let out = {
+        ...o,
+        x: o.x ?? g.x, y: o.y ?? g.y, cols: o.cols ?? g.cols, rows: o.rows ?? g.rows,
+        lb: o.lb ?? g.lb, title: o.title ?? g.title, tooltip: o.tooltip ?? g.tooltip,
+        marker: o.marker ?? g.marker, dialogue: o.dialogue ?? g.dialogue
+      };
       const d = tileMap.get(o.id);
+      const cw = (out.cols || 1) * TS, ch = (out.rows || 1) * TS;
       if (d?.sheetUrl && _sheets.has(d.sheetUrl)) {
         try {
           const sh = _sheets.get(d.sheetUrl);
-          const cw = (o.cols || 1) * TS, ch = (o.rows || 1) * TS;
           const cv = document.createElement("canvas"); cv.width = cw; cv.height = ch;
-          cv.getContext("2d").drawImage(sh, d.sx, d.sy, d.sw, d.sh, 0, 0, cw, ch);
-          return { ...o, src: cv.toDataURL("image/png") };
+          const cx = cv.getContext("2d"); cx.imageSmoothingEnabled = false;
+          cx.drawImage(sh, d.sx, d.sy, d.sw, d.sh, 0, 0, cw, ch);
+          out.src = cv.toDataURL("image/png");
+        } catch (e) {}
+      } else if (!out.src && g.img) {
+        // single-image object — the old baked-PNG path drew obj.img directly;
+        // canvas-renderer needs it as src now that the PNG path is gone
+        try {
+          const cv = document.createElement("canvas"); cv.width = cw; cv.height = ch;
+          const cx = cv.getContext("2d"); cx.imageSmoothingEnabled = false;
+          cx.drawImage(g.img, 0, 0, cw, ch);
+          out.src = cv.toDataURL("image/png");
         } catch (e) {}
       }
-      return o;
+      return out;
     });
 
-    // single JSON.stringify — viewer does JSON.parse({{CFG_LITERAL}})
-    const embeddedCfg = {
-      title: currentProjectName || "RPG Map",
-      description: mapDesc,
+    // map canvas size — same crop the old baked PNG had
+    const CROP = 1;
+    const w = offscreen.width  - CROP * 2;
+    const h = offscreen.height - CROP * 2;
+
+    const title = currentProjectName || "RPG Map";
+    const cfg = {
+      title: title,
+      description: mapDesc,               // full raw text (>>flag blocks included); runtime cuts the default block
       menu: getMenuData(),
       cols: COLS, rows: ROWS,
       map: mapData.map, overlayMap: mapData.overlayMap,
-      objects: _objsWithSrc,
-      custom: mapData.custom, autoTiles: mapData.autoTiles, dualTiles: mapData.dualTiles
+      objects: cfgObjects,
+      custom: mapData.custom, autoTiles: mapData.autoTiles, dualTiles: mapData.dualTiles,
+      hotAreas: hotAreas.map(a => ({
+        id: a.id, x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2,
+        label: a.label, tooltip: a.tooltip, groupId: a.groupId
+      }))
     };
 
-    // build hotspot HTML
-    const TS_ = TS;
-    const embeddedHotspots = objects.map((o, oi) => {
-      const ox = o.x * TS_, oy = o.y * TS_, ow = o.cols * TS_, oh = o.rows * TS_;
-      const title   = ((o.title || o.lb) || "").replace(/'/g, "&#39;").replace(/"/g, "&quot;");
-      const tooltip = (o.tooltip || "").replace(/'/g, "&#39;").replace(/"/g, "&quot;");
-      const hasInteraction = !!(o.title || o.marker || (o.dialogue && o.dialogue.length && o.dialogue[0].text));
-      const markerCls = o.marker === "!" ? "exc" : o.marker === "?" ? "q" : o.marker === "..." ? "chat" : "";
-      const markerHtml = hasInteraction
-        ? (markerCls ? `<div class="hs-marker ${markerCls}">${o.marker}</div>` : `<div class="hs-dot"></div>`)
-        : "";
-      const dlgAttr = (o.dialogue && o.dialogue.length) ? ` data-dialog-id="dlg_${oi}"` : "";
-      return `<div class="hotspot${hasInteraction ? "" : " no-interact"}" data-ox="${ox}" data-oy="${oy}" data-ow="${ow}" data-oh="${oh}" data-title="${title}" data-tooltip="${tooltip}" data-oi="${oi}"${dlgAttr} style="left:${ox}px;top:${oy}px;width:${ow}px;height:${oh}px;">${markerHtml}</div>`;
-    });
-
-    const embeddedAreas = hotAreas.map(a => {
-      const ox = a.x1 * TS_, oy = a.y1 * TS_;
-      const ow = (a.x2 - a.x1) * TS_, oh = (a.y2 - a.y1) * TS_;
-      let label = a.label, tooltip = a.tooltip;
-      if (a.groupId) {
-        const master = hotAreas.find(x => x.groupId === a.groupId && x.label) || a;
-        label = master.label; tooltip = master.tooltip;
-      }
-      const title = (label || "").replace(/'/g, "&#39;").replace(/"/g, "&quot;");
-      const tip   = (tooltip || "").replace(/'/g, "&#39;").replace(/"/g, "&quot;");
-      const gAttr = a.groupId ? ` data-group="${a.groupId}"` : "";
-      return `<div class="hotspot hs-area"${gAttr} data-ox="${ox}" data-oy="${oy}" data-ow="${ow}" data-oh="${oh}" data-title="${title}" data-tooltip="${tip}" style="left:${ox}px;top:${oy}px;width:${ow}px;height:${oh}px;"></div>`;
-    });
-
-    const allHotspots = [...embeddedHotspots, ...embeddedAreas].join("\n    ");
-
-    // draw full map to canvas
-    const _full = document.createElement("canvas");
-    _full.width = offscreen.width; _full.height = offscreen.height;
-    const _fctx = _full.getContext("2d"); _fctx.imageSmoothingEnabled = false;
-    _fctx.fillStyle = "#111"; _fctx.fillRect(0, 0, _full.width, _full.height);
-    _fctx.drawImage(offscreen, 0, 0);
-    objects.forEach(obj => {
-      const def = tileMap.get(obj.id);
-      if (def && def.sheetUrl && _sheets.has(def.sheetUrl)) {
-        const sh = _sheets.get(def.sheetUrl);
-        _fctx.drawImage(sh, def.sx, def.sy, def.sw, def.sh, obj.x * TS, obj.y * TS, obj.cols * TS, obj.rows * TS);
-      } else if (obj.img) {
-        _fctx.drawImage(obj.img, obj.x * TS, obj.y * TS, obj.cols * TS, obj.rows * TS);
-      }
-    });
-
-    const CROP = 1;
-    const exp  = document.createElement("canvas");
-    exp.width  = _full.width  - CROP * 2;
-    exp.height = _full.height - CROP * 2;
-    const ectx = exp.getContext("2d"); ectx.imageSmoothingEnabled = false;
-    ectx.drawImage(_full, -CROP, -CROP);
-
-    const fname         = (currentProjectName || "rpg-map").replace(/[^a-zA-Z0-9ა-ჿ_\-]/g, "_");
-    const hasCoordTiles = [...customTiles, ...autoTiles, ...dualTiles].some(t => t.sheetUrl);
-    let   b64           = "", useCanvasRenderer = false;
-    if (!hasCoordTiles) { try { b64 = exp.toDataURL("image/png"); } catch (e) { b64 = ""; } }
-    else { useCanvasRenderer = true; }
-
-    const w = exp.width, h = exp.height;
-    const cfgJSLiteral = JSON.stringify(embeddedCfg);
-    const objsData = mapData.objects.map(o => ({
+    const objsData = cfgObjects.map(o => ({
       title: o.title, lb: o.lb, dialogue: o.dialogue || [],
       requires: o.requires || null, on_complete: o.on_complete || null
     }));
 
-    // build window.DIALOGS — every object with dialogue becomes a dialog entry
-    const _dialogsMap = {};
-    mapData.objects.forEach((o, oi) => {
+    // window.DIALOGS — every object with dialogue becomes a dialog entry
+    const dialogsMap = {};
+    cfgObjects.forEach((o, oi) => {
       if (o.dialogue && o.dialogue.length) {
-        _dialogsMap['dlg_' + oi] = {
+        dialogsMap['dlg_' + oi] = {
           id: 'dlg_' + oi, trigger: String(oi),
           requires: o.requires || null, nodes: o.dialogue, on_complete: o.on_complete || null
         };
       }
     });
-    const dialogsJS = 'window.DIALOGS = ' + JSON.stringify(_dialogsMap) + ';';
 
-    // load viewer assets (all inlined)
-    const [tmpl, runtimeJS, uploadJS, terminalJS, canvasRendererJS, bulkParserJS, unlockJS] = await Promise.all([
-      _fetchViewerAsset('js/viewer/viewer.html'),
-      _fetchViewerAsset('js/viewer/runtime.js'),
-      _fetchViewerAsset('js/viewer/upload.js'),
-      _fetchViewerAsset('js/viewer/terminal.js'),
-      _fetchViewerAsset('js/viewer/canvas-renderer.js'),
-      _fetchViewerAsset('js/bulk-parser.js'),
-      _fetchViewerAsset('js/viewer/unlock.js'),
-    ]);
+    // ── data.js ──
+    const dataJS =
+      "// generated by Mdelo editor — per-map data only, do not edit by hand\n" +
+      "window._CFG = "    + JSON.stringify(cfg)        + ";\n" +
+      "window._OBJS = "   + JSON.stringify(objsData)   + ";\n" +
+      "window._W = " + w + "; window._H = " + h + "; window._TS = " + TS + ";\n" +
+      "window.DIALOGS = " + JSON.stringify(dialogsMap) + ";\n";
 
-    // map image tag
-    const mapImgTag = useCanvasRenderer
-      ? `<canvas id="mapImg" width="${w}" height="${h}"></canvas>`
-      : `<img id="mapImg" src="${b64}" width="${w}" height="${h}">`;
+    // ── index.html (light shell; only {{TITLE}} is per-map) ──
+    const tmpl = await _fetchViewerAsset('js/viewer/viewer.html');
+    const html = tmpl.replace(/{{TITLE}}/g, () => _expEscTitle(title));
+    const left = html.match(/{{[A-Z_]+}}/g);
+    if (left) throw new Error('viewer.html has unreplaced placeholders: ' + [...new Set(left)].join(', '));
 
-    // quest / legend HTML
-    // NOTE: mapDesc may contain ">>flag" block syntax (same convention the
-    // legend editor / _legendResolveText use at runtime — see runtime.js).
-    // Only the *default* block (everything before the first ">>flag" line)
-    // gets baked into the static export; flag-specific blocks are resolved
-    // client-side only, from the live legend_overrides row, never here —
-    // so raw ">>" tags must never leak into the baked HTML.
-    function _legendDefaultOnly(raw) {
-      const m = String(raw || "").match(/^\s*>>\s*\S+\s*$/m);
-      return (m ? raw.slice(0, m.index) : raw).trim();
-    }
-    const questDefaultText = _legendDefaultOnly(mapDesc);
-    // #questPopup must always exist in the DOM — even with no export-time
-    // description — so /ლეგენდა რედაქტირება and Supabase overrides always
-    // have an element to write into after export.
-    const questHtml = questDefaultText
-      ? `<button id="questBtn" onclick="toggleQuest()">?</button><div id="questPopup">${questDefaultText.replace(/\n/g, "<br>")}</div>`
-      : `<button id="questBtn" onclick="toggleQuest()" style="display:none">?</button><div id="questPopup"></div>`;
-
-    // canvas renderer is only injected when needed
-    const canvasRendererBlock = useCanvasRenderer ? canvasRendererJS : "";
-
-    // assemble final HTML by replacing placeholders
-    const title = currentProjectName || "RPG Map";
-    const html = tmpl
-      .replace(/{{TITLE}}/g,          title)
-      .replace(/{{W}}/g,               String(w))
-      .replace(/{{H}}/g,               String(h))
-      .replace(/{{COLS}}/g,            String(COLS))
-      .replace(/{{ROWS}}/g,            String(ROWS))
-      .replace(/{{MAP_IMG}}/g,         mapImgTag)
-      .replace(/{{HOTSPOTS}}/g,        allHotspots)
-      .replace(/{{QUEST_HTML}}/g,      questHtml)
-      .replace(/{{CFG_LITERAL}}/g,     cfgJSLiteral)
-      .replace(/{{OBJS_DATA}}/g,       JSON.stringify(objsData))
-      .replace(/{{TS}}/g,              String(TS))
-      .replace(/{{CANVAS_RENDERER}}/g, () => canvasRendererBlock)
-      .replace(/{{RUNTIME_JS}}/g,      () => runtimeJS)
-      .replace(/{{UPLOAD_JS}}/g,       () => uploadJS)
-      .replace(/{{DIALOGS_JS}}/g,      () => dialogsJS)
-      .replace(/{{UNLOCK_JS}}/g,       () => unlockJS)
-      .replace(/{{BULK_PARSER_JS}}/g,  () => bulkParserJS)
-      .replace(/{{TERMINAL_JS}}/g,     () => terminalJS);
-
-    downloadFile(html, fname + ".html", "text/html");
-    toast("🌐 " + fname + ".html — მზადაა!");
-  } catch (e) { console.error("HTML export error:", e); toast("❌ export: " + e.message); }
+    downloadFile(dataJS, "data.js", "application/javascript");
+    setTimeout(() => downloadFile(html, "index.html", "text/html"), 400); // avoid browser blocking 2 simultaneous downloads
+    toast("🌐 index.html + data.js — მზადაა!");
+  } catch (e) { console.error("Viewer export error:", e); toast("❌ export: " + e.message); }
 }
 
 // ── WINDOW BINDINGS ──
