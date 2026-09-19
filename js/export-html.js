@@ -1,5 +1,5 @@
 // ============================================================
-//  export-html.js  —  Viewer Export (index.html + data.js) & Config Export
+//  export-html.js  —  Viewer Export (index.html + data.js)
 //  Depends on: state.js, tile-engine.js, render.js, save-load.js, menu-builder.js
 //
 //  Output per export (2 files, both go to the mdeloviewer repo root):
@@ -36,17 +36,6 @@ function getMenuData() {
     };
   }
   return _menuSections.filter(s => s.title).map(ser);
-}
-
-function exportConfig() {
-  const config = {
-    title:       currentProjectName || "მდელო",
-    description: (document.getElementById("legTabDesc")?.value || "").trim(),
-    menu:        getMenuData()
-  };
-  const js = "window._CFG = " + JSON.stringify(config, null, 2) + ";";
-  downloadFile(js, "config.js", "application/javascript");
-  toast("📋 config.js გადმოიწერა");
 }
 
 async function doExportHTML() {
@@ -160,5 +149,4 @@ async function doExportHTML() {
 
 // ── WINDOW BINDINGS ──
 window.getMenuData  = getMenuData;
-window.exportConfig = exportConfig;
 window.doExportHTML = doExportHTML;
