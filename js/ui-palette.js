@@ -463,6 +463,11 @@ function loadSpritePack(e) {
   });
 }
 
+// push a tile definition unless one with the same id already exists.
+// Save/load restore is async; two overlapping restores (e.g. a double-tapped
+// project open) used to push every definition twice.
+function _pushUniqTile(arr, t) { if (!arr.some(x => x.id === t.id)) arr.push(t); }
+
 // ── LOAD DUAL TILES (from save/load restore) ──
 function _loadDualTiles(arr, cb) {
   arr.forEach(dt => {
@@ -470,7 +475,7 @@ function _loadDualTiles(arr, cb) {
     const hasCoords  = rawSprites.some(s => s && typeof s === "object" && s.x != null);
     if (dt.sheetUrl && hasCoords) {
       _loadSheet(dt.sheetUrl, sh => {
-        dualTiles.push({ ...dt, imgs: Array(16).fill(null), ...(sh ? { sheetImg: sh } : {}) });
+        _pushUniqTile(dualTiles, { ...dt, imgs: Array(16).fill(null), ...(sh ? { sheetImg: sh } : {}) });
         cb();
       });
       return;
@@ -478,18 +483,18 @@ function _loadDualTiles(arr, cb) {
     const imgs = Array(16).fill(null);
     function doLoad(srcs) {
       const valid = srcs.map((s, i) => ({ s, i })).filter(x => x.s);
-      if (!valid.length) { dualTiles.push({ ...dt, imgs }); cb(); return; }
+      if (!valid.length) { _pushUniqTile(dualTiles, { ...dt, imgs }); cb(); return; }
       let done = 0;
       valid.forEach(({ s, i }) => {
         const img = new Image();
-        img.onload  = () => { imgs[i] = img; if (++done >= valid.length) { dualTiles.push({ ...dt, imgs }); cb(); } };
-        img.onerror = () => {              if (++done >= valid.length) { dualTiles.push({ ...dt, imgs }); cb(); } };
+        img.onload  = () => { imgs[i] = img; if (++done >= valid.length) { _pushUniqTile(dualTiles, { ...dt, imgs }); cb(); } };
+        img.onerror = () => {              if (++done >= valid.length) { _pushUniqTile(dualTiles, { ...dt, imgs }); cb(); } };
         img.src = s;
       });
     }
     if (dt.sheetUrl) {
       _loadSheet(dt.sheetUrl, sh => {
-        if (!sh) { dualTiles.push({ ...dt, imgs }); cb(); return; }
+        if (!sh) { _pushUniqTile(dualTiles, { ...dt, imgs }); cb(); return; }
         const srcs = rawSprites.map(s => {
           if (!s) return null;
           if (typeof s === "string") return s;
@@ -510,8 +515,8 @@ function _loadAutoTilesArr(ats, onEach) {
     const hasCoords  = rawSprites.some(s => s && typeof s === "object" && s.x != null);
     if (at.sheetUrl && hasCoords) {
       _loadSheet(at.sheetUrl, sh => {
-        if (!sh) { autoTiles.push({ ...at, imgs: Array(16).fill(null) }); onEach(); return; }
-        autoTiles.push({ ...at, imgs: Array(16).fill(null), sheetImg: sh });
+        if (!sh) { _pushUniqTile(autoTiles, { ...at, imgs: Array(16).fill(null) }); onEach(); return; }
+        _pushUniqTile(autoTiles, { ...at, imgs: Array(16).fill(null), sheetImg: sh });
         onEach();
       });
       return;
@@ -520,18 +525,18 @@ function _loadAutoTilesArr(ats, onEach) {
     let   sdone = 0;
     function fromSrcs(srcs) {
       const total = srcs.filter(Boolean).length;
-      if (!total) { autoTiles.push({ ...at, imgs }); onEach(); return; }
+      if (!total) { _pushUniqTile(autoTiles, { ...at, imgs }); onEach(); return; }
       srcs.forEach((src, idx) => {
         if (!src) return;
         const img = new Image();
-        img.onload  = () => { imgs[idx] = img; if (++sdone >= total) { autoTiles.push({ ...at, imgs }); onEach(); } };
-        img.onerror = () => {                  if (++sdone >= total) { autoTiles.push({ ...at, imgs }); onEach(); } };
+        img.onload  = () => { imgs[idx] = img; if (++sdone >= total) { _pushUniqTile(autoTiles, { ...at, imgs }); onEach(); } };
+        img.onerror = () => {                  if (++sdone >= total) { _pushUniqTile(autoTiles, { ...at, imgs }); onEach(); } };
         img.src = src;
       });
     }
     if (at.sheetUrl) {
       _loadSheet(at.sheetUrl, sh => {
-        if (!sh) { autoTiles.push({ ...at, imgs }); onEach(); return; }
+        if (!sh) { _pushUniqTile(autoTiles, { ...at, imgs }); onEach(); return; }
         const srcs = rawSprites.map(s => {
           if (!s) return null; if (typeof s === "string") return s;
           const cv = document.createElement("canvas"); cv.width = s.w; cv.height = s.h;
@@ -551,14 +556,14 @@ function _loadCustomTile(ct, onDone) {
       if (!sh) { onDone(); return; }
       const entry = { id: ct.id, lb: ct.lb, sheetImg: sh, sx: ct.x, sy: ct.y, sw: ct.w, sh: ct.h, sheetUrl: ct.sheetUrl };
       if (ct.isObject) { entry.isObject = true; entry.cols = ct.cols || 1; entry.rows = ct.rows || 1; }
-      customTiles.push(entry); onDone();
+      _pushUniqTile(customTiles, entry); onDone();
     });
   } else {
     const img = new Image();
     img.onload = () => {
       const entry = { id: ct.id, lb: ct.lb, img, src: ct.src };
       if (ct.isObject) { entry.isObject = true; entry.cols = ct.cols || 1; entry.rows = ct.rows || 1; }
-      customTiles.push(entry); onDone();
+      _pushUniqTile(customTiles, entry); onDone();
     };
     img.onerror = onDone;
     img.src = ct.src;
@@ -567,6 +572,7 @@ function _loadCustomTile(ct, onDone) {
 
 // ── WINDOW BINDINGS ──
 window.buildPalette      = buildPalette;
+window._pushUniqTile     = _pushUniqTile;
 window.makeChip          = makeChip;
 window.makeDualChip      = makeDualChip;
 window.selectTile        = selectTile;
