@@ -58,10 +58,9 @@ async function doExportHTML() {
       map: mapData.map, overlayMap: mapData.overlayMap,
       objects: mapData.objects,   // no sprite data — renderer draws them from tile definitions
       custom: mapData.custom, autoTiles: mapData.autoTiles, dualTiles: mapData.dualTiles,
-      hotAreas: hotAreas.map(a => ({
-        id: a.id, x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2,
-        label: a.label, tooltip: a.tooltip, groupId: a.groupId
-      }))
+      // hotAreas: ედიტორის area-ტული მოშლილია, ყველა არე ტერმინალიდან (/არე) იმართება;
+      // state-ში დარჩენილი ძველი ჩანაწერები (თუ არსებობს) export-ზე განზრახ არ გადის.
+      hotAreas: []
     };
 
     const objsData = mapData.objects.map(o => ({
