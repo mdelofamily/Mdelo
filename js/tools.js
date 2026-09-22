@@ -64,10 +64,8 @@ function closeLayerPopupOutside(e) {
 function setTool(t) {
   curTool = t;
   lockedPos = null;
-  _pendingArea = null;
-  document.getElementById("areaCursor").style.display = "none";
   if (t !== "obj_move") { selectedObj = null; dragObjStart = null; }
-  ["draw", "fill", "erase", "pick", "area"].forEach(id => {
+  ["draw", "fill", "erase", "pick"].forEach(id => {
     const el = document.getElementById("tl-" + id);
     if (el) el.classList.toggle("on", id === t);
   });
@@ -256,145 +254,6 @@ function copySpotLink() {
 }
 
 // ── TOUCH HANDLERS ──
-// Safety: define _areaAtCell here in case ui-areas.js fails to load
-if (typeof _areaAtCell === 'undefined') {
-  window._areaAtCell = function(col, row) {
-    return hotAreas.findIndex(function(a) {
-      return col >= a.x1 && col < a.x2 && row >= a.y1 && row < a.y2;
-    });
-  };
-}
-if (typeof openAreaProps === 'undefined') {
-  window.openAreaProps = function(idx) {
-    // merge mode: second tap merges areas into group
-    if (window._mergeMode && window._editingAreaIdx >= 0 && idx !== window._editingAreaIdx) {
-      var src = hotAreas[window._editingAreaIdx];
-      var dst = hotAreas[idx];
-      var gid = src.groupId || ('g_' + Date.now());
-      src.groupId = gid;
-      dst.groupId = gid;
-      window._mergeMode      = false;
-      window._editingAreaIdx = -1;
-      scheduleRender();
-      toast('✦ გაერთიანდა');
-      return;
-    }
-    window._mergeMode      = false;
-    window._editingAreaIdx = idx;
-    var a = hotAreas[idx];
-    document.getElementById('areaLabelInp').value   = a.label   || '';
-    document.getElementById('areaTooltipInp').value = a.tooltip || '';
-    var mr = document.getElementById('areaMergeInfo');
-    if (mr) mr.style.display = 'none';
-    var gr = document.getElementById('areaGroupRow');
-    if (gr) {
-      if (a.groupId) {
-        var cnt = hotAreas.filter(function(x){ return x.groupId===a.groupId; }).length;
-        var gi  = document.getElementById('areaGroupInfo');
-        if (gi) gi.textContent = '❖ ჯგუფი: ' + cnt + ' არეალი';
-        gr.style.display = 'flex';
-      } else { gr.style.display = 'none'; }
-    }
-    if (typeof _updateAreaLinkRow === 'function') _updateAreaLinkRow();
-    document.getElementById('areaPropsModal').style.display = 'flex';
-  };
-}
-if (typeof closeAreaProps === 'undefined') {
-  window.closeAreaProps = function() {
-    document.getElementById('areaPropsModal').style.display = 'none';
-    window._editingAreaIdx = -1;
-  };
-}
-if (typeof saveAreaProps === 'undefined') {
-  window.saveAreaProps = function() {
-    var idx = window._editingAreaIdx;
-    if (idx >= 0 && idx < hotAreas.length) {
-      hotAreas[idx].label   = document.getElementById('areaLabelInp').value.trim();
-      hotAreas[idx].tooltip = document.getElementById('areaTooltipInp').value.trim();
-    }
-    closeAreaProps();
-    scheduleRender();
-    toast('✓ შენახულია');
-  };
-}
-if (typeof deleteArea === 'undefined') {
-  window.deleteArea = function() {
-    var idx = window._editingAreaIdx;
-    if (idx < 0) return;
-    hotAreas.splice(idx, 1);
-    document.getElementById('areaPropsModal').style.display = 'none';
-    window._editingAreaIdx = -1;
-    scheduleRender();
-    toast('წაიშალა');
-  };
-}
-if (typeof startMergeMode === 'undefined') {
-  window.startMergeMode = function() {
-    if (window._editingAreaIdx < 0) return;
-    window._mergeMode = true;
-    document.getElementById('areaPropsModal').style.display = 'none';
-    setTool('area');
-    toast('❖ tap სხვა არეალზე');
-  };
-}
-if (typeof ungroupArea === 'undefined') {
-  window.ungroupArea = function() {
-    var idx = window._editingAreaIdx;
-    if (idx < 0) return;
-    var gid = hotAreas[idx].groupId;
-    if (!gid) return;
-    delete hotAreas[idx].groupId;
-    var rem = hotAreas.filter(function(x){ return x.groupId === gid; });
-    if (rem.length === 1) delete rem[0].groupId;
-    scheduleRender();
-    toast('❖ ჯგუფიდან გამოვიდა');
-    closeAreaProps();
-  };
-}
-if (typeof copyAreaFitLink === 'undefined') {
-  window.copyAreaFitLink = function() {
-    var idx = window._editingAreaIdx;
-    if (idx < 0) return;
-    var a = hotAreas[idx];
-    var group = a.groupId ? hotAreas.filter(function(x){ return x.groupId===a.groupId; }) : [a];
-    var x1=Math.min.apply(null,group.map(function(r){return r.x1;}));
-    var y1=Math.min.apply(null,group.map(function(r){return r.y1;}));
-    var x2=Math.max.apply(null,group.map(function(r){return r.x2;}));
-    var y2=Math.max.apply(null,group.map(function(r){return r.y2;}));
-    var base=(typeof spotBaseUrl!=='undefined'?spotBaseUrl:'')||'';
-    var link=base+'#fit='+x1+','+y1+','+x2+','+y2;
-    if(a.groupId) link+='&group='+encodeURIComponent(a.groupId);
-    if(navigator.clipboard&&navigator.clipboard.writeText)
-      navigator.clipboard.writeText(link).then(function(){toast('✓ fit link დაკოპირდა');});
-    else toast('ok fit link: '+link);
-  };
-}
-if (typeof _updateAreaLinkRow === 'undefined') {
-  window._updateAreaLinkRow = function() {
-    var label=(document.getElementById('areaLabelInp').value||'').trim();
-    var row=document.getElementById('areaLinkRow');
-    if(label){row.style.display='flex';document.getElementById('areaLinkOut').value='#area='+encodeURIComponent(label);}
-    else row.style.display='none';
-  };
-}
-if (typeof insertAreaLink === 'undefined') {
-  window.insertAreaLink = function() {
-    var ta=document.getElementById('areaTooltipInp');
-    ta.value+=((ta.value&&!ta.value.endsWith('\n'))?'\n':'')+'[[saxeli|https://example.com]]';
-    ta.focus();
-  };
-}
-if (typeof copyAreaViewerLink === 'undefined') {
-  window.copyAreaViewerLink = function() {
-    var val=document.getElementById('areaLinkOut').value;
-    if(!val)return;
-    var base=(typeof spotBaseUrl!=='undefined'?spotBaseUrl:'')||'';
-    var full=base?base+val:val;
-    if(navigator.clipboard&&navigator.clipboard.writeText)
-      navigator.clipboard.writeText(full).then(function(){toast('✓ დაკოპირდა');});
-  };
-}
-window._mergeMode = window._mergeMode || false;
 function tp(t) {
   const r = canvas.getBoundingClientRect();
   return { x: t.clientX - r.left, y: t.clientY - r.top };
@@ -423,12 +282,6 @@ canvas.addEventListener("touchstart", e => {
       touchState = null; return;
     }
     if (curTool === "fill") { pushH(); floodFill(col, row); setTool("pick"); touchState = null; return; }
-    if (curTool === "area") {
-      const idx = _areaAtCell(col, row);
-      if (idx >= 0) { openAreaProps(idx); touchState = null; return; }
-      touchState._areaStart = { x1: col, y1: row };
-      return;
-    }
     if (curTool === "obj_place" || curTool === "obj_move") { hoverCell = { col, row }; scheduleRender(); }
   } else if (e.touches.length === 2) {
     touchState = null;
@@ -459,15 +312,6 @@ canvas.addEventListener("touchmove", e => {
       if (canPlace(nx, ny, o.cols, o.rows, selectedObj)) { o.x = nx; o.y = ny; }
       scheduleRender();
     } else if (curTool === "obj_place") {
-      scheduleRender();
-    } else if (curTool === "area" && touchState._areaStart) {
-      touchState.moved = true;
-      touchState._areaEnd = { col: tc, row: tr };
-      const s = touchState._areaStart;
-      const x1 = Math.min(s.x1, tc), y1 = Math.min(s.y1, tr);
-      const x2 = Math.max(s.x1, tc) + 1, y2 = Math.max(s.y1, tr) + 1;
-      const ac = document.getElementById("areaCursor");
-      ac.style.cssText = `display:block;left:${x1*TS*zoom+viewX}px;top:${y1*TS*zoom+viewY}px;width:${(x2-x1)*TS*zoom}px;height:${(y2-y1)*TS*zoom}px;border:2px dashed #facc15;background:rgba(250,204,21,0.1);`;
       scheduleRender();
     } else if (touchState.moved) {
       viewX = touchState.vx + dx; viewY = touchState.vy + dy;
@@ -509,26 +353,6 @@ canvas.addEventListener("touchend", e => {
       if (touchState.moved && dragObjStart) { pushH(); dragObjStart = null; }
       else if (!touchState.moved) { selectedObj = null; dragObjStart = null; curTool = "obj_place"; }
       scheduleRender();
-    } else if (curTool === "area") {
-      if (touchState._areaStart) {
-        const s   = touchState._areaStart;
-        const end = touchState._areaEnd || s;
-        if (!touchState.moved) {
-          const idx = _areaAtCell(s.x1, s.y1);
-          if (idx >= 0) { openAreaProps(idx); touchState = null; return; }
-        } else {
-          const x1 = Math.min(s.x1, end.col), y1 = Math.min(s.y1, end.row);
-          const x2 = Math.max(s.x1, end.col) + 1, y2 = Math.max(s.y1, end.row) + 1;
-          if (x2 - x1 >= 1 && y2 - y1 >= 1) {
-            const id = "area_" + Date.now();
-            hotAreas.push({ id, x1, y1, x2, y2, label: "", tooltip: "" });
-            _lastAreaId = id;
-            document.getElementById("areaCursor").style.display = "none";
-            openAreaProps(hotAreas.length - 1);
-          }
-        }
-      }
-      touchState = null;
     } else if (!touchState.moved) {
       if (curTool === "draw" || curTool === "erase") {
         if (inB(col, row)) { pushH(); paintAt(col, row); }
@@ -556,24 +380,12 @@ canvas.addEventListener("mousedown", e => {
     else { selectedObj = null; dragObjStart = null; curTool = "obj_place"; }
     scheduleRender(); return;
   }
-  if (curTool === "area") {
-    const idx = _areaAtCell(col, row);
-    if (idx >= 0) openAreaProps(idx); else _pendingArea = { x1: col, y1: row };
-    return;
-  }
   mDraw = true; pushH(); paintAt(col, row); lastC = { col, row };
 });
 
 canvas.addEventListener("mousemove", e => {
   const { col, row } = toCell(e.offsetX, e.offsetY);
   hoverCell = { col, row };
-  if (curTool === "area" && _pendingArea) {
-    const ac = document.getElementById("areaCursor");
-    const x1 = Math.min(_pendingArea.x1, col), y1 = Math.min(_pendingArea.y1, row);
-    const x2 = Math.max(_pendingArea.x1, col) + 1, y2 = Math.max(_pendingArea.y1, row) + 1;
-    ac.style.cssText = `display:block;left:${x1*TS*zoom+viewX}px;top:${y1*TS*zoom+viewY}px;width:${(x2-x1)*TS*zoom}px;height:${(y2-y1)*TS*zoom}px;border:2px dashed #facc15;background:rgba(250,204,21,0.1);`;
-    scheduleRender(); return;
-  }
   if (curTool === "obj_place") { scheduleRender(); return; }
   if (curTool === "obj_move" && mDraw && selectedObj !== null && dragObjStart) {
     const dx = col - dragObjStart.col, dy = row - dragObjStart.row;
@@ -587,22 +399,6 @@ canvas.addEventListener("mousemove", e => {
 });
 
 window.addEventListener("mouseup", e => {
-  if (curTool === "area" && _pendingArea) {
-    document.getElementById("areaCursor").style.display = "none";
-    const col = hoverCell ? hoverCell.col : _pendingArea.x1;
-    const row = hoverCell ? hoverCell.row : _pendingArea.y1;
-    const x1  = Math.min(_pendingArea.x1, col), y1 = Math.min(_pendingArea.y1, row);
-    const x2  = Math.max(_pendingArea.x1, col) + 1, y2 = Math.max(_pendingArea.y1, row) + 1;
-    _pendingArea = null;
-    if (x2 - x1 >= 1 && y2 - y1 >= 1) {
-      const id = "area_" + Date.now();
-      hotAreas.push({ id, x1, y1, x2, y2, label: "", tooltip: "" });
-      _lastAreaId = id;
-      toast("🔗 არეალი შეინახა");
-      setTool("draw");
-    }
-    scheduleRender(); return;
-  }
   if (curTool === "obj_move" && dragObjStart && selectedObj !== null) { pushH(); dragObjStart = null; }
   mDraw = false;
 });
