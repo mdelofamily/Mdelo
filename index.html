@@ -128,8 +128,6 @@ body{display:flex;flex-direction:column;}
 .mrow{display:flex;gap:8px;}
 .mbtn{flex:1;height:38px;background:var(--bg);border:2px solid var(--border);color:var(--text);font-size:15px;cursor:pointer;border-radius:4px;font-family:monospace;}
 #objPropsBox{background:var(--panel);border:2px solid var(--blue);border-radius:10px;padding:16px;width:min(96vw,480px);display:flex;flex-direction:column;gap:10px;}
-#areaPropsBox{background:var(--panel);border:2px solid var(--blue);border-radius:10px;padding:16px;width:min(92vw,340px);display:flex;flex-direction:column;gap:10px;}
-#areaPropsModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:250;align-items:center;justify-content:center;}#areaPropsModal.show{display:flex;}
 #objPropsBox h3{font-size:13px;color:var(--blue);letter-spacing:1px;}
 .marker-row{display:flex;gap:6px;align-items:center;}
 .marker-row span{font-size:12px;color:var(--muted);flex-shrink:0;}
@@ -214,9 +212,6 @@ body{display:flex;flex-direction:column;}
 #legScrollBody::-webkit-scrollbar,#projList::-webkit-scrollbar{width:4px;}
 #legScrollBody::-webkit-scrollbar-thumb,#projList::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 
-/* AREA CURSOR */
-#areaCursor{display:none;position:absolute;pointer-events:none;z-index:20;border:2px dashed var(--blue);background:rgba(88,166,255,0.08);border-radius:6px;}
-
 /* SPOT POPUP */
 #spotPopup{
   display:none;position:fixed;z-index:350;
@@ -275,7 +270,6 @@ body{display:flex;flex-direction:column;}
 <div id="cw">
   <canvas id="bgCanvas"></canvas>
   <canvas id="mc"></canvas>
-  <div id="areaCursor"></div>
   <div id="hud">X:<b id="hx">-</b> Y:<b id="hy">-</b></div>
 </div>
 
@@ -307,7 +301,6 @@ body{display:flex;flex-direction:column;}
         <button class="tpill"    id="tl-fill"  onclick="setTool('fill')">🪣 Fill</button>
         <button class="tpill"    id="tl-erase" onclick="setTool('erase')">⌫ წაშლა</button>
         <button class="tpill"    id="tl-pick"  onclick="setTool('pick')">💉 Pick</button>
-        <button class="tpill"    id="tl-area"  onclick="setTool('area');toast('🔗 გადაიტანე არეალის დასახაზად')">🔗 არეალი</button>
       </div>
       <div id="brow">
         <div class="bdot on" onclick="setBrush(1,this)">1×</div>
@@ -386,40 +379,6 @@ body{display:flex;flex-direction:column;}
   </div>
 </div>
 
-<!-- Area properties modal -->
-<div id="areaPropsModal">
-  <div id="areaPropsBox">
-    <h3>🔗 არეალის Properties</h3>
-    <input id="areaLabelInp" placeholder="სახელი (გამოჩნდება რუკაზე)" oninput="_updateAreaLinkRow()"
-      style="background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:13px;padding:6px 9px;border-radius:6px;width:100%;">
-    <textarea id="areaTooltipInp" placeholder="tooltip ტექსტი... [[ლინკი|https://...]]"
-      style="width:100%;min-height:70px;resize:vertical;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:12px;padding:7px 9px;border-radius:6px;font-family:sans-serif;line-height:1.6;"></textarea>
-    <div style="display:flex;gap:6px;align-items:center;">
-      <button onclick="insertAreaLink()" style="background:var(--bg);border:1px solid var(--blue);color:var(--blue);font-size:11px;padding:3px 10px;border-radius:10px;cursor:pointer;">+ ლინკი</button>
-    </div>
-    <div id="areaGroupRow" style="display:none;align-items:center;gap:6px;padding:4px 0;flex-wrap:wrap;">
-      <span id="areaGroupInfo" style="font-size:11px;color:var(--accent);flex:1;"></span>
-      <button onclick="copyAreaFitLink()" style="background:var(--bg);border:1px solid var(--accent);color:var(--accent);font-size:11px;padding:3px 8px;border-radius:10px;cursor:pointer;">📐 fit link</button>
-      <button onclick="ungroupArea()" style="background:var(--bg);border:1px solid var(--muted);color:var(--muted);font-size:11px;padding:3px 8px;border-radius:10px;cursor:pointer;">✦ გამოყოფა</button>
-    </div>
-    <div id="areaMergeInfo" style="display:none;font-size:11px;color:var(--accent);padding:4px 0;">✦ tap სხვა არეალზე გასაერთიანებლად</div>
-    <div id="areaLinkRow" style="display:none;flex-direction:column;gap:4px;">
-      <div style="font-size:10px;color:var(--muted);">📋 Viewer ლინკი:</div>
-      <div style="display:flex;gap:6px;align-items:center;">
-        <input id="areaLinkOut" readonly
-          style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--muted);font-size:10px;padding:4px 8px;border-radius:5px;font-family:monospace;">
-        <button onclick="copyAreaViewerLink()" style="height:28px;padding:0 10px;background:var(--bg);border:1px solid var(--green);color:var(--green);font-size:12px;border-radius:5px;cursor:pointer;font-family:monospace;">📋</button>
-      </div>
-    </div>
-    <div class="mrow" style="gap:6px;">
-      <button class="mbtn warn" onclick="deleteArea()" style="flex:0.6;border-color:var(--red);color:var(--red);">🗑 წაშლა</button>
-      <button class="mbtn" onclick="startMergeMode()" style="border-color:var(--accent);color:var(--accent);">+ გაერთ.</button>
-      <button class="mbtn no" onclick="closeAreaProps()">გაუქმება</button>
-      <button class="mbtn ok" onclick="saveAreaProps()">✓ შენახვა</button>
-    </div>
-  </div>
-</div>
-
 <!-- Object properties modal -->
 <div id="objPropsModal">
   <div id="objPropsBox">
@@ -470,7 +429,7 @@ body{display:flex;flex-direction:column;}
 <script src="js/state.js"></script>
 <script src="js/tile-engine.js"></script>
 <script src="js/render.js"></script>
-<script src="js/tools.js?v=6"></script>
+<script src="js/tools.js?v=7"></script>
 <script src="js/objects.js"></script>
 <script src="js/bulk-parser.js"></script>
 <script src="js/ui-palette.js"></script>
@@ -478,7 +437,6 @@ body{display:flex;flex-direction:column;}
 <script src="js/export-png.js"></script>
 <script src="js/export-html.js"></script>
 <script src="js/ui-panels.js"></script>
-<script src="js/ui-areas.js?v=4"></script>
 <script src="js/menu-builder.js"></script>
 <script src="js/projects.js"></script>
 
